@@ -32,7 +32,7 @@ export default function PatientSay() {
   };
 
   return (
-    <section className="py-20 bg-blue-50">
+    <section className="py-20 bg-[rgb(231,250,243)]">
       <div className="container mx-auto px-4">
         <h2 className="text-3xl font-bold text-center text-blue-900 mb-12">What Our Users Say</h2>
         <div className="max-w-3xl mx-auto">
@@ -45,7 +45,7 @@ export default function PatientSay() {
                 <p className="font-semibold">{patientSay[currentIndex].name}</p>
                 <p className="text-gray-600">{patientSay[currentIndex].role}</p>
               </div>
-              <div className="flex space-x-2">
+              <div className=" flex space-x-2">
                 <Button variant="outline" size="icon" onClick={prevTestimonial}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { FiHeart, FiActivity, FiCoffee } from "react-icons/fi"
+import { FiHeart, FiActivity, FiCoffee, FiMusic } from "react-icons/fi"
 import { motion } from "framer-motion"
 
 const tips = [
@@ -18,13 +18,18 @@ const tips = [
     title: "Mindful Eating",
     content: "Pay attention to what and when you eat. Avoid distractions during meals.",
   },
+  {
+    icon: FiMusic,
+    title: "Mindful listening",
+    content: "listaen to music that makes you feel good and helps you relax.",
+  },
 ]
 
 export default function HealthTips() {
   const [activeIndex, setActiveIndex] = useState(0)
 
   return (
-    <section id="health-tips" className="py-20 bg-gray-100">
+    <section id="health-tips" className="py-20 bg-[rgb(218,248,237)]">
       <div className="container mx-auto px-4">
         <h2 className="text-3xl font-bold text-center text-blue-900 mb-12">Daily Health Tips</h2>
         <div className="flex flex-wrap justify-center gap-4">
@@ -44,7 +49,7 @@ export default function HealthTips() {
                 <motion.p
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  transition={{ duration: 0.5 }}
+                  transition={{ duration: 0.6 }}
                   className="text-gray-600"
                 >
                   {tip.content}

@@ -1,12 +1,13 @@
-import { Button } from "./ui/button"
-import { motion } from "framer-motion"
+import { Button } from "./ui/button";
+import HeroImage from "../assets/images/HeroImage.png";
+import { motion } from "framer-motion";
 
 export default function Hero() {
   return (
     <section className="relative h-screen flex items-center justify-center overflow-hidden">
       <div className="absolute inset-0 z-0">
         <img
-          src="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80"
+          src={HeroImage}
           alt="Hospital background"
           className="object-cover w-full h-full"
         />
@@ -43,6 +44,5 @@ export default function Hero() {
         </motion.div>
       </div>
     </section>
-  )
+  );
 }
-

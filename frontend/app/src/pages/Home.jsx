@@ -5,6 +5,7 @@ import FindDoctor from "../components/Doctors/FindDoctor"
 import PatientSay from "../components/PatientSay"
 import VirtualTour from "../components/VirtualTour"
 import HealthTips from "../components/HealthTips"
+import ContactUs from "../components/ContactUs"
 import EmergencyServices from "../components/EmergencyServices"
 
 export default function Home() {
@@ -20,6 +21,7 @@ export default function Home() {
             <HealthTips />
             <EmergencyServices />
             <PatientSay />
+            <ContactUs />
         </main>
     </div>
     )
