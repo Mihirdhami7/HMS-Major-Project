@@ -42,7 +42,7 @@ export default function Header() {
             </li>
             <li>
               <Link
-                to="#services"
+                to="services"
                 className="text-gray-600 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400 transition-colors"
               >
                 Services
@@ -50,7 +50,7 @@ export default function Header() {
             </li>
             <li>
               <Link
-                to="#find-doctor"
+                to="find-doctor"
                 className="text-gray-600 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400 transition-colors"
               >
                 Find a Doctor
@@ -58,7 +58,7 @@ export default function Header() {
             </li>
             <li>
               <Link
-                to="#health-tips"
+                to="health-tips"
                 className="text-gray-600 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400 transition-colors"
               >
                 Health Tips
@@ -66,7 +66,7 @@ export default function Header() {
             </li>
             <li>
               <Link
-                to="#emergency"
+                to="emergency"
                 className="text-gray-600 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400 transition-colors"
               >
                 Emergency
@@ -74,7 +74,7 @@ export default function Header() {
             </li>
             <li>
               <Link
-                to="#contact"
+                to="contact"
                 className="text-gray-600 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400 transition-colors"
               >
                 Contact Us
@@ -85,9 +85,6 @@ export default function Header() {
         <div className="flex items-center space-x-2">
           <Button variant="outline" asChild>
             <Link to="/login">Log In</Link>
-          </Button>
-          <Button asChild>
-            <Link to="/signup">Sign Up</Link>
           </Button>
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}

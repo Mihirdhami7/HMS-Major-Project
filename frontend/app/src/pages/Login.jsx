@@ -1,41 +1,74 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useUserContext } from "../context/UserContext";
 
 export default function Login() {
-  const { setUser } = useUserContext();
-  const [username, setUsername] = useState("");
-  const [role, setRole] = useState("Patient"); // Default role
-  const navigate = useNavigate();
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    category: "Patient",
+  });
 
-  const handleLogin = () => {
-    // Simulate login success and set user data
-    setUser({ username, role });
-    navigate("/dashboard");
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    console.log("Login Data:", formData);
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
-      <h1 className="text-2xl font-bold mb-4">Login</h1>
-      <input
-        className="p-2 border rounded mb-2"
-        type="text"
-        placeholder="Username"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-      />
-      <select
-        className="p-2 border rounded mb-4"
-        value={role}
-        onChange={(e) => setRole(e.target.value)}
-      >
-        <option value="Patient">Patient</option>
-        <option value="Doctor">Doctor</option>
-        <option value="Admin">Admin</option>
-      </select>
-      <button className="p-2 bg-blue-500 text-white rounded" onClick={handleLogin}>
-        Login
-      </button>
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center py-8">
+      <div className="bg-white shadow-lg rounded-lg p-8 w-full max-w-md">
+        <h2 className="text-2xl font-bold text-gray-800 text-center">
+          Hello! <span className="text-blue-600">Welcome Back</span> 🎉
+        </h2>
+
+        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+          <input
+            type="email"
+            name="email"
+            placeholder="Email"
+            value={formData.email}
+            onChange={handleChange}
+            className="w-full p-3 border border-gray-300 rounded-md focus:ring focus:ring-blue-300"
+          />
+          <input
+            type="password"
+            name="password"
+            placeholder="Password"
+            value={formData.password}
+            onChange={handleChange}
+            className="w-full p-3 border border-gray-300 rounded-md focus:ring focus:ring-blue-300"
+          />
+
+          {/* Category Dropdown */}
+          <select
+            name="category"
+            value={formData.category}
+            onChange={handleChange}
+            className="w-full p-3 border border-gray-300 rounded-md"
+          >
+            <option value="Patient">Patient</option>
+            <option value="Doctor">Doctor</option>
+          </select>
+
+          {/* Login Button */}
+          <button
+            type="submit"
+            className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700"
+          >
+            Login
+          </button>
+        </form>
+
+        {/* Register Link */}
+        <p className="mt-4 text-center text-gray-600">
+            Don&apos;t have an account?{" "}
+          <a href="/register" className="text-blue-600">
+            Register
+          </a>
+        </p>
+      </div>
     </div>
   );
 }
