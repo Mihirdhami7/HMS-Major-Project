@@ -7,13 +7,42 @@ export default function Login() {
     category: "Patient",
   });
 
+  const [error, setError] = useState(null); // Handle errors
+  const [loading, setLoading] = useState(false); // Show loading state
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Login Data:", formData);
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/login/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // ✅ Store the token in localStorage or sessionStorage
+        localStorage.setItem("authToken", data.token);
+        alert("Login successful!");
+        console.log("User Type:", data.user_type);
+      } else {
+        setError(data.message || "Login failed");
+      }
+    } catch (err) {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

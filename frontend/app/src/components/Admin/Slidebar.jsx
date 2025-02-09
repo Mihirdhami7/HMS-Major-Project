@@ -1,16 +1,15 @@
-import PropTypes from "prop-types"
-import Link from "react-router-dom"
-import { FiHome, FiCalendar, FiUsers, FiUserPlus, FiSettings } from "react-icons/fi"
+import Link from "next/link"
+import { FiHome, FiUsers, FiUserPlus, FiPackage } from "react-icons/fi"
+import PropTypes from 'prop-types';
 
 const menuItems = [
   { icon: FiHome, label: "Dashboard", value: "dashboard" },
-  { icon: FiCalendar, label: "Appointments", value: "appointments" },
-  { icon: FiUsers, label: "Patients", value: "patients" },
-  { icon: FiUserPlus, label: "Doctors", value: "doctors" },
-  { icon: FiSettings, label: "Settings", value: "settings" },
+  { icon: FiUserPlus, label: "Doctors Details", value: "doctors" },
+  { icon: FiUsers, label: "Departments", value: "patients" },
+  { icon: FiPackage, label: "Products", value: "products" },
+  { icon: FiPackage, label: "Settings", value: "settings" },
 ]
-
-export default function Sidebar({ activeTab, setActiveTab }) {
+function Sidebar({ activeTab, setActiveTab }) {
   return (
     <aside className="w-64 bg-white shadow-md dark:bg-gray-800">
       <div className="p-4">
@@ -34,10 +33,13 @@ export default function Sidebar({ activeTab, setActiveTab }) {
         ))}
       </nav>
     </aside>
-  )
+  );
 }
+
 Sidebar.propTypes = {
   activeTab: PropTypes.string.isRequired,
   setActiveTab: PropTypes.func.isRequired,
 };
+
+export default Sidebar;
 

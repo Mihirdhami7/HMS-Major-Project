@@ -1,86 +1,69 @@
-from django.contrib.auth import get_user_model
-from django.contrib.auth.hashers import make_password
 from django.http import JsonResponse
-from django.core.mail import send_mail
-from django.shortcuts import render
-from django.views.decorators.csrf import csrf_exempt
-import uuid
-
-User = get_user_model()
-
-# Store verification tokens in memory for now (you can use a model for this)
-verification_tokens = {}
-
-@csrf_exempt
-def signup_view(request):
-    if request.method == 'POST':
-        username = request.POST['username']
-        email = request.POST['email']
-        password = request.POST['password']
-
-        if User.objects.filter(email=email).exists():
-            return JsonResponse({'error': 'Email already exists'}, status=400)
-
-        # Create user and save with hashed password
-        user = User(username=username, email=email, password=make_password(password))
-        user.save()
-
-        # Generate a verification token
-        token = str(uuid.uuid4())
-        verification_tokens[email] = token
-
-        # Send a verification email
-        verification_link = f"http://127.0.0.1:8000/api/verify-email?token={token}&email={email}"
-        send_mail(
-            subject='Verify your email',
-            message=f'Click the link to verify your email: {verification_link}',
-            from_email='your_email@example.com',
-            recipient_list=[email],
-        )
-
-        return JsonResponse({'message': 'User registered. Please check your email to verify your account.'})
-
-    return JsonResponse({'error': 'Invalid request'}, status=400)
-
-
-@csrf_exempt
-def verify_email(request):
-    if request.method == 'GET':
-        email = request.GET['email']
-        token = request.GET['token']
-
-        if email in verification_tokens and verification_tokens[email] == token:
-            user = User.objects.get(email=email)
-            user.is_email_verified = True
-            user.save()
-
-            # Remove the token once verified
-            del verification_tokens[email]
-
-            return JsonResponse({'message': 'Email verified successfully.'})
-        return JsonResponse({'error': 'Invalid or expired token'}, status=400)
-
-    return JsonResponse({'error': 'Invalid request'}, status=400)
-
-
 from django.contrib.auth import authenticate
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from .models import CustomUser, UserProfile
+from .serializers import CustomUserSerializer
 
-@csrf_exempt
-def login_view(request):
-    if request.method == 'POST':
-        email = request.POST['email']
-        password = request.POST['password']
+@api_view(['POST'])
+def register_user(request):
+    """ Register a new user """
+    data = request.data.copy()  # Ensure mutable data
+    email = data.get("email")
+    if CustomUser.objects.filter(email=email).exists():
+        return Response({"error": "A user with this email already exists. Please log in."}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            user = User.objects.get(email=email)
-            if not user.is_email_verified:
-                return JsonResponse({'error': 'Email not verified'}, status=400)
+    # Extract photo from request files (if available)
+    photo = request.FILES.get('photo')
 
-            user = authenticate(request, username=user.username, password=password)
-            if user is not None:
-                return JsonResponse({'message': 'Login successful'})
-            return JsonResponse({'error': 'Invalid credentials'}, status=400)
-        except User.DoesNotExist:
-            return JsonResponse({'error': 'User does not exist'}, status=400)
+    serializer = CustomUserSerializer(data=data)
+    if serializer.is_valid():
+        user = serializer.save()  # Save CustomUser
 
-    return JsonResponse({'error': 'Invalid request'}, status=400)
+        # ✅ Ensure UserProfile is created only if it doesn’t exist
+        user_profile, created = UserProfile.objects.get_or_create(user=user)
+
+        if photo:  # ✅ Only update the photo if it's provided
+            user_profile.photo = photo
+            user_profile.save()
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+def login_user(request):
+    """ Login user with email and password """
+    email = request.data.get('email')
+    password = request.data.get('password')
+
+    if not email or not password:
+        return JsonResponse({'message': 'Email and password are required'}, status=400)
+
+    try:
+        user = CustomUser.objects.get(email=email)
+    except CustomUser.DoesNotExist:
+        return JsonResponse({'message': 'Invalid credentials'}, status=401)
+
+    # Authenticate the user (Ensure password is correct)
+    if user.check_password(password):
+        # Generate or fetch the authentication token
+        token, created = Token.objects.get_or_create(user=user)
+
+        return JsonResponse({
+            'message': 'Login successful',
+            'user_type': user.userType,
+            'token': token.key  # ✅ Return the token for authentication
+        })
+
+    return JsonResponse({'message': 'Invalid credentials'}, status=401)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_all_users(request):
+    users = CustomUser.objects.all()
+    serializer = CustomUserSerializer(users, many=True)
+    return Response(serializer.data)

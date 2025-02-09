@@ -1,128 +1,218 @@
 import { useState } from "react";
+import axios from "axios";
 
 export default function Signup() {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
+    confirmPassword: "",
+    contactNo: "",
     dateOfBirth: "",
     userType: "Patient",
     gender: "Male",
     photo: null,
   });
 
+  const [errors, setErrors] = useState({});
+  const [message, setMessage] = useState(""); 
+
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    if (errors[e.target.name]) {
+      setErrors({ ...errors, [e.target.name]: "" });
+    }
   };
 
   const handleFileChange = (e) => {
     setFormData({ ...formData, photo: e.target.files[0] });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("User Data:", formData);
+    setMessage("");
+
+    const newErrors = {};
+    if (!formData.email.trim()) {
+      newErrors.email = "Email is required";
+    }
+    if (!formData.password) {
+      newErrors.password = "Password is required";
+    }
+    if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = "Passwords do not match";
+    }
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    const formDataToSend = new FormData();
+    formDataToSend.append("name", formData.name);
+    formDataToSend.append("email", formData.email);
+    formDataToSend.append("password", formData.password);
+    formDataToSend.append("contactNo", formData.contactNo);
+    formDataToSend.append("dateOfBirth", formData.dateOfBirth);
+    formDataToSend.append("userType", formData.userType);
+    formDataToSend.append("gender", formData.gender);
+    if (formData.photo) {
+      formDataToSend.append("photo", formData.photo);  // Correct key
+    } 
+
+    try {
+      const response = await axios.post("http://127.0.0.1:8000/api/register/", 
+      formDataToSend, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+          "Authorization": `Bearer ${localStorage.getItem("authToken")}`,
+        },
+        withCredentials: true,
+      }
+    );
+
+      if (response.status === 201) {
+        setMessage("Signup successful! Please login.");
+        setFormData({
+          name: "",
+          email: "",
+          password: "",
+          confirmPassword: "",
+          contactNo: "",
+          dateOfBirth: "",
+          userType: "Patient",
+          gender: "Male",
+          photo: null,
+        });
+      }
+    } catch (error) {
+      if (error.response) {
+        setMessage(error.response.data.message || "Signup failed. Please try again.");
+        setErrors(error.response.data);
+      } else {
+        setMessage("An error occurred during signup.");
+      }
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center py-8">
-      <div className="bg-white shadow-lg rounded-lg flex w-full max-w-4xl">
-        {/* Left Side - Illustration */}
-        <div className="hidden md:flex w-1/2 bg-blue-500 p-4 justify-center items-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="flex bg-white shadow-lg rounded-lg overflow-hidden w-3/4">
+        <div className="w-1/2 bg-blue-500 flex items-center justify-center p-10">
           <img
-            src="https://cdn.dribbble.com/users/1162077/screenshots/5403918/media/53e78c8d9280fbb58ce80268c7636f77.png"
-            alt="Signup Illustration"
+            src="/mnt/data/image.png"
+            alt="Sign Up Illustration"
             className="w-full h-auto"
           />
         </div>
-
-        {/* Right Side - Signup Form */}
-        <div className="w-full md:w-1/2 p-6">
-          <h2 className="text-xl font-bold text-gray-800">
-            Create an <span className="text-blue-600">Account</span>
+        <div className="w-1/2 p-8">
+          <h2 className="text-3xl font-extrabold text-gray-900">
+            Create an <span className="text-indigo-600">Account</span>
           </h2>
 
-          <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
+          {/* Display message */}
+          {message && (
+            <div className={`mt-4 p-2 text-center rounded ${message.includes("successful") ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+              {message}
+            </div>
+          )}
+
+          <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+            <input type="hidden" name="remember" value="true" />
             <input
-              type="text"
               name="name"
-              placeholder="Full Name"
+              type="text"
+              placeholder="Name"
+              required
+              className="w-full p-2 border rounded"
               value={formData.name}
               onChange={handleChange}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring focus:ring-blue-300"
             />
             <input
-              type="email"
               name="email"
-              placeholder="Email"
+              type="email"
+              placeholder="Email address"
+              required
+              className="w-full p-2 border rounded"
               value={formData.email}
               onChange={handleChange}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring focus:ring-blue-300"
             />
+            {/* Password Field with Show Button */}
+            <div className="relative">
+              <input
+                name="password"
+                type={formData.showPassword ? "text" : "password"}
+                placeholder="Password"
+                required
+                className="w-full p-2 border rounded"
+                value={formData.password}
+                onChange={handleChange}
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-2 text-sm text-blue-600"
+                onClick={() => setFormData((prev) => ({ ...prev, showPassword: !prev.showPassword }))}
+              >
+                {formData.showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
             <input
+              name="confirmPassword"
               type="password"
-              name="password"
-              placeholder="Password"
-              value={formData.password}
+              placeholder="Confirm Password"
+              required
+              className="w-full p-2 border rounded"
+              value={formData.confirmPassword}
               onChange={handleChange}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring focus:ring-blue-300"
             />
             <input
-              type="date"
-              name="dateOfBirth"
-              placeholder="Date of Birth"
-              value={formData.dateOfBirth}
+              name="contactNo"
+              type="tel"
+              placeholder="Contact Number"
+              required
+              className="w-full p-2 border rounded"
+              value={formData.contactNo}
               onChange={handleChange}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring focus:ring-blue-300"
             />
-
-            {/* User Type & Gender Dropdowns */}
             <div className="flex space-x-2">
               <select
                 name="userType"
+                required
+                className="w-1/2 p-2 border rounded"
                 value={formData.userType}
                 onChange={handleChange}
-                className="w-1/2 p-2 border border-gray-300 rounded-md"
               >
                 <option value="Patient">Patient</option>
                 <option value="Doctor">Doctor</option>
                 <option value="Admin">Admin</option>
               </select>
-
               <select
                 name="gender"
+                required
+                className="w-1/2 p-2 border rounded"
                 value={formData.gender}
                 onChange={handleChange}
-                className="w-1/2 p-2 border border-gray-300 rounded-md"
               >
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
+                <option value="Other">Other</option>
               </select>
             </div>
-
-            {/* Upload Photo */}
-            <label className="block text-gray-600">Upload Photo</label>
+            <label className="block text-gray-700">Upload Photo</label>
             <input
               type="file"
+              name="photo"
+              className="w-full p-2 border rounded"
               onChange={handleFileChange}
-              className="w-full p-2 border border-gray-300 rounded-md"
             />
-
-            {/* Sign Up Button */}
             <button
               type="submit"
-              className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700"
-            >
-              Sign Up
+              className="w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700"
+            > Sign Up
             </button>
           </form>
-
-          {/* Login Link */}
-          <p className="mt-3 text-center text-gray-600">
-            Already have an account?{" "}
-            <a href="/login" className="text-blue-600">
-              Login
-            </a>
+          <p className="text-center text-sm text-gray-600 mt-4">
+            Already have an account? <a href="/login" className="text-indigo-600">Login</a>
           </p>
         </div>
       </div>
