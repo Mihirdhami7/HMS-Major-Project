@@ -6,7 +6,10 @@ import Home from "../pages/Home"
 // import FindADoctor from "../components/Doctors/FindDoctor"
 import Login from "../pages/Login"
 import SignUp from "../pages/Signup"
-
+import PatientSection from "../pages/PatientSection"
+import Appointment from "../components/Patients/Appointments"
+// import DoctorSection from "../pages/DoctorSectiom"
+// import AdminSection from "../pages/AdiminSection"
 import {Routes,Route} from 'react-router-dom'
 
 const Routers= () => {
@@ -22,6 +25,11 @@ const Routers= () => {
             <Route path="/home" element={<Home />} /> 
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<SignUp />} />
+            <Route path="/patient" element={<PatientSection />} />
+            <Route path="/patient/appointments" element={<Appointment />} />
+
+            {/* <Route path="/doctor" element={<DoctorSection />} />
+            <Route path="/admin" element={<AdminSection />} /> */}
             
         </Routes>
     );
