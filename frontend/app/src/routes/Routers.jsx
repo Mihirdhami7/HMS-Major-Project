@@ -22,6 +22,7 @@ const Routers= () => {
             <Route path="/home" element={<Home />} /> 
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<SignUp />} />
+            
         </Routes>
     );
 };
