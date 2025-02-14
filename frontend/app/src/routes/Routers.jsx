@@ -7,7 +7,11 @@ import Home from "../pages/Home"
 import Login from "../pages/Login"
 import SignUp from "../pages/Signup"
 import PatientSection from "../pages/PatientSection"
+import DoctorSection from "../pages/DoctorSectiom"
 import Appointment from "../components/Patients/Appointments"
+import DoctorDetails from "../components/Patients/doctorDetails"
+import FindDoctor from "../components/Doctors/FindDoctor"
+import Appointmentss from "../components/Doctors/Appointments"
 // import DoctorSection from "../pages/DoctorSectiom"
 // import AdminSection from "../pages/AdiminSection"
 import {Routes,Route} from 'react-router-dom'
@@ -27,9 +31,13 @@ const Routers= () => {
             <Route path="/register" element={<SignUp />} />
             <Route path="/patient" element={<PatientSection />} />
             <Route path="/patient/appointments" element={<Appointment />} />
+            <Route path="/patient/appointments/doctordetails" element={<DoctorDetails />} />
+            {/* <Route path="/doctor/appointments/FindDoctor" element={<FindDoctor/> } /> */}
 
-            {/* <Route path="/doctor" element={<DoctorSection />} />
-            <Route path="/admin" element={<AdminSection />} /> */}
+             <Route path="/doctor" element={<DoctorSection />} />
+             <Route path="/doctor/appointments" element={<Appointmentss />} />
+
+            {/* <Route path="/admin" element={<AdminSection />} />  */}
             
         </Routes>
     );

@@ -1,7 +1,7 @@
-"use client"
+/* "use client"
 
 import { useState } from "react"
-import Sidebar from "../../components/admin/Sidebar"
+import SlideBar from "../pages/Slidebar"
 import DashboardStats from "../../components/admin/DashboardStats"
 import AppointmentList from "../../components/admin/AppointmentList"
 import AIInsights from "../../components/admin/AIInsights"
@@ -33,4 +33,4 @@ export default function AdminDashboard() {
       </main>
     </div>
   )
-}
+} */

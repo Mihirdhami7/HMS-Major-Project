@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { FiHome, FiUsers, FiUserPlus, FiFileText, FiCalendar, FiUser, FiPackage } from "react-icons/fi";
 import PropTypes from "prop-types";
 
+// Sidebar Navigation Items for Different User Types
 const slidebars = {
   admin: [
     { icon: FiHome, label: "Dashboard", value: "dashboard" },
@@ -21,20 +22,26 @@ const slidebars = {
   ],
 };
 
-// Function to generate the correct link path based on userType
+// Generate Navigation Link Based on User Type
 const getLinkPath = (userType, value) => `/${userType}/${value}`;
 
 function Slidebar({ activeTab = "dashboard", setActiveTab, userType = "patient" }) {
+  // Validate if the userType exists in the sidebar data
+  const navItems = slidebars[userType] || [];
+
   return (
-    <aside className="w-64 bg-white shadow-md dark:bg-gray-800">
+    <aside className="w-64 h-screen bg-white shadow-md dark:bg-gray-800 flex flex-col">
+      {/* Sidebar Header */}
       <div className="p-4">
         <h2 className="text-2xl font-bold text-blue-600 dark:text-blue-400">
           HMS {userType.charAt(0).toUpperCase() + userType.slice(1)}
         </h2>
       </div>
-      <nav className="mt-8">
-        {slidebars[userType]?.map((item) => {
-          const linkPath = getLinkPath(userType, item.value); // Generates paths like `/patient/appointments`
+
+      {/* Navigation Menu */}
+      <nav className="mt-4 flex-1">
+        {navItems.map((item) => {
+          const linkPath = getLinkPath(userType, item.value); // Generates dynamic paths
 
           return (
             <Link
@@ -57,6 +64,7 @@ function Slidebar({ activeTab = "dashboard", setActiveTab, userType = "patient" 
   );
 }
 
+// Define Prop Types for Validation
 Slidebar.propTypes = {
   activeTab: PropTypes.string,
   setActiveTab: PropTypes.func.isRequired,
