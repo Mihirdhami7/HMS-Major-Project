@@ -4,8 +4,8 @@ import { FiCalendar, FiPhoneCall } from "react-icons/fi";
 
 const doctorsData = {
   orthopedic: [
-    { id: 1, name: "Dr. John Doe", specialty: "Orthopedic", experience: "10 years", image: "/images/doctor1.jpg" },
-    { id: 2, name: "Dr. Jane Smith", specialty: "Orthopedic", experience: "8 years", image: "/images/doctor2.jpg" },
+    { id: 1, name: "Dr. John Doe", specialty: "Orthopedic", experience: "10 years", image: "/src/assets/images/doctor-img01.jpg" },
+    { id: 2, name: "Dr. Jane Smith", specialty: "Orthopedic", experience: "8 years", image: "/images/doctor-img02.jpg" },
   ],
   dental: [
     { id: 3, name: "Dr. Emily Brown", specialty: "Dental", experience: "5 years", image: "/images/doctor3.jpg" },
