@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import Slidebar from "../../pages/Slidebar"; // Ensure correct path
 import { FiCalendar, FiPhoneCall } from "react-icons/fi";
 
@@ -21,7 +21,7 @@ const previousAppointments = [
 
 function Appointment() {
   const [selectedSpecialty, setSelectedSpecialty] = useState("orthopedic");
-  const [selectedDoctor, setSelectedDoctor] = useState(null);
+  //const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [activeTab, setActiveTab] = useState("appointments");
 
   return (
@@ -81,7 +81,7 @@ function Appointment() {
           ))}
         </div>
 
-        {/* Doctor Details Box */}
+        {/* Doctor Details Box
         {selectedDoctor && (
           <div className="mt-8 p-6 border rounded-lg shadow-lg bg-white w-full max-w-2xl">
             <h2 className="text-2xl font-bold mb-2">Doctor Information</h2>
@@ -89,7 +89,7 @@ function Appointment() {
             <p className="text-lg"><strong>Specialty:</strong> {selectedDoctor.specialty}</p>
             <p className="text-lg"><strong>Experience:</strong> {selectedDoctor.experience}</p>
           </div>
-        )}
+        )} */}
 
         {/* Previous Appointments Section */}
         <div className="mt-12 w-full max-w-4xl bg-white p-6 rounded-lg shadow-lg">

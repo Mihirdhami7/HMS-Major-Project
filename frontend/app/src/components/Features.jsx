@@ -1,4 +1,4 @@
-import { Calendar, Video, Hospital, CreditCard, BarChart3, AlertCircle } from "lucide-react"
+import { Calendar, User2Icon, Hospital, CreditCard, BarChart3 } from "lucide-react"
 
 const features = [
   {
@@ -7,14 +7,14 @@ const features = [
     description: "Hassle-free appointment booking, rescheduling, and reminders.",
   },
   {
-    icon: Video,
-    title: "Video Consultation",
-    description: "Telemedicine support for remote patient-doctor interactions.",
+    icon: Hospital,
+    title: "Health Product Management",
+    description: "Manage hospital inventory, pharmacy, and medical supplies.",
   },
   {
-    icon: Hospital,
-    title: "Healthcare Management",
-    description: "Streamlined hospital operations, including patient records and treatment history.",
+    icon: User2Icon,
+    title: "User Management",
+    description: "profile management, user roles, and permissions.",
   },
   {
     icon: CreditCard,
@@ -25,8 +25,7 @@ const features = [
     icon: BarChart3,
     title: "Analytics Dashboard",
     description: "Real-time insights for hospital performance, patient statistics, and financial reports.",
-  },
-  { icon: AlertCircle, title: "Emergency Support", description: "Quick emergency response with one-click alerts." },
+  }  
 ]
 
 export default function Features() {

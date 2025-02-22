@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom"; // ✅ Import navigation hook
 
 export default function Login() {
   const [formData, setFormData] = useState({
@@ -7,8 +8,9 @@ export default function Login() {
     category: "Patient",
   });
 
-  const [error, setError] = useState(null); // Handle errors
-  const [loading, setLoading] = useState(false); // Show loading state
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate(); // ✅ Use react-router for redirection
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -31,14 +33,16 @@ export default function Login() {
       const data = await response.json();
 
       if (response.ok) {
-        // ✅ Store the token in localStorage or sessionStorage
         localStorage.setItem("authToken", data.token);
         alert("Login successful!");
-        console.log("User Type:", data.user_type);
+
+        // ✅ Redirect based on user type
+        navigate(`/${data.user_type.toLowerCase()}`);
       } else {
         setError(data.message || "Login failed");
       }
     } catch (err) {
+      console.error("Login error:", err);
       setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
@@ -52,6 +56,8 @@ export default function Login() {
           Hello! <span className="text-blue-600">Welcome Back</span> 🎉
         </h2>
 
+        {error && <div className="text-red-600 text-center">{error}</div>}
+        
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <input
             type="email"
@@ -79,6 +85,7 @@ export default function Login() {
           >
             <option value="Patient">Patient</option>
             <option value="Doctor">Doctor</option>
+            <option value="Admin">Admin</option>
           </select>
 
           {/* Login Button */}
@@ -86,13 +93,13 @@ export default function Login() {
             type="submit"
             className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700"
           >
-            Login
+            {loading ? "Logging in..." : "Login"}
           </button>
         </form>
 
         {/* Register Link */}
         <p className="mt-4 text-center text-gray-600">
-            Don&apos;t have an account?{" "}
+            Do not have an account?{" "}
           <a href="/register" className="text-blue-600">
             Register
           </a>

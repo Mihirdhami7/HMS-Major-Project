@@ -10,7 +10,7 @@ export default function Footer() {
             <div className="container mx-auto px-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                 <div>
-                <h3 className="text-xl font-semibold mb-4">HMS</h3>
+                <h3 className="text-xl font-semibold mb-4">EasyTreat</h3>
                 <p className="text-gray-400">Transforming Healthcare with Smart Technology</p>
                 </div>
                 <div>

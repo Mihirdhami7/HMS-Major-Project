@@ -15,9 +15,9 @@ export default function Signup() {
   });
 
   const [errors, setErrors] = useState({});
-  const [message, setMessage] = useState(""); 
+  const [message, setMessage] = useState("");
 
-
+  // Handle text input change
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     if (errors[e.target.name]) {
@@ -25,6 +25,7 @@ export default function Signup() {
     }
   };
 
+  // Handle file input change
   const handleFileChange = (e) => {
     setFormData({ ...formData, photo: e.target.files[0] });
   };
@@ -34,15 +35,12 @@ export default function Signup() {
     setMessage("");
 
     const newErrors = {};
-    if (!formData.email.trim()) {
-      newErrors.email = "Email is required";
-    }
-    if (!formData.password) {
-      newErrors.password = "Password is required";
-    }
-    if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = "Passwords do not match";
-    }
+    if (!formData.name.trim()) newErrors.name = "Name is required";
+    if (!formData.email.trim()) newErrors.email = "Email is required";
+    if (!formData.password) newErrors.password = "Password is required";
+    if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = "Passwords do not match";
+    if (!formData.contactNo.trim()) newErrors.contactNo = "Contact number is required";
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
@@ -57,19 +55,17 @@ export default function Signup() {
     formDataToSend.append("userType", formData.userType);
     formDataToSend.append("gender", formData.gender);
     if (formData.photo) {
-      formDataToSend.append("photo", formData.photo);  // Correct key
-    } 
+      formDataToSend.append("photo", formData.photo);
+    }
+
+    console.log("Form Data Sent:", [...formDataToSend]); // Debugging output
 
     try {
-      const response = await axios.post("http://127.0.0.1:8000/api/register/", 
-      formDataToSend, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-          "Authorization": `Bearer ${localStorage.getItem("authToken")}`,
-        },
-        withCredentials: true,
-      }
-    );
+      const response = await axios.post("http://127.0.0.1:8000/api/register/", formDataToSend, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      console.log("Response:", response); // Debugging output
 
       if (response.status === 201) {
         setMessage("Signup successful! Please login.");
@@ -84,9 +80,12 @@ export default function Signup() {
           gender: "Male",
           photo: null,
         });
+      } else {
+        setMessage("Signup failed. Please try again.");
       }
     } catch (error) {
       if (error.response) {
+        console.error("Error Response:", error.response.data);
         setMessage(error.response.data.message || "Signup failed. Please try again.");
         setErrors(error.response.data);
       } else {
@@ -94,7 +93,7 @@ export default function Signup() {
       }
     }
   };
-
+  
   return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="flex bg-white shadow-lg rounded-lg overflow-hidden w-3/4">

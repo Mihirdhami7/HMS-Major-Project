@@ -5,7 +5,8 @@ import PropTypes from "prop-types";
 const slidebars = {
   admin: [
     { icon: FiHome, label: "Dashboard", value: "dashboard" },
-    { icon: FiUserPlus, label: "Doctors", value: "doctors" },
+    { icon: FiHome, label: "Add Data", value: "addData" },
+    { icon: FiUserPlus, label: "Products", value: "product" },
     { icon: FiUsers, label: "Departments", value: "departments" },
     { icon: FiFileText, label: "Reports", value: "reports" },
   ],
@@ -16,7 +17,7 @@ const slidebars = {
   ],
   patient: [
     { icon: FiCalendar, label: "Appointments", value: "appointments" },
-    { icon: FiFileText, label: "Brief Disease", value: "brief_disease" },
+    { icon: FiFileText, label: "Disease", value: "disease" },
     { icon: FiUser, label: "Profiles", value: "profiles" },
   ],
 };

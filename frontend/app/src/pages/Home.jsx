@@ -1,6 +1,6 @@
 import Hero from "../components/Hero"
 import Features from "../components/Features"
-import WhyChooseUs from "../components/WhyChooseUs"
+//import WhyChooseUs from "../components/WhyChooseUs"
 import FindDoctor from "../components/Doctors/FindDoctor"
 import PatientSay from "../components/PatientSay"
 import VirtualTour from "../components/VirtualTour"
@@ -15,7 +15,6 @@ export default function Home() {
         <main className="flex-grow">
             <Hero />
             <Features />
-            <WhyChooseUs />
             <FindDoctor />
             <VirtualTour />
             <HealthTips />

@@ -26,7 +26,7 @@ export default function Header() {
           to="/" 
           className="text-2xl font-bold text-green-600 dark:text-green-400"
         >
-          HMS
+          EasyTreat
         </Link>
         <nav
           className={`${isMenuOpen ? "block" : "hidden"} md:block absolute md:relative top-full left-0 w-full md:w-auto bg-white dark:bg-gray-800 md:bg-transparent shadow-md md:shadow-none`}
