@@ -6,10 +6,21 @@ const doctorsData = {
   orthopedic: [
     { id: 1, name: "Dr. John Doe", specialty: "Orthopedic", experience: "10 years", image: "/src/assets/images/doctor-img01.jpg" },
     { id: 2, name: "Dr. Jane Smith", specialty: "Orthopedic", experience: "8 years", image: "/images/doctor-img02.jpg" },
+    { id: 3, name: "Dr. darshan", specialty: "Orthopedic", experience: "8 years", image: "/images/doctor-img02.jpg" },
   ],
-  dental: [
-    { id: 3, name: "Dr. Emily Brown", specialty: "Dental", experience: "5 years", image: "/images/doctor3.jpg" },
-    { id: 4, name: "Dr. Michael Green", specialty: "Dental", experience: "7 years", image: "/images/doctor4.jpg" },
+  pediatricion: [
+    { id: 4, name: "Dr. Emily Brown ", specialty: "Dental", experience: "5 years", image: "/images/doctor3.jpg" },
+    { id: 5, name: "Dr. Michael Green", specialty: "Dental", experience: "7 years", image: "/images/doctor4.jpg" },
+    { id: 6, name: "Dr. Michael Green", specialty: "Dental", experience: "7 years", image: "/images/doctor4.jpg" },
+  ],
+  cardiology_neurology: [
+    { id: 7, name: "Dr. Emilacs ", specialty: "Dental", experience: "5 years", image: "/images/doctor3.jpg" },
+    { id: 8, name: "Dr. Michael Green", specialty: "Dental", experience: "7 years", image: "/images/doctor4.jpg" },
+    { id: 9, name: "Dr. Michhgfdn", specialty: "Dental", experience: "7 years", image: "/images/doctor4.jpg" },
+  ],
+  generic: [
+    { id: 10, name: "Dr. Emily Brown ", specialty: "Dental", experience: "5 years", image: "/images/doctor3.jpg" },
+    { id: 11, name: "Dr. Michael Green", specialty: "Dental", experience: "7 years", image: "/images/doctor4.jpg" },
   ],
 };
 
@@ -17,6 +28,8 @@ const doctorsData = {
 const previousAppointments = [
   { id: 1, doctorName: "Dr. John Doe", suggestion: "Continue medication", reportLink: "/reports/report1.pdf" },
   { id: 2, doctorName: "Dr. Emily Brown", suggestion: "Schedule follow-up", reportLink: "/reports/report2.pdf" },
+  { id: 3, doctorName: "Dr. Emily Brown", suggestion: "Schedule follow-up", reportLink: "/reports/report2.pdf" },
+  { id: 4, doctorName: "Dr. Emily Brown", suggestion: "Schedule follow-up", reportLink: "/reports/report2.pdf" },
 ];
 
 function Appointment() {
@@ -30,8 +43,8 @@ function Appointment() {
       <Slidebar activeTab={activeTab} setActiveTab={setActiveTab} userType="patient" />
 
       {/* Main Content */}
-      <div className="flex flex-col flex-1 justify-center items-center p-8">
-        <h2 className="text-3xl font-bold flex items-center mb-6">
+      <div className=" mt-40 flex flex-col flex-1 justify-center items-center p-8">
+        <h2 className="mt-40 text-3xl font-bold flex items-center mb-6">
           <FiCalendar className="mr-2" /> Doctor Appointments
         </h2>
 
@@ -58,11 +71,27 @@ function Appointment() {
           </button>
           <button
             className={`px-5 py-2 rounded-lg text-lg font-medium ${
-              selectedSpecialty === "dental" ? "bg-blue-500 text-white" : "bg-gray-300"
+              selectedSpecialty === "pediatricion" ? "bg-blue-500 text-white" : "bg-gray-300"
             }`}
-            onClick={() => setSelectedSpecialty("dental")}
+            onClick={() => setSelectedSpecialty("pediatricion")}
           >
-            Dental
+            Pediatricion
+          </button>
+          <button
+            className={`px-5 py-2 rounded-lg text-lg font-medium ${
+              selectedSpecialty === "cardiology_neurology" ? "bg-blue-500 text-white" : "bg-gray-300"
+            }`}
+            onClick={() => setSelectedSpecialty("cardiology_neurology")}
+          >
+            cardiology & neurology
+          </button>
+          <button
+            className={`px-5 py-2 rounded-lg text-lg font-medium ${
+              selectedSpecialty === "generic" ? "bg-blue-500 text-white" : "bg-gray-300"
+            }`}
+            onClick={() => setSelectedSpecialty("generic")}
+          >
+            Generic
           </button>
         </div>
 
@@ -81,18 +110,8 @@ function Appointment() {
           ))}
         </div>
 
-        {/* Doctor Details Box
-        {selectedDoctor && (
-          <div className="mt-8 p-6 border rounded-lg shadow-lg bg-white w-full max-w-2xl">
-            <h2 className="text-2xl font-bold mb-2">Doctor Information</h2>
-            <p className="text-lg"><strong>Name:</strong> {selectedDoctor.name}</p>
-            <p className="text-lg"><strong>Specialty:</strong> {selectedDoctor.specialty}</p>
-            <p className="text-lg"><strong>Experience:</strong> {selectedDoctor.experience}</p>
-          </div>
-        )} */}
-
         {/* Previous Appointments Section */}
-        <div className="mt-12 w-full max-w-4xl bg-white p-6 rounded-lg shadow-lg">
+        <div className="mt-12 w-full max-w-6xl bg-white p-6 rounded-lg shadow-lg">
           <h2 className="text-2xl font-bold mb-4">Previous Appointments</h2>
           <table className="w-full border-collapse border border-gray-300">
             <thead>
@@ -122,11 +141,6 @@ function Appointment() {
             </tbody>
           </table>
         </div>
-
-        {/* Footer (Sticky at Bottom) */}
-        <footer className="w-full text-center py-4 text-gray-500 mt-auto">
-          &copy; {new Date().getFullYear()} HMS - All Rights Reserved
-        </footer>
       </div>
     </div>
   );

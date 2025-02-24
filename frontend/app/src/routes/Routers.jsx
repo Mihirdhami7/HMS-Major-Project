@@ -1,22 +1,27 @@
-import Home from "../pages/Home"
+import {Routes,Route} from 'react-router-dom'
 // import Service from "../components/Features"
 // import HealthTips from "../components/HealthTips"
 // import EmergencyServices from "../components/EmergencyServices"
 // import ContactUs from "../components/ContactUs"
 // import FindADoctor from "../components/Doctors/FindDoctor"
+import Home from "../pages/Home"
 import Login from "../pages/Login"
 import SignUp from "../pages/Signup"
+
 import PatientSection from "../pages/PatientSection"
 import Appointment from "../components/Patients/Appointments"
 import Disease from "../components/Patients/Disease"
-// import DoctorSection from "../pages/DoctorSectiom"
-// import AdminSection from "../pages/AdiminSection"
-import {Routes,Route} from 'react-router-dom'
+
+import DoctorSection from "../pages/DoctorSection"
+import DoctorAppointments from '../components/Doctors/Dappointments'
+import Prescription from "../components/Doctors/Prescription"
+
+
 import AddData from "../components/Admin/AddData"
 import Products from "../components/Admin/Products"
 import Medicine from "../components/Admin/Medicine"
-// import DoctorSection from "../pages/DoctorSection"
 import AdminSection from "../pages/AdminSection"
+
 
 const Routers= () => {
     console.log("Routers component rendered");
@@ -38,8 +43,9 @@ const Routers= () => {
             <Route path="/patient/disease" element={<Disease />} />
 
             {/* Doctor Section */}
-            {/* <Route path="/doctor" element={<DoctorSection />} /> */}
-            {/* <Route path="/doctor/appointments" element={<Appointmentss />} /> */}
+            <Route path="/doctor" element={<DoctorSection />} />
+            <Route path="/doctor/appointments" element={<DoctorAppointments />} />
+            <Route path="/doctor/appointments/prescription" element={<Prescription />} />
 
             {/* Admin Section */}
             <Route path="/admin" element={<AdminSection />} />

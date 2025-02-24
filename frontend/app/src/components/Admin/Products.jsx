@@ -3,10 +3,10 @@ import { useNavigate } from "react-router-dom";
 import Slidebar from "../../pages/Slidebar";
 
 const initialAppointments = [
-  { id: 1, patientName: "John Doe", email: "john@example.com", age: 30, address: "123 Street, NY", doctorName: "Dr. Smith", status: "Completed", date: "2025-02-10" },
-  { id: 2, patientName: "Jane Doe", email: "jane@example.com", age: 28, address: "456 Avenue, LA", doctorName: "Dr. Johnson", status: "Pending", date: "2025-02-11" },
-  { id: 3, patientName: "Jatin Sharma", email: "jatin@example.com", age: 35, address: "789 Road, TX", doctorName: "Dr. Brown", status: "Completed", date: "2025-02-12" },
-  { id: 4, patientName: "Alice Green", email: "alice@example.com", age: 40, address: "101 Blvd, FL", doctorName: "Dr. White", status: "Completed", date: "2025-02-13" },
+  { id: 1, patientName: "John Doe", email: "john@example.com", age: 30, address: "123 Street, NY", doctorName: "Dr. Smith", status: "Completed", date: "2025-02-23" },
+  { id: 2, patientName: "Jane Doe", email: "jane@example.com", age: 28, address: "456 Avenue, LA", doctorName: "Dr. Johnson", status: "Pending", date: "2025-02-21" },
+  { id: 3, patientName: "Jatin Sharma", email: "jatin@example.com", age: 35, address: "789 Road, TX", doctorName: "Dr. Brown", status: "Completed", date: "2025-02-19" },
+  { id: 4, patientName: "Alice Green", email: "alice@example.com", age: 40, address: "101 Blvd, FL", doctorName: "Dr. White", status: "Completed", date: "2025-02-19" },
 ];
 
 const initialMedicines = [
