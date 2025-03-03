@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verification</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background-color: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h2 style="color: #2563eb; margin-top: 0;">HMS - Email Verification</h2>
+            <p>Hello {{ name }},</p>
+            <p>Your OTP for email verification is:</p>
+            <div style="background-color: #f3f4f6; padding: 15px; margin: 20px 0; text-align: center; border-radius: 4px;">
+                <h1 style="color: #2563eb; margin: 0; font-size: 32px; letter-spacing: 2px;">{{ otp }}</h1>
+            </div>
+            <p><strong>This OTP will expire in 1 minute.</strong></p>
+            <p style="color: #666; font-size: 14px;">If you didn't request this, please ignore this email.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+            <p style="margin-bottom: 0;">Best regards,<br>HMS Team</p>
+        </div>
+    </div>
+</body>
+</html> 

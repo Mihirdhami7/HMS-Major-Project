@@ -33,11 +33,25 @@ export default function Login() {
       const data = await response.json();
 
       if (response.ok) {
-        localStorage.setItem("authToken", data.token);
+        localStorage.setItem("authToken", data.authToken);
+        localStorage.setItem("userEmail", data.userData.email);
+        localStorage.setItem("userType", data.userData.userType.toLowerCase());
+        
         alert("Login successful!");
-
-        // ✅ Redirect based on user type
-        navigate(`/${data.user_type.toLowerCase()}`);
+        
+        switch(data.userData.userType.toLowerCase()) {
+          case "patient":
+            navigate("/patient");
+            break;
+          case "doctor":
+            navigate("/doctor");
+            break;
+          case "admin":
+            navigate("/admin");
+            break;
+          default:
+            navigate("/");
+        }
       } else {
         setError(data.message || "Login failed");
       }

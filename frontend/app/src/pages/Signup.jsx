@@ -1,7 +1,11 @@
 import { useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
+import { FiUpload, FiUser } from "react-icons/fi";
 
 export default function Signup() {
+  const navigate = useNavigate();
+  const [step, setStep] = useState("registration"); // registration, verification
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -16,9 +20,10 @@ export default function Signup() {
     doctorSpecialization: "",
     doctorCertificate: null,
   });
-
+  const [otp, setOtp] = useState("");
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
+  const [photoPreview, setPhotoPreview] = useState(null);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -29,6 +34,19 @@ export default function Signup() {
 
   const handleFileChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.files[0] });
+  };
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFormData({ ...formData, photo: file });
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const validateForm = () => {
@@ -77,38 +95,81 @@ export default function Signup() {
 
     if (!validateForm()) return;
 
-    const formDataToSend = new FormData();
-    Object.entries(formData).forEach(([key, value]) => {
-      if (value) formDataToSend.append(key, value);
-    });
-
     try {
+      const formDataToSend = new FormData();
+      Object.entries(formData).forEach(([key, value]) => {
+        if (value) formDataToSend.append(key, value);
+      });
+
       const response = await axios.post("http://127.0.0.1:8000/api/register/", formDataToSend, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      if (response.status === 201) {
-        setMessage("Signup successful! Please login.");
-        setFormData({
-          name: "",
-          email: "",
-          password: "",
-          confirmPassword: "",
-          contactNo: "",
-          dateOfBirth: "",
-          userType: "Patient",
-          gender: "Male",
-          photo: null,
-          doctorQualification: "",
-          doctorSpecialization: "",
-          doctorCertificate: null,
-        });
-      } else {
-        setMessage("Signup failed. Please try again.");
+
+      if (response.status === 200) {
+        setMessage(response.data.message);
+        setStep("verification");
+        
+        // For development: Auto-fill OTP if in debug mode
+        if (response.data.debug_otp) {
+          setOtp(response.data.debug_otp);
+        }
       }
     } catch (error) {
-      setMessage("An error occurred during signup.");
+      setMessage(error.response?.data?.message || "An error occurred during signup");
     }
   };
+
+  const handleVerification = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await axios.post("http://127.0.0.1:8000/api/verify-email/", {
+        email: formData.email,
+        otp: otp
+      });
+
+      if (response.status === 200) {
+        setMessage("Signup successful! Please login.");
+        setTimeout(() => {
+          navigate("/login");
+        }, 2000);
+      }
+    } catch (error) {
+      setMessage(error.response?.data?.message || "Verification failed");
+    }
+  };
+
+  if (step === "verification") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="bg-white p-8 rounded-lg shadow-lg w-96">
+          <h2 className="text-2xl font-bold mb-4">Email Verification</h2>
+          <p className="mb-4">Please enter the verification code sent to your email.</p>
+          
+          {message && (
+            <div className="mb-4 p-2 text-center rounded bg-blue-100 text-blue-700">
+              {message}
+            </div>
+          )}
+
+          <form onSubmit={handleVerification}>
+            <input
+              type="text"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              placeholder="Enter verification code"
+              className="w-full p-2 border rounded mb-4"
+            />
+            <button
+              type="submit"
+              className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+            >
+              Verify Email
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -128,6 +189,33 @@ export default function Signup() {
           )}
 
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+            <div className="flex flex-col items-center space-y-2">
+              <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-gray-200">
+                {photoPreview ? (
+                  <img 
+                    src={photoPreview} 
+                    alt="Profile Preview" 
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                    <FiUser className="w-12 h-12 text-gray-400" />
+                  </div>
+                )}
+              </div>
+              <label className="cursor-pointer flex items-center space-x-2 text-sm text-blue-600 hover:text-blue-700">
+                <FiUpload className="w-4 h-4" />
+                <span>Upload Photo</span>
+                <input
+                  type="file"
+                  name="photo"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
             <input name="name" type="text" placeholder="Name" className="w-full p-2 border rounded" value={formData.name} onChange={handleChange} />
             {errors.name && <p className="text-red-500 text-sm">{errors.name}</p>}
 
@@ -160,13 +248,16 @@ export default function Signup() {
                 <input name="doctorSpecialization" type="text" placeholder="Specialization" className="w-full p-2 border rounded" value={formData.doctorSpecialization} onChange={handleChange} />
                 {errors.doctorSpecialization && <p className="text-red-500 text-sm">{errors.doctorSpecialization}</p>}
 
-                <label className="block text-gray-700">Upload Qualification Certificate (PDF)</label>
-                <input type="file" name="doctorCertificate" accept="application/pdf" className="w-full p-2 border rounded" onChange={handleFileChange} />
-                {errors.doctorCertificate && <p className="text-red-500 text-sm">{errors.doctorCertificate}</p>}
+                <div>
+                  <label className="block text-gray-700">Upload Qualification Certificate (PDF)</label>
+                  <input type="file" name="doctorCertificate" accept="application/pdf" className="w-full p-2 border rounded" onChange={handleFileChange} />
+                  {errors.doctorCertificate && <p className="text-red-500 text-sm">{errors.doctorCertificate}</p>}
+                </div>
               </>
             )}
 
             <button type="submit" className="w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700">Sign Up</button>
+            already have an account?{" "} <a href="/login" className="text-blue-600">Login</a>
           </form>
         </div>
       </div>

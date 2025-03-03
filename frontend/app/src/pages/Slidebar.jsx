@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { FiHome, FiUsers, FiUserPlus, FiFileText, FiCalendar, FiUser, FiPackage } from "react-icons/fi";
 import PropTypes from "prop-types";
 
@@ -8,27 +8,52 @@ const slidebars = {
     { icon: FiHome, label: "Dashboard", value: "dashboard" },
     { icon: FiHome, label: "Add Data", value: "addData" },
     { icon: FiUserPlus, label: "Products", value: "product" },
-    { icon: FiUsers, label: "Departments", value: "departments" },
+    { icon: FiUsers, label: "Departments", value: "department" },
     { icon: FiFileText, label: "Reports", value: "reports" },
   ],
   doctor: [
     { icon: FiCalendar, label: "Appointments", value: "appointments" },
-    { icon: FiUser, label: "Profiles", value: "profiles" },
+    { icon: FiUser, label: "Profile", value: "profile" },
     { icon: FiPackage, label: "Medical Products", value: "medical_products" },
   ],
   patient: [
     { icon: FiCalendar, label: "Appointments", value: "appointments" },
     { icon: FiFileText, label: "Disease", value: "disease" },
-    { icon: FiUser, label: "Profiles", value: "profiles" },
+    { icon: FiUser, label: "Profile", value: "profile" },
   ],
 };
 
 // Generate Navigation Link Based on User Type
-const getLinkPath = (userType, value) => `/${userType}/${value}`;
+const getLinkPath = (userType, value) => {
+  // Special case for profile links
+  if (value === "profile") {
+    const userEmail = localStorage.getItem("userEmail");
+    const storedUserType = localStorage.getItem("userType");
+    return `/${storedUserType}/profile/${userEmail}`;
+  }
+  return `/${userType}/${value}`;
+};
 
-function Slidebar({ activeTab = "dashboard", setActiveTab, userType = "patient" }) {
-  // Validate if the userType exists in the sidebar data
+function Slidebar({ activeTab = "dashboard", setActiveTab = () => {} }) {
+  const userType = localStorage.getItem("userType") || "patient";
+  const navigate = useNavigate();
   const navItems = slidebars[userType] || [];
+
+  const handleNavigation = (path, value) => {
+    // Prevent default navigation
+    const allowedPaths = {
+      doctor: ['appointments', 'profile', 'medical_products'],
+      patient: ['appointments', 'disease', 'profile'],
+      admin: ['dashboard', 'addData', 'product', 'department', 'reports']
+    };
+
+    if (allowedPaths[userType]?.includes(value)) {
+      setActiveTab(value);
+      navigate(path);
+    } else {
+      console.log(`Navigation to ${path} not allowed for ${userType}`);
+    }
+  };
 
   return (
     <aside className="w-64 h-screen bg-white shadow-md dark:bg-gray-800 flex flex-col">
@@ -42,22 +67,20 @@ function Slidebar({ activeTab = "dashboard", setActiveTab, userType = "patient" 
       {/* Navigation Menu */}
       <nav className="mt-4 flex-1">
         {navItems.map((item) => {
-          const linkPath = getLinkPath(userType, item.value); // Generates dynamic paths
-
+          const linkPath = getLinkPath(userType, item.value);
           return (
-            <Link
+            <div
               key={item.value}
-              to={linkPath}
-              className={`flex items-center px-4 py-3 text-gray-700 dark:text-gray-300 ${
+              className={`flex items-center px-4 py-3 text-gray-700 dark:text-gray-300 cursor-pointer ${
                 activeTab === item.value
                   ? "bg-blue-100 dark:bg-blue-900 border-r-4 border-blue-600"
                   : "hover:bg-gray-100 dark:hover:bg-gray-700"
               }`}
-              onClick={() => setActiveTab(item.value)}
+              onClick={() => handleNavigation(linkPath, item.value)}
             >
               <item.icon className="w-5 h-5 mr-3" />
               {item.label}
-            </Link>
+            </div>
           );
         })}
       </nav>
@@ -68,8 +91,7 @@ function Slidebar({ activeTab = "dashboard", setActiveTab, userType = "patient" 
 // Define Prop Types for Validation
 Slidebar.propTypes = {
   activeTab: PropTypes.string,
-  setActiveTab: PropTypes.func.isRequired,
-  userType: PropTypes.oneOf(["admin", "doctor", "patient"]),
+  setActiveTab: PropTypes.func,
 };
 
 export default Slidebar;
