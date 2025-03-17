@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import Slidebar from "../../pages/Slidebar";
 import { 
   FiUsers, FiCalendar, FiDollarSign, FiActivity,
-  FiArrowUp, FiArrowDown, FiPackage 
+  FiArrowUp,
 } from "react-icons/fi";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie,
@@ -129,7 +129,15 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
-
+          <div className="flex  items-center">
+            <iframe 
+              title="Appointments_Dashboard_mihirdhami" 
+              width="1340" 
+              height="741.25" 
+              src="https://app.powerbi.com/reportEmbed?reportId=8bbc1dd4-98c8-4d3c-a3e2-d0938d4816dc&autoAuth=true&embeddedDemo=true" 
+              allowFullScreen="true"
+            ></iframe>
+          </div>
           {/* Charts Section */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
             {/* Appointments Trend */}
@@ -190,13 +198,6 @@ const Dashboard = () => {
             </ResponsiveContainer>
           </div>
 
-          {/* Recent Activity */}
-          <div className="bg-white p-6 rounded-lg shadow-lg">
-            <h3 className="text-xl font-semibold text-blue-700 mb-4">Recent Activity</h3>
-            <div className="space-y-4">
-              {/* Add your recent activity items here */}
-            </div>
-          </div>
         </div>
       </div>
     </div>

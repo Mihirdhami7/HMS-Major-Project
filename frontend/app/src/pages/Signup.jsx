@@ -1,11 +1,18 @@
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { FiUpload, FiUser } from "react-icons/fi";
+
 
 export default function Signup() {
   const navigate = useNavigate();
   const [step, setStep] = useState("registration"); // registration, verification
+  const departments = [
+    "Cardiology",
+    "Neurology",
+    "Orthopedics",
+    "Pediatrics",
+    "Generic"
+  ];
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -23,7 +30,6 @@ export default function Signup() {
   const [otp, setOtp] = useState("");
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
-  const [photoPreview, setPhotoPreview] = useState(null);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -36,18 +42,18 @@ export default function Signup() {
     setFormData({ ...formData, [e.target.name]: e.target.files[0] });
   };
 
-  const handlePhotoChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setFormData({ ...formData, photo: file });
+  // const handlePhotoChange = (e) => {
+  //   const file = e.target.files[0];
+  //   if (file) {
+  //     setFormData({ ...formData, photo: file });
       
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+  //     const reader = new FileReader();
+  //     reader.onloadend = () => {
+  //       setPhotoPreview(reader.result);
+  //     };
+  //     reader.readAsDataURL(file);
+  //   }
+  // };
 
   const validateForm = () => {
     const newErrors = {};
@@ -80,9 +86,15 @@ export default function Signup() {
 
     // Doctor-specific fields validation
     if (formData.userType === "Doctor") {
-      if (!formData.doctorQualification.trim()) newErrors.doctorQualification = "Qualification is required";
-      if (!formData.doctorSpecialization.trim()) newErrors.doctorSpecialization = "Specialization is required";
-      if (!formData.doctorCertificate) newErrors.doctorCertificate = "Certificate upload is required";
+      if (!formData.doctorQualification.trim()) {
+        newErrors.doctorQualification = "Qualification is required";
+      }
+      if (!formData.doctorSpecialization) {
+        newErrors.doctorSpecialization = "Please select a specialization";
+      }
+      if (!formData.doctorCertificate) {
+        newErrors.doctorCertificate = "Certificate upload is required";
+      }
     }
 
     setErrors(newErrors);
@@ -98,7 +110,11 @@ export default function Signup() {
     try {
       const formDataToSend = new FormData();
       Object.entries(formData).forEach(([key, value]) => {
-        if (value) formDataToSend.append(key, value);
+        if (key === 'doctorSpecialization') {
+          formDataToSend.append(key, value);
+        } else if (value) {
+          formDataToSend.append(key, value);
+        }
       });
 
       const response = await axios.post("http://127.0.0.1:8000/api/register/", formDataToSend, {
@@ -173,9 +189,9 @@ export default function Signup() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="flex bg-white shadow-lg rounded-lg overflow-hidden w-3/4 max-h-[80vh]">
+      <div className="flex bg-white shadow-lg rounded-lg overflow-hidden w-3/4 max-h-[80vh] mt-16">
         <div className="w-1/2 bg-blue-500 flex items-center justify-center p-10">
-          <img src="/mnt/data/image.png" alt="Sign Up Illustration" className="w-full h-auto" />
+          <img src="src/assets/images/account.png" alt="Sign Up Illustration" className="w-full h-auto" />
         </div>
         <div className="w-1/2 p-8 overflow-y-auto">
           <h2 className="text-3xl font-extrabold text-gray-900">
@@ -189,32 +205,6 @@ export default function Signup() {
           )}
 
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-            <div className="flex flex-col items-center space-y-2">
-              <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-gray-200">
-                {photoPreview ? (
-                  <img 
-                    src={photoPreview} 
-                    alt="Profile Preview" 
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                    <FiUser className="w-12 h-12 text-gray-400" />
-                  </div>
-                )}
-              </div>
-              <label className="cursor-pointer flex items-center space-x-2 text-sm text-blue-600 hover:text-blue-700">
-                <FiUpload className="w-4 h-4" />
-                <span>Upload Photo</span>
-                <input
-                  type="file"
-                  name="photo"
-                  accept="image/*"
-                  onChange={handlePhotoChange}
-                  className="hidden"
-                />
-              </label>
-            </div>
 
             <input name="name" type="text" placeholder="Name" className="w-full p-2 border rounded" value={formData.name} onChange={handleChange} />
             {errors.name && <p className="text-red-500 text-sm">{errors.name}</p>}
@@ -238,20 +228,52 @@ export default function Signup() {
             <select name="userType" className="w-full p-2 border rounded" value={formData.userType} onChange={handleChange}>
               <option value="Patient">Patient</option>
               <option value="Doctor">Doctor</option>
+              <option value="Admin">Supplier</option>
             </select>
 
             {formData.userType === "Doctor" && (
               <>
-                <input name="doctorQualification" type="text" placeholder="Qualification" className="w-full p-2 border rounded" value={formData.doctorQualification} onChange={handleChange} />
-                {errors.doctorQualification && <p className="text-red-500 text-sm">{errors.doctorQualification}</p>}
+                <input 
+                  name="doctorQualification" 
+                  type="text" 
+                  placeholder="Qualification" 
+                  className="w-full p-2 border rounded" 
+                  value={formData.doctorQualification} 
+                  onChange={handleChange} 
+                />
+                {errors.doctorQualification && (
+                  <p className="text-red-500 text-sm">{errors.doctorQualification}</p>
+                )}
 
-                <input name="doctorSpecialization" type="text" placeholder="Specialization" className="w-full p-2 border rounded" value={formData.doctorSpecialization} onChange={handleChange} />
-                {errors.doctorSpecialization && <p className="text-red-500 text-sm">{errors.doctorSpecialization}</p>}
+                <select
+                  name="doctorSpecialization"
+                  className="w-full p-2 border rounded"
+                  value={formData.doctorSpecialization}
+                  onChange={handleChange}
+                >
+                  <option value="">Select Specialization</option>
+                  {departments.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
+                    </option>
+                  ))}
+                </select>
+                {errors.doctorSpecialization && (
+                  <p className="text-red-500 text-sm">{errors.doctorSpecialization}</p>
+                )}
 
                 <div>
                   <label className="block text-gray-700">Upload Qualification Certificate (PDF)</label>
-                  <input type="file" name="doctorCertificate" accept="application/pdf" className="w-full p-2 border rounded" onChange={handleFileChange} />
-                  {errors.doctorCertificate && <p className="text-red-500 text-sm">{errors.doctorCertificate}</p>}
+                  <input 
+                    type="file" 
+                    name="doctorCertificate" 
+                    accept="application/pdf" 
+                    className="w-full p-2 border rounded" 
+                    onChange={handleFileChange} 
+                  />
+                  {errors.doctorCertificate && (
+                    <p className="text-red-500 text-sm">{errors.doctorCertificate}</p>
+                  )}
                 </div>
               </>
             )}

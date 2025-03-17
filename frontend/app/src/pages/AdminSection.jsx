@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Route, Routes } from "react-router-dom";
 import Slidebar from "./Slidebar";
 import Dashboard from "../components/Admin/Dashboard";
-import AddData from "../components/Admin/AddData";
+import NewRegister from "../components/Admin/NewRegister";
 import { FiUsers, FiActivity, FiBarChart2, FiSettings } from "react-icons/fi";
 
 function AdminSection() {
@@ -27,10 +27,10 @@ function AdminSection() {
   return (
     <div className="flex bg-gray-50">
       <Slidebar activeTab={activeTab} setActiveTab={setActiveTab} userType="admin" />
-      <div className="flex-1 p-8">
+      <div className="flex-1 p-8 mt-16">
         <Routes>
           <Route path="/admin/dashboard" element={<Dashboard />} />
-          <Route path="/admin/addData" element={<AddData />} />
+          <Route path="/admin/newRegister" element={<NewRegister />} />
           <Route path="*" element={
             <div>
               {/* Welcome Banner */}

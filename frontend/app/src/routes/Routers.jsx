@@ -20,12 +20,23 @@ import MedicalProducts from "../components/Doctors/MedicalProducts"
 import Profiile from "../pages/Profile"
 
 
-import AddData from "../components/Admin/AddData"
+import NewRegister from "../components/Admin/NewRegister"
 import Products from "../components/Admin/Products"
 import Medicine from "../components/Admin/Medicine"
 import AdminSection from "../pages/AdminSection"
 import Department from "../components/Admin/Department"
 import Dashboard from "../components/Admin/Dashboard"
+
+import SupplierSection from "../pages/SupplierSection"
+import SuppDashboard from "../components/Supplier/SuppDashboard"
+import SuppProducts from "../components/Supplier/suppProducts"
+
+import SuperAdminSection from "../pages/SuperAdminSection"
+import SuperAdminDashboard from "../components/SuperAdmin/AdminDashborad"
+import Hospitals from "../components/SuperAdmin/Hospital"
+import Reports from "../components/SuperAdmin/Reports"
+
+
 
 import ProtectedRoute from "../components/ProtectedRoute";
 
@@ -57,10 +68,22 @@ const Routers = () => {
                 {/* Admin Routes */}
                 <Route path="/admin" element={<AdminSection />} />
                 <Route path="/admin/dashboard" element={<Dashboard />} />
-                <Route path="/admin/addData" element={<AddData />} />
+                <Route path="/admin/newRegister" element={<NewRegister />} />
                 <Route path="/admin/product" element={<Products />} />
                 <Route path="/admin/product/medicine" element={<Medicine />} />
                 <Route path="/admin/department" element={<Department />} />
+
+                {/* Supplier Routes */}
+                <Route path="/supplier" element={<SupplierSection />} />
+                <Route path="/supplier/suppdashboard" element={<SuppDashboard />} />
+                <Route path="/supplier/suppproduct" element={<SuppProducts />} />
+
+                {/* Super Admin Routes */}
+                <Route path="/superadmin" element={<SuperAdminSection />} />
+                <Route path="/superadmin/dashboard" element={<SuperAdminDashboard />} />
+                <Route path="/superadmin/hospitals" element={<Hospitals />} />
+                <Route path="/superadmin/reports" element={<Reports />} />
+
             </Route>
 
             {/* Catch all - 404 */}

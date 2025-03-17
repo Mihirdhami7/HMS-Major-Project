@@ -92,7 +92,7 @@ function Appointment() {
     <div className="flex h-screen bg-gradient-to-br from-blue-50 to-green-50">
       <Slidebar activeTab={activeTab} setActiveTab={setActiveTab} userType="patient" />
 
-      <div className="flex-1 p-8 overflow-y-auto">
+      <div className="flex-1 p-8 overflow-y-auto mt-16">
         <h2 className="text-3xl font-bold flex items-center mb-6 text-blue-700">
           <FiCalendar className="mr-2 text-green-600" /> Doctor Appointments
         </h2>

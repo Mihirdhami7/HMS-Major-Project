@@ -2,7 +2,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "../ui/button";
 import { useState, useEffect } from "react";
-import { FiMenu, FiX, FiMoon, FiSun, FiBell } from "react-icons/fi";
+import { FiMenu, FiX, FiMoon, FiSun, FiBell, FiUser, FiLogOut } from "react-icons/fi";
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -40,18 +40,51 @@ export default function Header() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
+  // Add token check effect
+  useEffect(() => {
+    const checkTokenExpiration = () => {
+      const token = localStorage.getItem("authToken");
+      const tokenExpiry = localStorage.getItem("tokenExpiry");
+      
+      if (token && tokenExpiry) {
+        const currentTime = Math.floor(Date.now() / 1000);
+        if (currentTime >= parseInt(tokenExpiry)) {
+          // Token has expired, log out user
+          handleLogout();
+          alert("Your session has expired. Please login again.");
+        }
+      }
+    };
+
+    // Check token expiration every minute
+    const intervalId = setInterval(checkTokenExpiration, 60000);
+
+    // Initial check
+    checkTokenExpiration();
+
+    // Cleanup interval on component unmount
+    return () => clearInterval(intervalId);
+  },);
+
   const handleLogout = () => {
-    // Clear all auth related data
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("userEmail");
-    localStorage.removeItem("userType");
-    
-    setIsAuthenticated(false);
-    setUserType("");
-    setUserEmail("");
-    setShowDropdown(false);
-    
-    navigate("/login");
+    try {
+      // Remove auth data from localStorage
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("userEmail");
+      localStorage.removeItem("userType");
+      
+      // Reset state
+      setIsAuthenticated(false);
+      setUserType("");
+      setUserEmail("");
+      setShowDropdown(false);
+      
+      // Navigate to login page
+      navigate("/login", { replace: true });
+    } catch (error) {
+      console.error("Logout error:", error);
+      navigate("/login", { replace: true });
+    }
   };
 
   // Add sample notifications (replace with real notifications later)
@@ -169,14 +202,15 @@ export default function Header() {
                   onClick={() => setShowDropdown(!showDropdown)} 
                   className="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  <img
-                    src="https://via.placeholder.com/40"
-                    alt="Profile"
-                    className="w-8 h-8 rounded-full"
-                  />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {userEmail}
-                  </span>
+                  <FiUser className="text-gray-600 dark:text-gray-300" />
+                  <div className="text-left">
+                    <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {userEmail}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+                      {userType}
+                    </div>
+                  </div>
                 </button>
 
                 {showDropdown && (
@@ -191,26 +225,20 @@ export default function Header() {
                     </div>
                     
                     <Link
-                      to={`/${userType}`}
+                      to={`/${userType}/profile/${userEmail}`}
                       className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                       onClick={() => setShowDropdown(false)}
                     >
-                      Dashboard
-                    </Link>
-                    
-                    <Link
-                      to={`/${userType}/profile`}
-                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      onClick={() => setShowDropdown(false)}
-                    >
+                      <FiUser className="inline-block mr-2" />
                       Profile
                     </Link>
                     
                     <button
                       onClick={handleLogout}
-                      className="block w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
                     >
-                      Log Out
+                      <FiLogOut className="inline-block mr-2" />
+                      Logout
                     </button>
                   </div>
                 )}

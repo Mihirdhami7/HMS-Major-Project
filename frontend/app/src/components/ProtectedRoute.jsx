@@ -27,7 +27,9 @@ const ProtectedRoute = () => {
     const allowedPaths = {
       doctor: ['/doctor', '/doctor/appointments', '/doctor/profile', '/doctor/medical_products'],
       patient: ['/patient', '/patient/appointments', '/patient/disease', '/patient/profile'],
-      admin: ['/admin', '/admin/adddata', '/admin/product', '/admin/departments', '/admin/reports']
+      admin: ['/admin', '/admin/newRegister', '/admin/product', '/admin/departments', '/admin/reports'],
+      supplier: ['/supplier','/supplier/suppdashboard', '/supplier/suppproduct'],
+      superadmin: ['/superadmin','/superadmin/dashboard', '/superadmin/hospitals', '/superadmin/reports']
     };
 
     const userAllowedPaths = allowedPaths[userType] || [];
@@ -41,7 +43,7 @@ const ProtectedRoute = () => {
     }
 
     return <Outlet />;
-  } catch (_) { // Use underscore to indicate unused parameter
+  } catch { // Use underscore to indicate unused parameter
     // Invalid token
     localStorage.removeItem("authToken");
     localStorage.removeItem("userEmail");

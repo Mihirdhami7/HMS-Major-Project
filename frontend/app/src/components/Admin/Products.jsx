@@ -1,220 +1,386 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import Slidebar from "../../pages/Slidebar";
-import { FiPackage, FiTruck, FiAlertCircle, FiSearch, FiRefreshCw } from "react-icons/fi";
-
-// Sample medicine database
-const medicineInventory = {
-  painkillers: [
-    { id: 1, name: "Paracetamol", stock: 150, minStock: 50, supplier: "PharmaCo", price: 5.99, lastRestocked: "2024-02-15", expiryDate: "2025-06-30" },
-    { id: 2, name: "Ibuprofen", stock: 120, minStock: 40, supplier: "MediSupply", price: 7.99, lastRestocked: "2024-02-10", expiryDate: "2025-05-20" },
-    // Add more painkillers...
-  ],
-  antibiotics: [
-    { id: 3, name: "Amoxicillin", stock: 80, minStock: 30, supplier: "PharmaCo", price: 15.99, lastRestocked: "2024-02-01", expiryDate: "2025-04-15" },
-    { id: 4, name: "Azithromycin", stock: 60, minStock: 25, supplier: "MediSupply", price: 19.99, lastRestocked: "2024-02-05", expiryDate: "2025-03-30" },
-    // Add more antibiotics...
-  ],
-  // Add more categories with their medicines...
-};
-
-// Sample recent appointments
-const recentAppointments = [
-  { id: 1, patientName: "John Doe", doctorName: "Dr. Smith", date: "2024-02-28", status: "Completed", prescription: "Pending" },
-  { id: 2, patientName: "Jane Smith", doctorName: "Dr. Johnson", date: "2024-02-27", status: "Completed", prescription: "Given" },
-  // Add more appointments...
-];
+import { useState, useEffect } from 'react';
+import { Package, AlertCircle, Truck, RefreshCw, Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import Slidebar from '../../pages/Slidebar';
+import axios from 'axios';
 
 const Products = () => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [showLowStock, setShowLowStock] = useState(false);
+  const [products, setProducts] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("All Departments");
+  const [selectedType, setSelectedType] = useState("All Types");
+  //const [showLowStock, setShowLowStock] = useState(false);
+
   const navigate = useNavigate();
+  
+  const [notifications, setNotifications] = useState([
+    { id: 1, message: "New stock received from PharmaCo", time: "2 hours ago", read: false },
+    { id: 2, message: "MediSupply has confirmed your order", time: "5 hours ago", read: false },
+    { id: 3, message: "Low stock alert for Azithromycin", time: "Yesterday", read: true }
+  ]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
-  // Get all medicines in a flat array
-  const allMedicines = Object.values(medicineInventory).flat();
+  useEffect(() => {
+    fetchProducts();
+  }, []);
 
-  // Filter medicines based on search, category, and low stock
-  const filteredMedicines = allMedicines.filter(medicine => {
-    const matchesSearch = medicine.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === "all" || medicine.category === selectedCategory;
-    const matchesLowStock = !showLowStock || medicine.stock <= medicine.minStock;
-    return matchesSearch && matchesCategory && matchesLowStock;
+  const fetchProducts = async () => {
+    try {
+      const response = await axios.get("http://127.0.0.1:8000/api/getproducts/");
+      setProducts(response.data.products);
+    } catch (error) {
+      console.error("Error fetching products:", error);
+    }
+  };
+
+  const filteredProducts = products.filter((product) => {
+    return (
+      product.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      (selectedDepartment === "All Departments" || product.department === selectedDepartment) &&
+      (selectedType === "All Types" || product.type === selectedType)
+    );
   });
 
+
+
+
+  // Pending orders data
+  const pendingOrders = [
+    { id: 1, supplier: "PharmaCo", items: ["Paracetamol", "Cetirizine"], date: "2024-02-20", status: "Processing" },
+    { id: 2, supplier: "MediSupply", items: ["Ibuprofen", "Aspirin"], date: "2024-02-22", status: "Confirmed" },
+    { id: 3, supplier: "HealthMeds", items: ["Metformin"], date: "2024-02-25", status: "Pending" },
+    { id: 4, supplier: "PharmaCo", items: ["Amoxicillin"], date: "2024-02-26", status: "Shipped" },
+    { id: 5, supplier: "MediSupply", items: ["Azithromycin"], date: "2024-02-28", status: "Processing" }
+  ];
+
+  // Recent appointments
+  const recentAppointments = [
+    { id: 1, patientName: "John Doe", doctor: "Dr. Smith", date: "2024-02-28", status: "Completed" },
+    { id: 2, patientName: "Jane Smith", doctor: "Dr. Johnson", date: "2024-02-28", status: "Scheduled" },
+    { id: 3, patientName: "Michael Brown", doctor: "Dr. Lee", date: "2024-02-27", status: "Completed" },
+    { id: 4, patientName: "Emily Wilson", doctor: "Dr. Patel", date: "2024-02-27", status: "Cancelled" },
+    { id: 5, patientName: "Robert Davis", doctor: "Dr. Garcia", date: "2024-02-26", status: "Completed" }
+  ];
+
+
+  // Calculate counts
+  const totalProducts = products.length;
+  const lowStockItems = products.filter(med => med.status === 'Low Stock').length;
+  const pendingOrdersCount = pendingOrders.length;
+  const recentUpdatesCount = notifications.length;
+
+  // Handle sending request to supplier
+  const handleRequestStock = (medicineName, supplier) => {
+    alert(`Stock request for ${medicineName} sent to ${supplier}`);
+    // In a real app, this would make an API call
+  };
+  
+  // Handle notification click
+  const handleNotificationClick = () => {
+    setShowNotifications(!showNotifications);
+  };
+
+  // Mark all notifications as read
+  const markAllAsRead = () => {
+    setNotifications(notifications.map(n => ({...n, read: true})));
+  };
+
   return (
-    <div className="flex h-screen bg-gradient-to-br from-blue-50 to-green-50">
-      <Slidebar activeTab="product" userType="admin" />
-      
-      <div className="flex-1 p-8 overflow-y-auto">
-        <div className="max-w-7xl mx-auto">
-          {/* Header Section */}
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-3xl font-bold text-blue-700">Inventory Management</h2>
-            <button
-              onClick={() => navigate('/admin/product/medicine')}
-              className="px-4 py-2 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-lg hover:from-blue-600 hover:to-green-600"
-            >
-              Manage Medicines
-            </button>
-          </div>
-
-          {/* Stats Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-blue-500">
-              <div className="flex items-center">
-                <FiPackage className="text-2xl text-blue-500 mr-3" />
-                <div>
-                  <p className="text-gray-600">Total Products</p>
-                  <p className="text-2xl font-bold">{allMedicines.length}</p>
+    <div className="flex h-screen bg-gray-100">
+      <Slidebar activeTab="department" userType="admin" />
+      {/* Change this div's classes to handle overflow properly */}
+      <div className="flex-1 flex flex-col overflow-hidden bg-gray-50">
+        {/* Add a wrapper div for scrollable content */}
+        <div className="flex-1 overflow-y-auto p-8 mt-16 bg-gray-50">
+          {/* Main Content */}
+          <div className="container mx-auto py-6 px-4">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+              <div className="bg-white rounded-lg shadow-sm p-6 border-l-4 border-blue-500">
+                <div className="flex items-center">
+                  <div className="p-3 bg-blue-100 rounded-full">
+                    <Package size={20} className="text-blue-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm text-gray-500">Total Products</p>
+                    <h3 className="text-2xl font-bold">{totalProducts}</h3>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg shadow-sm p-6 border-l-4 border-red-500">
+                <div className="flex items-center">
+                  <div className="p-3 bg-red-100 rounded-full">
+                    <AlertCircle size={20} className="text-red-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm text-gray-500">Low Stock Items</p>
+                    <h3 className="text-2xl font-bold">{lowStockItems}</h3>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg shadow-sm p-6 border-l-4 border-green-500">
+                <div className="flex items-center">
+                  <div className="p-3 bg-green-100 rounded-full">
+                    <Truck size={20} className="text-green-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm text-gray-500">Pending Orders</p>
+                    <h3 className="text-2xl font-bold">{pendingOrdersCount}</h3>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg shadow-sm p-6 border-l-4 border-yellow-500">
+                <div className="flex items-center">
+                  <div className="p-3 bg-yellow-100 rounded-full">
+                    <RefreshCw size={20} className="text-yellow-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm text-gray-500">Recent Updates</p>
+                    <h3 className="text-2xl font-bold">{recentUpdatesCount}</h3>
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-red-500">
-              <div className="flex items-center">
-                <FiAlertCircle className="text-2xl text-red-500 mr-3" />
-                <div>
-                  <p className="text-gray-600">Low Stock Items</p>
-                  <p className="text-2xl font-bold">
-                    {allMedicines.filter(m => m.stock <= m.minStock).length}
-                  </p>
+            
+            {/* Inventory Search & Filters */}
+            <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+                <div className="relative flex-1">
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-3">
+                    <Search size={18} className="text-gray-400" />
+                  </div>
+                  <input 
+                    type="text" 
+                    placeholder="Search products..." 
+                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-4">
+                  <select 
+                    className="border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={selectedDepartment}
+                    onChange={(e) => setSelectedDepartment(e.target.value)}
+                  >
+                    <option>All Departments</option>
+                    <option>Cardiology</option>
+                    <option>Neurology</option>
+                    <option>Orthopedics</option>
+                    <option>Pediatrics</option>
+                    <option>Generic</option>
+                  </select>
+                  <select
+                    className="border rounded-lg px-4 py-2"
+                    value={selectedType}
+                    onChange={(e) => setSelectedType(e.target.value)}
+                  >
+                    <option>All Types</option>
+                    <option>Medicine</option>
+                    <option>Equipment</option>
+                  </select>
+                  {/* <div className="flex items-center gap-2">
+                    <input 
+                      type="checkbox" 
+                      id="lowStockFilter" 
+                      className="rounded"
+                      checked={showLowStock}
+                      onChange={() => setShowLowStock(!showLowStock)}
+                    />
+                    <label htmlFor="lowStockFilter" className="text-sm">Show Low Stock Only</label>
+                  </div> */}
                 </div>
               </div>
-            </div>
-            <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-green-500">
-              <div className="flex items-center">
-                <FiTruck className="text-2xl text-green-500 mr-3" />
-                <div>
-                  <p className="text-gray-600">Pending Orders</p>
-                  <p className="text-2xl font-bold">5</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-yellow-500">
-              <div className="flex items-center">
-                <FiRefreshCw className="text-2xl text-yellow-500 mr-3" />
-                <div>
-                  <p className="text-gray-600">Recent Updates</p>
-                  <p className="text-2xl font-bold">12</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Filters and Search */}
-          <div className="flex flex-wrap gap-4 mb-8">
-            <div className="flex-1">
-              <div className="relative">
-                <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search medicines..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Categories</option>
-              {Object.keys(medicineInventory).map(category => (
-                <option key={category} value={category}>{category}</option>
-              ))}
-            </select>
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={showLowStock}
-                onChange={(e) => setShowLowStock(e.target.checked)}
-                className="mr-2"
-              />
-              Show Low Stock Only
-            </label>
-          </div>
-
-          {/* Inventory Table */}
-          <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Medicine</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Restocked</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredMedicines.map((medicine) => (
-                  <tr key={medicine.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">{medicine.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 rounded-full text-sm ${
-                        medicine.stock <= medicine.minStock 
-                          ? 'bg-red-100 text-red-800' 
-                          : 'bg-green-100 text-green-800'
-                      }`}>
-                        {medicine.stock}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">{medicine.supplier}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">${medicine.price}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{medicine.lastRestocked}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{medicine.expiryDate}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {medicine.stock <= medicine.minStock ? (
-                        <span className="text-red-500">Reorder</span>
-                      ) : (
-                        <span className="text-green-500">In Stock</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Recent Appointments */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h3 className="text-xl font-semibold text-blue-700 mb-4">Recent Appointments</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-6 py-3 text-left">Patient Name</th>
-                    <th className="px-6 py-3 text-left">Doctor</th>
-                    <th className="px-6 py-3 text-left">Date</th>
+              
+              {/* Inventory Table */}
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-white">
+                  <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left">Name</th>
+                    <th className="px-6 py-3 text-left">Department</th>
+                    <th className="px-6 py-3 text-left">Supplier</th>
+                    <th className="px-6 py-3 text-left">Price</th>
+                    <th className="px-6 py-3 text-left">Last Restocked</th>
+                    <th className="px-6 py-3 text-left">Expiry Date</th>
                     <th className="px-6 py-3 text-left">Status</th>
+                    <th className="px-6 py-3 text-left">Stock</th>
                     <th className="px-6 py-3 text-left">Actions</th>
                   </tr>
-                </thead>
-                <tbody>
-                  {recentAppointments.map((appointment) => (
-                    <tr key={appointment.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">{appointment.patientName}</td>
-                      <td className="px-6 py-4">{appointment.doctorName}</td>
-                      <td className="px-6 py-4">{appointment.date}</td>
-                      <td className="px-6 py-4">{appointment.status}</td>
-                      <td className="px-6 py-4">
-                        {appointment.prescription === "Pending" && (
-                          <button
-                            onClick={() => navigate(`/admin/product/medicine`)}
-                            className="text-blue-500 hover:text-blue-700"
-                          >
-                            Give Medicine
-                          </button>
-                        )}
-                      </td>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredProducts.map((products) => (
+                      <tr key={products.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {products.name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {products.department}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {products.supplier}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {products.price}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {products.lastRestocked}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {products.expiryDate}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center justify-center w-12 h-6 rounded-full ${
+                            products.stock > 100 ? 'bg-green-100 text-green-800' :
+                            products.stock > 50 ? 'bg-green-100 text-green-800' :
+                            products.stock > 30 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            {products.stock}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            products.status === 'In Stock' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}>
+                            {products.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {products.status === 'Low Stock' && (
+                            <button
+                              onClick={() => handleRequestStock(products.name, products.supplier)}
+                              className="px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-xs"
+                            >
+                              Request Stock
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            {/* Recent Appointments Section */}
+            <div className="mt-12 w-full bg-white p-6 rounded-lg shadow-lg border border-blue-100">
+              <h2 className="text-lg font-semibold text-blue-600 mb-4">Recent Appointments</h2>
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-white">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Patient Name
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Doctor
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {recentAppointments.map((appointment) => (
+                      <tr key={appointment.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {appointment.patientName}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {appointment.doctor}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {appointment.date}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            appointment.status === 'Completed' ? 'bg-green-100 text-green-800' :
+                            appointment.status === 'Scheduled' ? 'bg-blue-100 text-blue-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            {appointment.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {appointment.status === 'Completed' && (
+                            <button 
+                            onClick={() => navigate(`/admin/product/medicine`)}
+                            className="text-blue-500 hover:text-blue-700 text-sm font-medium">
+                              Give Medicine
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            {/* Pending Orders Section */}
+            <div className=" mt-12 w-full bg-white p-6 rounded-lg shadow-lg border border-blue-100">
+              <h2 className="text-lg font-semibold text-blue-600 mb-4">Pending Orders</h2>
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-white">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Order ID
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Supplier
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Items
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Order Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {pendingOrders.map((order) => (
+                      <tr key={order.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          #{order.id.toString().padStart(4, '0')}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {order.supplier}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {order.items.join(', ')}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {order.date}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            order.status === 'Shipped' ? 'bg-green-100 text-green-800' :
+                            order.status === 'Confirmed' ? 'bg-blue-100 text-blue-800' :
+                            order.status === 'Processing' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {order.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>

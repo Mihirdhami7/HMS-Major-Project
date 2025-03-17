@@ -1,0 +1,19 @@
+# Environment variables
+.env 
+backend/.env
+backend/venv/
+backend/__pycache__/
+backend/users/venv/
+backend/users/__pycache__/
+backend/users/venv/
+backend/users/__pycache__/
+
+backend/users/venv/
+backend/users/__pycache__/
+
+
+
+
+
+
+

@@ -3,7 +3,7 @@ import { Route, Routes } from "react-router-dom";
 import Slidebar from "../pages/Slidebar";
 import Appointment from "../components/Patients/Appointments";
 import Disease from "../components/Patients/Disease";
-import { FiCalendar, FiUser, FiActivity } from "react-icons/fi";
+import { FiCalendar, FiActivity } from "react-icons/fi";
 
 function PatientSection() {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -24,11 +24,6 @@ function PatientSection() {
 
   const promotions = [
     {
-      title: "Online Consultation",
-      description: "Get expert medical advice from home. Book a video consultation today!",
-      icon: <FiUser className="w-8 h-8 text-blue-500" />
-    },
-    {
       title: "Health Checkup",
       description: "Complete body checkup starting at $99. Book now and get 20% off!",
       icon: <FiActivity className="w-8 h-8 text-green-500" />
@@ -43,7 +38,7 @@ function PatientSection() {
   return (
     <div className="flex bg-gray-50">
       <Slidebar activeTab={activeTab} setActiveTab={setActiveTab} userType="patient" />
-      <div className="flex-1 p-8">
+      <div className="flex-1 p-8 mt-16">
         <Routes>
           <Route path="/patient/appointments" element={<Appointment />} />
           {/* <Route path="/patient/profiles" element={<Profiles />} /> */}
@@ -69,13 +64,7 @@ function PatientSection() {
                     Schedule Now →
                   </button>
                 </div>
-                <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-green-500">
-                  <h3 className="text-lg font-semibold text-gray-800">Medical Records</h3>
-                  <p className="text-gray-600">View your health history</p>
-                  <button className="mt-4 text-green-500 hover:text-green-600">
-                    View Records →
-                  </button>
-                </div>
+                
                 <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-blue-500">
                   <h3 className="text-lg font-semibold text-gray-800">Health Tips</h3>
                   <p className="text-gray-600">Daily health recommendations</p>

@@ -15,46 +15,62 @@ import string
 from datetime import datetime, timedelta
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
+from pymongo.errors import ConnectionFailure
+import ssl
+from bson.objectid import ObjectId
 
-
-
-
-# Connect to MongoDB
-client = MongoClient("mongodb://localhost:27017/")
-db = client["hospital_db"]
-users_collection = db["users"]
-temp_users_collection = db["temp_users"]  # New collection for unverified users
-otp_collection = db["otps"]  # New collection for OTPs
+# Update MongoDB connection
+try:
+    client = MongoClient(settings.MONGO_URI)
+    # Test the connection
+    client.admin.command('ping')
+    db = client[settings.MONGO_DATABASE]
+    users_collection = db["users"]
+    temp_users_collection = db["temp_users"]
+    otp_collection = db["otps"]
+    payments_collection = db["payments"]
+    appointments_collection = db["appointments"]
+    departments_collection = db["departments"]
+    hospitals_collection = db["hospitals"]
+    departments_collection = db["departments"]
+    products_collection = db["products"]
+    notifications_collection = db["notifications"]
+    print("Successfully connected to MongoDB Atlas!")
+except Exception as e:
+    print(f"Error connecting to MongoDB Atlas: {e}")
 
 SECRET_KEY = "1fy%j02cvs&0$)-ny@3pj6l$+p)%cl6_ogu0h8-z=!&sy*v_ju"
 
+
+
+
+
+
+
+
+# logic for user registration, verification and login views 
+
 def generate_otp():
-    """Generate a 6-digit OTP"""
-    otp_length = getattr(settings, 'OTP_SETTINGS', {}).get('LENGTH', 6)
-    return ''.join(random.choices(string.digits, k=otp_length))
+    """Generate a random 6-digit OTP."""
+    return "".join(random.choices(string.digits, k=6))
 
 @csrf_exempt
 def register_user(request):
     if request.method == "POST":
         try:
-            # Handle both JSON and multipart form-data
             data = request.POST.dict() if request.content_type.startswith('multipart') else json.loads(request.body)
             
             email = data.get("email")
             if not email:
                 return JsonResponse({"status": "error", "message": "Email is required"}, status=400)
 
-            # Check if user already exists
             existing_user = users_collection.find_one({"email": email})
             if existing_user:
                 return JsonResponse({"status": "error", "message": "User already exists"}, status=400)
 
-            # Generate OTP
             otp = generate_otp()
-            # Default to 1 minute if setting not found
-            expiry_time = datetime.utcnow() + getattr(settings, 'OTP_SETTINGS', {}).get('EXPIRY_TIME', timedelta(minutes=1))
-            
-            # Store user data temporarily
+            expiry_time = datetime.utcnow() + timedelta(minutes=2) 
+
             temp_user_data = {
                 "email": email,
                 "name": data.get("name"),
@@ -63,6 +79,7 @@ def register_user(request):
                 "userType": data.get("userType", "Patient"),
                 "gender": data.get("gender"),
                 "dateOfBirth": data.get("dateOfBirth"),
+                "hospitalName": data.get("hospitalName"),
                 "created_at": datetime.utcnow(),
                 "photo": None  # Default photo value
             }
@@ -83,14 +100,11 @@ def register_user(request):
                     "doctorSpecialization": data.get("doctorSpecialization")
                 })
 
-                # Handle doctor certificate if present
                 if request.FILES and 'doctorCertificate' in request.FILES:
                     certificate = request.FILES['doctorCertificate']
-                    cert_name = default_storage.save(
-                        f"doctor_certificates/{email}/{certificate.name}", 
-                        ContentFile(certificate.read())
-                    )
-                    temp_user_data["doctorCertificate"] = default_storage.url(cert_name)
+                    cert_path = f"doctor_certificates/{email}/{certificate.name}"
+                    cert_name = default_storage.save(cert_path, ContentFile(certificate.read()))
+                    temp_user_data["doctorCertificate"] = settings.MEDIA_URL + cert_name
 
             # Store OTP with expiry time
             otp_collection.insert_one({
@@ -106,29 +120,22 @@ def register_user(request):
 
             # Send OTP via email
             try:
-                # Create HTML content
-                html_message = render_to_string('email/verification.html', {
-                    'name': data.get('name'),
-                    'otp': otp
-                })
-                
-                # Create plain text content
+                if not settings.EMAIL_HOST_USER:
+                    raise ValueError("EMAIL_HOST_USER is not configured in settings.")
+
+                html_message = render_to_string('email/verification.html', {'name': data.get('name'), 'otp': otp})
                 plain_message = strip_tags(html_message)
-                
-                # Create email
-                email = EmailMultiAlternatives(
+
+                # Send email
+                email_message = EmailMultiAlternatives(
                     subject="HMS - Email Verification OTP",
                     body=plain_message,
                     from_email=f'HMS Team <{settings.EMAIL_HOST_USER}>',
                     to=[email],
                 )
-                
-                # Attach HTML content
-                email.attach_alternative(html_message, "text/html")
-                
-                # Send email
-                email.send(fail_silently=False)
-                
+                email_message.attach_alternative(html_message, "text/html")
+                email_message.send(fail_silently=False)
+
                 print(f"OTP email sent successfully to {email}")
 
             except Exception as e:
@@ -163,7 +170,6 @@ def verify_email(request):
             email = data.get("email")
             otp = data.get("otp")
 
-            # Find OTP record
             otp_record = otp_collection.find_one({
                 "email": email,
                 "otp": otp,
@@ -176,7 +182,6 @@ def verify_email(request):
             # Check if OTP has expired
             current_time = datetime.utcnow()
             if current_time > otp_record["expires_at"]:
-                # Delete expired OTP
                 otp_collection.delete_one({"_id": otp_record["_id"]})
                 return JsonResponse({
                     "status": "error", 
@@ -189,17 +194,14 @@ def verify_email(request):
                 return JsonResponse({"status": "error", "message": "User data not found"}, status=400)
 
             try:
-                # Remove _id if it exists
                 if '_id' in temp_user:
                     del temp_user['_id']
 
-                # Hash password
                 password = temp_user.get("password")
                 if password:
                     hashed_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
                     temp_user["hpassword"] = hashed_password.decode("utf-8")
                 
-                # Insert verified user into main collection
                 result = users_collection.insert_one(temp_user)
                 
                 if not result.inserted_id:
@@ -234,19 +236,19 @@ def login_view(request):
             data = json.loads(request.body)
             email = data.get("email")
             password = data.get("password")
-            category = data.get("category")  # Get the category from request
+            category = data.get("category")
 
-            if not all([email, password, category]):
+            if not email or not password:
                 return JsonResponse({
                     "status": "error",
-                    "message": "Email, password and category are required"
+                    "message": "Email and password are required"
                 }, status=400)
-
-            # Find user with matching email and category
-            user = users_collection.find_one({
-                "email": email,
-                "userType": category  # Match the user type with category
-            })
+            
+            # ✅ Check if the user is a Superadmin
+            if email.lower() == "21it402@bvmengineering.ac.in":
+                user = users_collection.find_one({"email": email})  # Ignore category filter for Superadmin
+            else:
+                user = users_collection.find_one({"email": email, "userType": category})
 
             if not user:
                 return JsonResponse({
@@ -263,12 +265,17 @@ def login_view(request):
 
             if bcrypt.checkpw(password.encode("utf-8"), stored_hashed_password):
                 # Generate token with 4-hour expiration
+                current_time = datetime.utcnow()
+                expiry_time = current_time + timedelta(hours=40)
+                
                 payload = {
                     "user_id": str(user["_id"]),
                     "email": user["email"],
                     "userType": user["userType"],
-                    "exp": datetime.utcnow() + timedelta(hours=4)
+                    "iat": current_time,  # Token creation time
+                    "exp": expiry_time    # Token expiry time
                 }
+                
                 token = pyjwt.encode(payload, SECRET_KEY, algorithm="HS256")
                 
                 # Remove sensitive data before sending
@@ -280,6 +287,7 @@ def login_view(request):
                     "userType": user["userType"],
                     "gender": user.get("gender", ""),
                     "photo": user.get("photo"),
+                    "tokenExpiry": expiry_time.timestamp()  # Send expiry time to client
                 }
 
                 if user["userType"] == "Doctor":
@@ -317,6 +325,68 @@ def login_view(request):
         "message": "Method not allowed"
     }, status=405)
 
+@csrf_exempt
+def logout_view(request):
+    if request.method == "POST":
+        try:
+            # Get the token from header
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return JsonResponse({"status": "error", "message": "No token provided"}, status=401)
+            
+            token = auth_header.split(' ')[1]
+            
+            try:
+                # Decode token to get user info
+                payload = pyjwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+                
+                # Force token expiration by updating exp to current time
+                payload['exp'] = datetime.utcnow()
+                
+                return JsonResponse({
+                    "status": "success",
+                    "message": "Logged out successfully"
+                })
+                
+            except pyjwt.ExpiredSignatureError:
+                return JsonResponse({
+                    "status": "success",
+                    "message": "Token already expired"
+                })
+            except pyjwt.InvalidTokenError:
+                return JsonResponse({
+                    "status": "error",
+                    "message": "Invalid token"
+                }, status=401)
+                
+        except Exception as e:
+            return JsonResponse({
+                "status": "error",
+                "message": str(e)
+            }, status=500)
+
+    return JsonResponse({
+        "status": "error",
+        "message": "Method not allowed"
+    }, status=405)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# logic for user profile and update views
+
+# user profile all backend code
 @csrf_exempt
 def get_user_profile(request, user_type, email):
     if request.method == "GET":
@@ -363,87 +433,822 @@ def get_user_profile(request, user_type, email):
 
 @csrf_exempt
 def update_user_profile(request):
-    if request.method == "PUT":
+    if request.method == 'POST':
         try:
-            email = request.POST.get("email")
-            if not email:
-                return JsonResponse({"status": "error", "message": "Email is required"}, status=400)
-            
-            # Find the existing user
-            existing_user = users_collection.find_one({"email": email})
-            if not existing_user:
-                return JsonResponse({"status": "error", "message": "User not found"}, status=404)
-            
-            # Get user type and normalize it
-            user_type = existing_user.get("userType", "").lower()
-            is_doctor = user_type == "doctor"
-            
-            # Prepare update data
-            update_data = {}
-            
-            # Handle form data
-            for key in request.POST:
-                if key not in ["email", "userType", "_id", "hpassword"]:  # Protected fields
-                    # Handle doctor-specific fields
-                    if is_doctor and key.startswith("doctor"):
-                        update_data[key] = request.POST.get(key)
-                    # Handle common fields
-                    elif not key.startswith("doctor"):
-                        update_data[key] = request.POST.get(key)
-            
-            # Handle profile photo
-            if request.FILES.get("profilePhoto"):
-                profile_photo = request.FILES["profilePhoto"]
-                photo_name = default_storage.save(f"profile_photos/{email}/{profile_photo.name}", 
-                                               ContentFile(profile_photo.read()))
-                update_data["photo"] = default_storage.url(photo_name)
-            
-            # Update user in database
-            if update_data:
-                users_collection.update_one(
-                    {"email": email},
-                    {"$set": update_data}
-                )
-            
-            # Get updated user data
-            updated_user = users_collection.find_one({"email": email})
-            if updated_user:
-                updated_user["_id"] = str(updated_user["_id"])
-                if "hpassword" in updated_user:
-                    del updated_user["hpassword"]
-                
-                return JsonResponse(updated_user, status=200)
-            
-            return JsonResponse({"status": "error", "message": "Failed to retrieve updated user"}, status=500)
-            
-        except Exception as e:
-            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+            data = json.loads(request.body)
+            email = data.get('email')
+            user_type = data.get('userType')
 
-    return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
+            # Remove fields that shouldn't be updated
+            data.pop('email', None)
+            data.pop('userType', None)
+            data.pop('_id', None)
 
-@csrf_exempt
-def get_doctors(request):
-    if request.method == "GET":
-        try:
-            # Get all doctors from MongoDB
-            doctors = list(users_collection.find({"userType": "Doctor"}))
-            
-            # Convert ObjectId to string for each doctor
-            for doctor in doctors:
-                doctor["_id"] = str(doctor["_id"])
-                # Remove sensitive information
-                doctor.pop("hpassword", None)
-            
-            return JsonResponse(doctors, safe=False)
-            
+            # Update the user in MongoDB
+            result = users_collection.update_one(
+                {"email": email, "userType": user_type},
+                {"$set": data}
+            )
+
+            if result.modified_count > 0:
+                return JsonResponse({
+                    "status": "success",
+                    "message": "Profile updated successfully"
+                })
+            else:
+                return JsonResponse({
+                    "status": "error",
+                    "message": "No changes made to profile"
+                }, status=400)
+
         except Exception as e:
-            print(f"Error fetching doctors: {str(e)}")
             return JsonResponse({
                 "status": "error",
-                "message": "Failed to fetch doctors"
+                "message": str(e)
             }, status=500)
 
     return JsonResponse({
         "status": "error",
         "message": "Method not allowed"
     }, status=405)
+
+
+
+
+
+
+
+
+
+
+
+
+
+# logic for doctor views where fetch doctor by hospital name
+# Doctors all backend code 
+@csrf_exempt
+def get_doctors_by_hospital(request, hospital_id):
+    if request.method == "GET":
+        try:
+            doctors = list(users_collection.find({
+                "userType": "Doctor",
+                "hospital_id": hospital_id
+            }))
+            
+            for doctor in doctors:
+                doctor["_id"] = str(doctor["_id"])
+                doctor.pop("hpassword", None)  # Remove sensitive data
+            
+            return JsonResponse({"status": "success", "doctors": doctors}, safe=False)
+            
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+def get_doctors_by_department(request, department_id):
+    if request.method == "GET":
+        try:
+            doctors = list(users_collection.find({
+                "userType": "Doctor",
+                "departmentId": department_id
+            }))
+
+            for doctor in doctors:
+                doctor["_id"] = str(doctor["_id"])
+                doctor["departmentId"] = str(doctor["departmentId"])
+
+            return JsonResponse({"status": "success", "doctors": doctors})
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+def get_doctor_details(request, doctor_id):
+    if request.method == "GET":
+        try:
+            doctor = users_collection.find_one({"_id": ObjectId(doctor_id), "userType": "Doctor"})
+            
+            if not doctor:
+                return JsonResponse({"status": "error", "message": "Doctor not found"}, status=404)
+            
+            doctor["_id"] = str(doctor["_id"])
+            doctor.pop("hpassword", None)
+            
+            return JsonResponse({"status": "success", "doctor": doctor})
+            
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+def update_doctor(request, doctor_id):
+    if request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+            
+            # Ensure only allowed fields are updated
+            allowed_fields = {"name", "phone", "email", "doctorSpecialization", "qualification", "hospital_id"}
+            update_data = {key: data[key] for key in data if key in allowed_fields}
+            
+            result = users_collection.update_one(
+                {"_id": ObjectId(doctor_id), "userType": "Doctor"},
+                {"$set": update_data}
+            )
+            
+            if result.modified_count > 0:
+                return JsonResponse({"status": "success", "message": "Doctor updated successfully"})
+            else:
+                return JsonResponse({"status": "error", "message": "No changes made or doctor not found"}, status=404)
+                
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+def add_doctor(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            
+            if not all(key in data for key in ["name", "email", "phone", "doctorSpecialization", "hospital_id", "password"]):
+                return JsonResponse({"status": "error", "message": "Missing required fields"}, status=400)
+
+            # Hash password before storing
+            hashed_password = bcrypt.hashpw(data["password"].encode("utf-8"), bcrypt.gensalt())
+            data["hpassword"] = hashed_password.decode("utf-8")
+            del data["password"]
+            
+            # Set userType
+            data["userType"] = "Doctor"
+            
+            result = users_collection.insert_one(data)
+            
+            return JsonResponse({"status": "success", "message": "Doctor added successfully", "doctorId": str(result.inserted_id)})
+                
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+def delete_doctor(request, doctor_id):
+    if request.method == "DELETE":
+        try:
+            result = users_collection.delete_one({"_id": ObjectId(doctor_id), "userType": "Doctor"})
+            
+            if result.deleted_count > 0:
+                return JsonResponse({"status": "success", "message": "Doctor deleted successfully"})
+            else:
+                return JsonResponse({"status": "error", "message": "Doctor not found"}, status=404)
+                
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+
+
+
+
+
+
+
+
+
+
+
+
+# logic for patient views where add patient, verify patient, search patient and book appointment
+
+# patient all backend code
+
+@csrf_exempt
+def add_patient(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            
+            # Check if patient already exists
+            if users_collection.find_one({"email": data["email"], "userType": "Patient"}):
+                return JsonResponse({"status": "error", "message": "Patient already exists"}, status=400)
+            
+            # Create new patient
+            patient_data = {
+                "name": data["name"],
+                "email": data["email"],
+                "contactNo": data["contactNo"],
+                "gender": data["gender"],
+                "dateOfBirth": data["dateOfBirth"],
+                "address": data["address"],
+                "userType": "Patient",
+                "created_at": datetime.now()
+            }
+            
+            result = users_collection.insert_one(patient_data)
+            
+            if result.inserted_id:
+                patient_data["_id"] = str(result.inserted_id)
+                return JsonResponse({"status": "success", "message": "Patient registered successfully", "patient": patient_data})
+            
+            return JsonResponse({"status": "error", "message": "Failed to register patient"}, status=500)
+            
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Fetch patient details by ID
+@csrf_exempt
+def get_patient(request, patient_id):
+    if request.method == "GET":
+        try:
+            patient = users_collection.find_one({"_id": ObjectId(patient_id), "userType": "Patient"})
+            
+            if patient:
+                patient["_id"] = str(patient["_id"])
+                return JsonResponse({"status": "success", "patient": patient})
+            
+            return JsonResponse({"status": "error", "message": "Patient not found"}, status=404)
+            
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Search for a patient (by ID, name, email, or contact number)
+@csrf_exempt
+def search_patient(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            query = data.get("query")
+
+            # Search by multiple fields
+            patient = users_collection.find_one({
+                "$or": [
+                    {"_id": ObjectId(query) if len(query) == 24 else None},
+                    {"name": {"$regex": query, "$options": "i"}},
+                    {"email": {"$regex": query, "$options": "i"}},
+                    {"contactNo": query}
+                ],
+                "userType": "Patient"
+            })
+
+            if patient:
+                patient["_id"] = str(patient["_id"])
+                return JsonResponse({"status": "success", "patient": patient})
+            
+            return JsonResponse({"status": "error", "message": "Patient not found"}, status=404)
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Update patient details
+@csrf_exempt
+def update_patient(request, patient_id):
+    if request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+            
+            result = users_collection.update_one(
+                {"_id": ObjectId(patient_id), "userType": "Patient"},
+                {"$set": data}
+            )
+            
+            if result.modified_count > 0:
+                return JsonResponse({"status": "success", "message": "Patient updated successfully"})
+            
+            return JsonResponse({"status": "error", "message": "Patient not found"}, status=404)
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Delete a patient
+@csrf_exempt
+def delete_patient(request, patient_id):
+    if request.method == "DELETE":
+        try:
+            result = users_collection.delete_one({"_id": ObjectId(patient_id), "userType": "Patient"})
+            
+            if result.deleted_count > 0:
+                return JsonResponse({"status": "success", "message": "Patient deleted successfully"})
+            
+            return JsonResponse({"status": "error", "message": "Patient not found"}, status=404)
+        
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+
+
+
+
+
+
+
+
+
+
+
+# logic for appointment views where fetch appointment, update appointment, delete appointment and book appointment
+
+# appointment all backend code
+@csrf_exempt
+def book_appointment(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+
+            # Ensure doctor exists
+            doctor = users_collection.find_one({
+                "_id": ObjectId(data["doctorId"]),
+                "userType": "Doctor"
+            })
+            if not doctor:
+                return JsonResponse({"status": "error", "message": "Doctor not found"}, status=404)
+
+            # Ensure patient exists
+            patient = users_collection.find_one({
+                "_id": ObjectId(data["patientId"]),
+                "userType": "Patient"
+            })
+            if not patient:
+                return JsonResponse({"status": "error", "message": "Patient not found"}, status=404)
+
+            # Payment processing
+            payment_data = {
+                "patientId": data["patientId"],
+                "amount": data["amount"],
+                "paymentStatus": "Pending",  # Payment gateway integration required
+                "created_at": datetime.now()
+            }
+            payment_result = payments_collection.insert_one(payment_data)
+            payment_id = str(payment_result.inserted_id)
+
+            # Create Appointment
+            appointment_data = {
+                "patientId": data["patientId"],
+                "doctorId": data["doctorId"],
+                "hospital": data["hospital"],
+                "department": data["department"],
+                "date": data["date"],
+                "timeSlot": None,  # Assigned by Admin
+                "status": "Pending",  # Admin approves
+                "paymentId": payment_id,
+                "created_at": datetime.now()
+            }
+
+            result = appointments_collection.insert_one(appointment_data)
+
+            if result.inserted_id:
+                return JsonResponse({
+                    "status": "success",
+                    "message": "Appointment booked, awaiting approval",
+                    "appointmentId": str(result.inserted_id)
+                })
+
+            return JsonResponse({"status": "error", "message": "Failed to book appointment"}, status=500)
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Fetch Appointments (Admin: All, Patient: Their own, Doctor: Assigned to them)
+@csrf_exempt
+def get_appointments(request, user_id):
+    if request.method == "GET":
+        try:
+            user = users_collection.find_one({"_id": ObjectId(user_id)})
+            if not user:
+                return JsonResponse({"status": "error", "message": "User not found"}, status=404)
+
+            query = {}
+            if user["userType"] == "Admin":
+                query = {}  # Fetch all appointments
+            elif user["userType"] == "Doctor":
+                query = {"doctorId": user_id, "status": "Approved"}
+            elif user["userType"] == "Patient":
+                query = {"patientId": user_id}
+
+            appointments = list(appointments_collection.find(query))
+            for appointment in appointments:
+                appointment["_id"] = str(appointment["_id"])
+                appointment["doctorId"] = str(appointment["doctorId"])
+                appointment["patientId"] = str(appointment["patientId"])
+
+            return JsonResponse({"status": "success", "appointments": appointments})
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Approve/Reject Appointment (Admin assigns time slot)
+@csrf_exempt
+def approve_appointment(request, appointment_id):
+    if request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+            if data["status"] not in ["Approved", "Rejected"]:
+                return JsonResponse({"status": "error", "message": "Invalid status"}, status=400)
+
+            update_data = {"status": data["status"]}
+            if data["status"] == "Approved":
+                update_data["timeSlot"] = data["timeSlot"]  # Assign time slot
+
+            result = appointments_collection.update_one(
+                {"_id": ObjectId(appointment_id)},
+                {"$set": update_data}
+            )
+
+            if result.modified_count > 0:
+                return JsonResponse({"status": "success", "message": f"Appointment {data['status']}"})
+            return JsonResponse({"status": "error", "message": "Appointment not found"}, status=404)
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Patient Confirms or Rejects Assigned Time Slot
+@csrf_exempt
+def confirm_appointment(request, appointment_id):
+    if request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+            if data["confirm"] not in [True, False]:
+                return JsonResponse({"status": "error", "message": "Invalid confirmation"}, status=400)
+
+            new_status = "Confirmed" if data["confirm"] else "Rejected by Patient"
+            result = appointments_collection.update_one(
+                {"_id": ObjectId(appointment_id)},
+                {"$set": {"status": new_status}}
+            )
+
+            if result.modified_count > 0:
+                return JsonResponse({"status": "success", "message": f"Appointment {new_status}"})
+            return JsonResponse({"status": "error", "message": "Appointment not found"}, status=404)
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Fetch Pending Appointments (For Admin Approval)
+@csrf_exempt
+def get_pending_appointments(request):
+    if request.method == "GET":
+        try:
+            appointments = list(appointments_collection.find({"status": "Pending"}))
+
+            for appointment in appointments:
+                appointment["_id"] = str(appointment["_id"])
+                appointment["doctorId"] = str(appointment["doctorId"])
+                appointment["patientId"] = str(appointment["patientId"])
+
+            return JsonResponse({"status": "success", "appointments": appointments})
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+
+
+
+
+# logic for payment views where fetch payment, update payment and delete payment
+
+# payment all backend code
+# ✅ Payment Update After Confirmation
+@csrf_exempt
+def update_payment_status(request, payment_id):
+    if request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+            if data["paymentStatus"] not in ["Completed", "Failed"]:
+                return JsonResponse({"status": "error", "message": "Invalid payment status"}, status=400)
+
+            result = payments_collection.update_one(
+                {"_id": ObjectId(payment_id)},
+                {"$set": {"paymentStatus": data["paymentStatus"]}}
+            )
+
+            if result.modified_count > 0:
+                return JsonResponse({"status": "success", "message": "Payment updated"})
+            return JsonResponse({"status": "error", "message": "Payment not found"}, status=404)
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+
+
+
+
+
+
+
+
+
+
+
+
+# logic for department views where add department, get department, update department
+
+# department all backend code
+
+
+
+# ✅ Add a New Hospital (Super Admin)
+@csrf_exempt
+def add_hospital(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+
+            # Check if hospital already exists
+            existing_hospital = hospitals_collection.find_one({"name": data["name"]})
+            if existing_hospital:
+                return JsonResponse({"status": "error", "message": "Hospital already exists"}, status=400)
+
+            # Insert hospital data
+            hospital_data = {
+                "name": data["name"],
+                "location": data["location"],
+                "contactNo": data["contactNo"],
+                "adminId": data["adminId"],  # Assigned Admin
+                "created_at": datetime.now()
+            }
+            result = hospitals_collection.insert_one(hospital_data)
+
+            if result.inserted_id:
+                return JsonResponse({"status": "success", "message": "Hospital added successfully", "hospitalId": str(result.inserted_id)})
+            return JsonResponse({"status": "error", "message": "Failed to add hospital"}, status=500)
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Fetch All Hospitals (For Super Admin)
+@csrf_exempt
+def get_hospitals(request):
+    if request.method == "GET":
+        try:
+            hospitals = list(hospitals_collection.find({}))
+
+            for hospital in hospitals:
+                hospital["_id"] = str(hospital["_id"])
+                hospital["adminId"] = str(hospital["adminId"])
+
+            return JsonResponse({"status": "success", "hospitals": hospitals})
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Update Hospital Details (Super Admin)
+@csrf_exempt
+def update_hospital(request, hospital_id):
+    if request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+            update_data = {k: v for k, v in data.items() if k in ["name", "location", "contactNo", "adminId"]}
+
+            result = hospitals_collection.update_one({"_id": ObjectId(hospital_id)}, {"$set": update_data})
+
+            if result.modified_count > 0:
+                return JsonResponse({"status": "success", "message": "Hospital updated successfully"})
+            return JsonResponse({"status": "error", "message": "Hospital not found"}, status=404)
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Delete Hospital (Super Admin)
+@csrf_exempt
+def delete_hospital(request, hospital_id):
+    if request.method == "DELETE":
+        try:
+            result = hospitals_collection.delete_one({"_id": ObjectId(hospital_id)})
+
+            if result.deleted_count > 0:
+                return JsonResponse({"status": "success", "message": "Hospital deleted successfully"})
+            return JsonResponse({"status": "error", "message": "Hospital not found"}, status=404)
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Add Department to a Hospital (Admin)
+@csrf_exempt
+def add_department(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+
+            # Ensure hospital exists
+            hospital = hospitals_collection.find_one({"_id": ObjectId(data["hospitalId"])})
+            if not hospital:
+                return JsonResponse({"status": "error", "message": "Hospital not found"}, status=404)
+
+            # Check if department already exists in the hospital
+            existing_department = departments_collection.find_one({
+                "name": data["name"],
+                "hospitalId": data["hospitalId"]
+            })
+            if existing_department:
+                return JsonResponse({"status": "error", "message": "Department already exists in this hospital"}, status=400)
+
+            # Insert department
+            department_data = {
+                "name": data["name"],
+                "hospitalId": data["hospitalId"],
+                "created_at": datetime.now()
+            }
+            result = departments_collection.insert_one(department_data)
+
+            if result.inserted_id:
+                return JsonResponse({"status": "success", "message": "Department added successfully", "departmentId": str(result.inserted_id)})
+            return JsonResponse({"status": "error", "message": "Failed to add department"}, status=500)
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Fetch Departments by Hospital ID
+@csrf_exempt
+def get_departments(request, hospital_id):
+    if request.method == "GET":
+        try:
+            departments = list(departments_collection.find({"hospitalId": hospital_id}))
+
+            for department in departments:
+                department["_id"] = str(department["_id"])
+                department["hospitalId"] = str(department["hospitalId"])
+
+            return JsonResponse({"status": "success", "departments": departments})
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Update Department (Admin)
+@csrf_exempt
+def update_department(request, department_id):
+    if request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+            update_data = {k: v for k, v in data.items() if k == "name"}
+
+            result = departments_collection.update_one({"_id": ObjectId(department_id)}, {"$set": update_data})
+
+            if result.modified_count > 0:
+                return JsonResponse({"status": "success", "message": "Department updated successfully"})
+            return JsonResponse({"status": "error", "message": "Department not found"}, status=404)
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+# ✅ Delete Department (Admin)
+@csrf_exempt
+def delete_department(request, department_id):
+    if request.method == "DELETE":
+        try:
+            result = departments_collection.delete_one({"_id": ObjectId(department_id)})
+
+            if result.deleted_count > 0:
+                return JsonResponse({"status": "success", "message": "Department deleted successfully"})
+            return JsonResponse({"status": "error", "message": "Department not found"}, status=404)
+
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+
+
+
+
+
+
+
+# logic for product views where add product, get product, update product, delete product, check stock levels, request stock restock, supplier add stock, supplier get products, send low stock notification
+
+# product all backend code
+
+# Helper function to format ObjectId
+def format_product(product):
+    product["_id"] = str(product["_id"])
+    return product
+
+@csrf_exempt
+def add_product(request):
+    """ Adds a new product to the inventory. Only suppliers should use this. """
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+
+            # Validate required fields
+            required_fields = ["name", "category", "supplier", "quantity", "threshold", "price", "expiry_date"]
+            if not all(field in data for field in required_fields):
+                return JsonResponse({"status": "error", "message": "Missing required fields"}, status=400)
+
+            product = {
+                "name": data["name"],
+                "category": data["category"],
+                "supplier": data["supplier"],  # Supplier ID or Name
+                "quantity": int(data["quantity"]),
+                "threshold": int(data["threshold"]),
+                "price": float(data["price"]),
+                "expiry_date": data["expiry_date"],
+                "created_at": datetime.now(),
+                "lastRestocked": datetime.now()
+            }
+            result = products_collection.insert_one(product)
+            return JsonResponse({"status": "success", "product_id": str(result.inserted_id)})
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+def get_products(request):
+    """ Fetches all products in the inventory. """
+    if request.method == "GET":
+        try:
+            products = list(products_collection.find())
+            return JsonResponse({"status": "success", "products": [format_product(p) for p in products]})
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+def update_product(request, product_id):
+    """ Updates product details. Only admins or suppliers can use this. """
+    if request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+            result = products_collection.update_one({"_id": ObjectId(product_id)}, {"$set": data})
+            if result.modified_count:
+                return JsonResponse({"status": "success", "message": "Product updated"})
+            return JsonResponse({"status": "error", "message": "No changes made"}, status=400)
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+def delete_product(request, product_id):
+    """ Deletes a product from inventory. """
+    if request.method == "DELETE":
+        try:
+            result = products_collection.delete_one({"_id": ObjectId(product_id)})
+            if result.deleted_count:
+                return JsonResponse({"status": "success", "message": "Product deleted"})
+            return JsonResponse({"status": "error", "message": "Product not found"}, status=404)
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+def check_stock_levels(request):
+    """ Fetches all products that are low in stock. """
+    if request.method == "GET":
+        try:
+            low_stock_products = list(products_collection.find({"$expr": {"$lt": ["$quantity", "$threshold"]}}))
+            return JsonResponse({"status": "success", "low_stock_products": [format_product(p) for p in low_stock_products]})
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+def request_restock(request, product_id):
+    """ Requests restock for a low-stock product. """
+    if request.method == "POST":
+        try:
+            product = products_collection.find_one({"_id": ObjectId(product_id)})
+            if product:
+                notification = {
+                    "product_id": product_id,
+                    "message": f"Restock needed for {product['name']}",
+                    "timestamp": datetime.now()
+                }
+                notifications_collection.insert_one(notification)
+                return JsonResponse({"status": "success", "message": "Restock request sent"})
+            return JsonResponse({"status": "error", "message": "Product not found"}, status=404)
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+def add_stock(request, product_id):
+    """ Adds stock to an existing product. """
+    if request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+            added_quantity = int(data.get("quantity", 0))
+            result = products_collection.update_one(
+                {"_id": ObjectId(product_id)}, 
+                {"$inc": {"quantity": added_quantity}, "$set": {"lastRestocked": datetime.now()}}
+            )
+            if result.modified_count:
+                return JsonResponse({"status": "success", "message": "Stock updated"})
+            return JsonResponse({"status": "error", "message": "Product not found"}, status=404)
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+def supplier_get_products(request, supplier_id):
+    """ Fetches products associated with a specific supplier. """
+    if request.method == "GET":
+        try:
+            products = list(products_collection.find({"supplier": supplier_id}))
+            return JsonResponse({"status": "success", "products": [format_product(p) for p in products]})
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+def supplier_add_stock(request, supplier_id, product_id):
+    """ Allows a supplier to add stock to their own product. """
+    if request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+            added_quantity = int(data.get("quantity", 0))
+
+            product = products_collection.find_one({"_id": ObjectId(product_id), "supplier": supplier_id})
+            if not product:
+                return JsonResponse({"status": "error", "message": "Unauthorized or product not found"}, status=403)
+
+            result = products_collection.update_one(
+                {"_id": ObjectId(product_id)}, 
+                {"$inc": {"quantity": added_quantity}, "$set": {"lastRestocked": datetime.now()}}
+            )
+            if result.modified_count:
+                return JsonResponse({"status": "success", "message": "Stock updated"})
+            return JsonResponse({"status": "error", "message": "Product not found"}, status=404)
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)

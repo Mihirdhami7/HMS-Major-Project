@@ -13,6 +13,10 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 import os
+from dotenv import load_dotenv
+from urllib.parse import quote_plus
+
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -134,18 +138,18 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",  # React frontend URL
 ]
 
-# Email Configuration
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'your.actual.email@gmail.com'  # Replace with your Gmail
-EMAIL_HOST_PASSWORD = 'your-16-digit-app-password'  # Replace with the app password you generated
-EMAIL_TIMEOUT = 30
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  # Fallback value for development
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # You need to set this in .env file
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
-# For development/testing, you can use console backend instead:
-if DEBUG:
-    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_TIMEOUT = 60
+
+# For development/testing, use console backend to avoid email sending:
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # This will print emails to console instead of sending
 
 # OTP Settings
 OTP_SETTINGS = {
@@ -161,5 +165,10 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
 
 # MongoDB Settings
-MONGO_URI = "mongodb://localhost:27017/"  # MongoDB connection URL
-MONGO_DB_NAME = "hospital_db"  # Your MongoDB database name
+MONGO_USERNAME = quote_plus(os.getenv('MONGO_USERNAME'))
+MONGO_PASSWORD = quote_plus(os.getenv('MONGO_PASSWORD'))
+MONGO_CLUSTER = os.getenv('MONGO_CLUSTER')
+MONGO_DATABASE = os.getenv('MONGO_DATABASE')
+
+# MongoDB URI - use the cluster from your screenshot
+MONGO_URI = f"mongodb+srv://{MONGO_USERNAME}:{MONGO_PASSWORD}@cluster0.sqzac.mongodb.net/{MONGO_DATABASE}?retryWrites=true&w=majority"

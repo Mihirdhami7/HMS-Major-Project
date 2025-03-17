@@ -1,12 +1,12 @@
 import { useNavigate } from "react-router-dom";
-import { FiHome, FiUsers, FiUserPlus, FiFileText, FiCalendar, FiUser, FiPackage } from "react-icons/fi";
+import { FiHome, FiUsers, FiUserPlus, FiFileText, FiCalendar, FiUser, FiPackage} from "react-icons/fi";
 import PropTypes from "prop-types";
 
 // Sidebar Navigation Items for Different User Types
 const slidebars = {
   admin: [
     { icon: FiHome, label: "Dashboard", value: "dashboard" },
-    { icon: FiHome, label: "Add Data", value: "addData" },
+    { icon: FiUserPlus, label: "New Register", value: "newRegister" },
     { icon: FiUserPlus, label: "Products", value: "product" },
     { icon: FiUsers, label: "Departments", value: "department" },
     { icon: FiFileText, label: "Reports", value: "reports" },
@@ -20,6 +20,16 @@ const slidebars = {
     { icon: FiCalendar, label: "Appointments", value: "appointments" },
     { icon: FiFileText, label: "Disease", value: "disease" },
     { icon: FiUser, label: "Profile", value: "profile" },
+  ],
+  supplier: [
+    { icon: FiCalendar, label: "Dashboard", value: "suppdashboard" },
+    { icon: FiFileText, label: "Products", value: "suppproduct" },
+    { icon: FiUser, label: "Profile", value: "profile" },
+  ],
+  superadmin: [
+    { icon: FiCalendar, label: "Dashboard", value: "dashboard" },
+    { icon: FiFileText, label: "Hospitals Data", value: "hospitals" },
+    { icon: FiUser, label: "Reports", value: "reports" },
   ],
 };
 
@@ -44,7 +54,9 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {} }) {
     const allowedPaths = {
       doctor: ['appointments', 'profile', 'medical_products'],
       patient: ['appointments', 'disease', 'profile'],
-      admin: ['dashboard', 'addData', 'product', 'department', 'reports']
+      admin: ['dashboard', 'newRegister', 'product', 'department', 'reports'],
+      supplier: ['suppdashboard', 'suppproduct'],
+      superadmin: ['dashboard', 'hospitals', 'reports']
     };
 
     if (allowedPaths[userType]?.includes(value)) {

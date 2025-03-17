@@ -29,7 +29,7 @@ function DoctorSection() {
   return (
     <div className="flex bg-gray-50">
       <Slidebar activeTab={activeTab} setActiveTab={setActiveTab} userType="doctor" />
-      <div className="flex-1 p-8">
+      <div className="flex-1 p-8 mt-16">
         <Routes>
           <Route path="/doctor/appointments" element={<DoctorAppointments />} />
           <Route path="/doctor/appointments/prescription" element={<Prescription />} />

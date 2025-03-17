@@ -4,8 +4,10 @@ from bson import ObjectId
 
 # Connect to MongoDB
 client = MongoClient(settings.MONGO_URI)
-mongo_db = client[settings.MONGO_DB_NAME]
+mongo_db = client[settings.MONGO_DATABASE]
 users_collection = mongo_db["users"]  # This is the MongoDB collection
+temp_users_collection = mongo_db.temp_users
+otp_collection = mongo_db.otps
 
 class User:
     def __init__(self, name, email, password, contact_no, date_of_birth, user_type, gender, photo=None, _id=None):

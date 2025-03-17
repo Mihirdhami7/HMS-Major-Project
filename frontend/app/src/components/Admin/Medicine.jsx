@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Slidebar from "../../pages/Slidebar";
-import { FiPlus, FiMinus, FiSend, FiDollarSign, FiSearch, FiClock } from 'react-icons/fi';
+import { FiPlus, FiMinus, FiSend, FiDollarSign, FiSearch, FiClock, FiDownload } from 'react-icons/fi';
 
 const Medicine = () => {
   const { appointmentId } = useParams();
@@ -10,6 +10,9 @@ const Medicine = () => {
   const [selectedMedicines, setSelectedMedicines] = useState([]);
   const [totalAmount, setTotalAmount] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
+  const [showPaymentQR, setShowPaymentQR] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState("pending"); // pending, completed, failed
+  const [loading, setLoading] = useState(false);
 
   // Frequently used medicines
   const frequentMedicines = [
@@ -119,6 +122,93 @@ const Medicine = () => {
     }
   };
 
+  const generateQRCode = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('http://127.0.0.1:8000/api/generate-payment-qr/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          amount: totalAmount,
+          appointmentId: appointmentId,
+          medicines: selectedMedicines
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setShowPaymentQR(true);
+        // Start polling for payment status
+        startPaymentStatusCheck(data.paymentId);
+      }
+    } catch (error) {
+      console.error('Error generating QR:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startPaymentStatusCheck = (paymentId) => {
+    const checkInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`http://127.0.0.1:8000/api/check-payment-status/${paymentId}/`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status === 'completed') {
+            setPaymentStatus('completed');
+            clearInterval(checkInterval);
+            generateInvoice();
+          } else if (data.status === 'failed') {
+            setPaymentStatus('failed');
+            clearInterval(checkInterval);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking payment status:', error);
+      }
+    }, 5000); // Check every 5 seconds
+  };
+
+  const generateInvoice = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('http://127.0.0.1:8000/api/generate-invoice/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          appointmentId: appointmentId,
+          medicines: selectedMedicines,
+          totalAmount: totalAmount,
+          paymentStatus: 'completed'
+        })
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `invoice_${appointmentId}.pdf`;
+        a.click();
+      }
+    } catch (error) {
+      console.error('Error generating invoice:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Filter medicines based on search
   const filteredMedicines = Object.entries(medicineDatabase).reduce((acc, [category, medicines]) => {
     const filtered = medicines.filter(medicine => 
@@ -183,36 +273,7 @@ const Medicine = () => {
           </div>
 
           {/* Medicine Selection Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Available Medicines */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h3 className="text-xl font-semibold text-blue-700 mb-4">Available Medicines</h3>
-              
-              {Object.entries(filteredMedicines).map(([category, medicines]) => (
-                <div key={category} className="mb-6">
-                  <h4 className="text-lg font-medium text-green-600 mb-3 capitalize">{category}</h4>
-                  <div className="space-y-3">
-                    {medicines.map(medicine => (
-                      <div key={medicine.id} className="flex items-center justify-between p-3 border border-blue-100 rounded-lg hover:bg-blue-50">
-                        <div>
-                          <p className="font-medium">{medicine.name}</p>
-                          <p className="text-sm text-gray-600">Stock: {medicine.stock}</p>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          <span className="text-green-600">${medicine.price}</span>
-                          <button
-                            onClick={() => addMedicine(medicine)}
-                            className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600"
-                          >
-                            <FiPlus />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div className="grid grid-cols-1">
 
             {/* Selected Medicines & Prescription Details */}
             <div className="bg-white rounded-lg shadow-lg p-6">
@@ -309,6 +370,70 @@ const Medicine = () => {
               )}
             </div>
           </div>
+
+          {/* Updated Payment and Invoice Section */}
+          {selectedMedicines.length > 0 && (
+            <div className="mt-6 bg-white rounded-lg shadow-lg p-6">
+              <div className="flex justify-between items-center text-lg font-semibold mb-4">
+                <span className="flex items-center">
+                  <FiDollarSign className="mr-1" />
+                  Total Amount:
+                </span>
+                <span className="text-green-600">${totalAmount.toFixed(2)}</span>
+              </div>
+
+              {!showPaymentQR ? (
+                <button
+                  onClick={generateQRCode}
+                  disabled={loading}
+                  className="w-full py-3 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-lg flex items-center justify-center hover:from-blue-600 hover:to-green-600"
+                >
+                  {loading ? "Generating QR..." : "Generate Payment QR"}
+                </button>
+              ) : (
+                <div className="text-center">
+                  {paymentStatus === 'pending' && (
+                    <div className="mb-4">
+                      <div className="animate-pulse bg-gray-200 w-64 h-64 mx-auto mb-4"></div>
+                      <p className="text-gray-600">Scan QR code to make payment</p>
+                      <p className="text-sm text-gray-500">Waiting for payment...</p>
+                    </div>
+                  )}
+
+                  {paymentStatus === 'completed' && (
+                    <div className="mb-4">
+                      <div className="bg-green-100 text-green-700 p-4 rounded-lg mb-4">
+                        Payment Completed Successfully!
+                      </div>
+                      <button
+                        onClick={generateInvoice}
+                        disabled={loading}
+                        className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center justify-center mx-auto"
+                      >
+                        <FiDownload className="mr-2" />
+                        {loading ? "Generating Invoice..." : "Download Invoice"}
+                      </button>
+                    </div>
+                  )}
+
+                  {paymentStatus === 'failed' && (
+                    <div className="bg-red-100 text-red-700 p-4 rounded-lg mb-4">
+                      Payment Failed. Please try again.
+                      <button
+                        onClick={() => {
+                          setShowPaymentQR(false);
+                          setPaymentStatus('pending');
+                        }}
+                        className="mt-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                      >
+                        Retry Payment
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

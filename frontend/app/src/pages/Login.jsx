@@ -36,18 +36,30 @@ export default function Login() {
         localStorage.setItem("authToken", data.authToken);
         localStorage.setItem("userEmail", data.userData.email);
         localStorage.setItem("userType", data.userData.userType.toLowerCase());
+        localStorage.setItem("tokenExpiry", data.userData.tokenExpiry);
         
         alert("Login successful!");
         
-        switch(data.userData.userType.toLowerCase()) {
+        // ✅ Superadmin Check (Email + Password Direct Login)
+        if (
+          data.userData.email.toLowerCase() === "21it402@bvmengineering.ac.in" &&
+          formData.password === "MihirDhami7@2520"
+        ) {
+          navigate("/superadmin");
+          return;
+        }
+        switch (data.userData.userType.toLowerCase()) {
           case "patient":
-            navigate("/patient");
+            navigate("/patient"); 
             break;
           case "doctor":
             navigate("/doctor");
             break;
           case "admin":
             navigate("/admin");
+            break;
+          case "supplier": // ✅ Supplier Navigation
+            navigate("/supplier");
             break;
           default:
             navigate("/");
@@ -100,6 +112,8 @@ export default function Login() {
             <option value="Patient">Patient</option>
             <option value="Doctor">Doctor</option>
             <option value="Admin">Admin</option>
+            <option value="Supplier">Supplier</option>
+
           </select>
 
           {/* Login Button */}
