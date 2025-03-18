@@ -1,55 +1,46 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { jwtDecode } from "jwt-decode"; // Using named import
 
 const ProtectedRoute = () => {
-  const token = localStorage.getItem("authToken");
-  const userType = localStorage.getItem("userType");
   const location = useLocation();
+  const userEmail = localStorage.getItem("userEmail");
+  const userType = localStorage.getItem("userType");
 
-  if (!token) {
-    return <Navigate to="/login" />;
-  }
+  // Check if user is authenticated
+  if (!userEmail || !userType) {
+    console.log("No user data found, redirecting to login");
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  } 
 
-  try {
-    const decodedToken = jwtDecode(token);
-    const currentTime = Date.now() / 1000;
-
-    if (decodedToken.exp < currentTime) {
-      // Token has expired
-      localStorage.removeItem("authToken");
-      localStorage.removeItem("userEmail");
-      localStorage.removeItem("userType");
-      return <Navigate to="/login" />;
-    }
-
-    // Check if user is accessing their allowed routes
+  // Special case for superadmin
+  if (userEmail.toLowerCase() === "21it402@bvmengineering.ac.in") {
     const path = location.pathname.toLowerCase();
-    const allowedPaths = {
-      doctor: ['/doctor', '/doctor/appointments', '/doctor/profile', '/doctor/medical_products'],
-      patient: ['/patient', '/patient/appointments', '/patient/disease', '/patient/profile'],
-      admin: ['/admin', '/admin/newRegister', '/admin/product', '/admin/departments', '/admin/reports'],
-      supplier: ['/supplier','/supplier/suppdashboard', '/supplier/suppproduct'],
-      superadmin: ['/superadmin','/superadmin/dashboard', '/superadmin/hospitals', '/superadmin/reports']
-    };
-
-    const userAllowedPaths = allowedPaths[userType] || [];
-    const isAllowedPath = userAllowedPaths.some(allowedPath => 
-      path.startsWith(allowedPath.toLowerCase())
-    );
-
-    if (!isAllowedPath) {
-      console.log(`User of type ${userType} attempted to access unauthorized path: ${path}`);
-      return <Navigate to={`/${userType}`} />;
+    if (!path.startsWith('/superadmin')) {
+      console.log("Superadmin redirected to dashboard");
+      return <Navigate to="/superadmin" replace />;
     }
-
     return <Outlet />;
-  } catch { // Use underscore to indicate unused parameter
-    // Invalid token
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("userEmail");
-    localStorage.removeItem("userType");
-    return <Navigate to="/login" />;
   }
+
+  // Check if user is accessing their allowed routes
+  const path = location.pathname.toLowerCase();
+  const allowedPaths = {
+    doctor: ['/doctor', '/doctor/appointments', '/doctor/profile', '/doctor/medical_products'],
+    patient: ['/patient', '/patient/appointments', '/patient/disease', '/patient/profile', '/patient/appointments/book'],
+    admin: ['/admin', '/admin/newregister', '/admin/product', '/admin/departments', '/admin/reports'],
+    supplier: ['/supplier', '/supplier/suppdashboard', '/supplier/suppproduct']
+  };
+
+  const userAllowedPaths = allowedPaths[userType.toLowerCase()] || [];
+  const isAllowedPath = userAllowedPaths.some(allowedPath => 
+    path.startsWith(allowedPath.toLowerCase())
+  );
+
+  if (!isAllowedPath) {
+    console.log(`User of type ${userType} attempted to access unauthorized path: ${path}`);
+    return <Navigate to={`/${userType.toLowerCase()}`} replace />;
+  }
+
+  return <Outlet />;
 };
 
 export default ProtectedRoute;

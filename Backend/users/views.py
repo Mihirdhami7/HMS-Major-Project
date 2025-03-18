@@ -19,6 +19,11 @@ from pymongo.errors import ConnectionFailure
 import ssl
 from bson.objectid import ObjectId
 
+from django.contrib.sessions.models import Session
+from django.contrib.sessions.backends.db import SessionStore
+from django.utils import timezone
+
+
 # Update MongoDB connection
 try:
     client = MongoClient(settings.MONGO_URI)
@@ -29,23 +34,22 @@ try:
     temp_users_collection = db["temp_users"]
     otp_collection = db["otps"]
     payments_collection = db["payments"]
-    appointments_collection = db["appointments"]
     departments_collection = db["departments"]
     hospitals_collection = db["hospitals"]
+
     departments_collection = db["departments"]
     products_collection = db["products"]
     notifications_collection = db["notifications"]
+
+
+    temp_appointments_collection = db["temp_appointments"]
+    appointments_collection = db["appointments"]
+
     print("Successfully connected to MongoDB Atlas!")
 except Exception as e:
     print(f"Error connecting to MongoDB Atlas: {e}")
 
 SECRET_KEY = "1fy%j02cvs&0$)-ny@3pj6l$+p)%cl6_ogu0h8-z=!&sy*v_ju"
-
-
-
-
-
-
 
 
 # logic for user registration, verification and login views 
@@ -229,6 +233,7 @@ def verify_email(request):
 
     return JsonResponse({"status": "error", "message": "Invalid request method"}, status=405)
 
+
 @csrf_exempt
 def login_view(request):
     if request.method == "POST":
@@ -244,9 +249,9 @@ def login_view(request):
                     "message": "Email and password are required"
                 }, status=400)
             
-            # ✅ Check if the user is a Superadmin
+            # For Superadmin, ignore category filter
             if email.lower() == "21it402@bvmengineering.ac.in":
-                user = users_collection.find_one({"email": email})  # Ignore category filter for Superadmin
+                user = users_collection.find_one({"email": email})
             else:
                 user = users_collection.find_one({"email": email, "userType": category})
 
@@ -257,121 +262,48 @@ def login_view(request):
                 }, status=404)
 
             stored_hashed_password = user.get("hpassword", "").encode("utf-8")
-            if not stored_hashed_password:
-                return JsonResponse({
-                    "status": "error",
-                    "message": "Invalid user data"
-                }, status=400)
-
-            if bcrypt.checkpw(password.encode("utf-8"), stored_hashed_password):
-                # Generate token with 4-hour expiration
-                current_time = datetime.utcnow()
-                expiry_time = current_time + timedelta(hours=40)
-                
-                payload = {
-                    "user_id": str(user["_id"]),
-                    "email": user["email"],
-                    "userType": user["userType"],
-                    "iat": current_time,  # Token creation time
-                    "exp": expiry_time    # Token expiry time
-                }
-                
-                token = pyjwt.encode(payload, SECRET_KEY, algorithm="HS256")
-                
-                # Remove sensitive data before sending
-                user_data = {
-                    "_id": str(user["_id"]),
-                    "name": user.get("name", ""),
-                    "email": user["email"],
-                    "contactNo": user.get("contactNo", ""),
-                    "userType": user["userType"],
-                    "gender": user.get("gender", ""),
-                    "photo": user.get("photo"),
-                    "tokenExpiry": expiry_time.timestamp()  # Send expiry time to client
-                }
-
-                if user["userType"] == "Doctor":
-                    user_data.update({
-                        "doctorQualification": user.get("doctorQualification", ""),
-                        "doctorSpecialization": user.get("doctorSpecialization", "")
-                    })
-
-                return JsonResponse({
-                    "status": "success",
-                    "message": "Login successful",
-                    "authToken": token,
-                    "userData": user_data
-                }, status=200)
-            else:
+            if not stored_hashed_password or not bcrypt.checkpw(password.encode("utf-8"), stored_hashed_password):
                 return JsonResponse({
                     "status": "error",
                     "message": "Invalid email or password"
                 }, status=401)
 
-        except json.JSONDecodeError:
+            # Create and store session using Django's session framework
+            request.session["user_email"] = user["email"]
+            request.session["userType"] = user["userType"]
+            
+            request.session.set_expiry(14400)  # 4 hours
+
             return JsonResponse({
-                "status": "error",
-                "message": "Invalid JSON data"
-            }, status=400)
+                "status": "success",
+                "message": "Login successful",
+                "userData": {
+                    "email": user["email"],
+                    "userType": user["userType"]
+                }
+            })
         except Exception as e:
             print(f"Login error: {str(e)}")
-            return JsonResponse({
-                "status": "error",
-                "message": "Login failed"
-            }, status=500)
+            return JsonResponse({"status": "error", "message": "Login failed"}, status=500)
 
-    return JsonResponse({
-        "status": "error",
-        "message": "Method not allowed"
-    }, status=405)
+    return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
 
 @csrf_exempt
 def logout_view(request):
     if request.method == "POST":
         try:
-            # Get the token from header
-            auth_header = request.headers.get('Authorization')
-            if not auth_header or not auth_header.startswith('Bearer '):
-                return JsonResponse({"status": "error", "message": "No token provided"}, status=401)
-            
-            token = auth_header.split(' ')[1]
-            
-            try:
-                # Decode token to get user info
-                payload = pyjwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-                
-                # Force token expiration by updating exp to current time
-                payload['exp'] = datetime.utcnow()
-                
-                return JsonResponse({
-                    "status": "success",
-                    "message": "Logged out successfully"
-                })
-                
-            except pyjwt.ExpiredSignatureError:
-                return JsonResponse({
-                    "status": "success",
-                    "message": "Token already expired"
-                })
-            except pyjwt.InvalidTokenError:
-                return JsonResponse({
-                    "status": "error",
-                    "message": "Invalid token"
-                }, status=401)
-                
+            # Clear the session using Django's session framework
+            request.session.flush()
+            return JsonResponse({
+                "status": "success",
+                "message": "Logged out successfully"
+            }, status=200)
         except Exception as e:
             return JsonResponse({
                 "status": "error",
                 "message": str(e)
             }, status=500)
-
-    return JsonResponse({
-        "status": "error",
-        "message": "Method not allowed"
-    }, status=405)
-
-
-
+    return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
 
 
 
@@ -748,7 +680,7 @@ def book_appointment(request):
         try:
             data = json.loads(request.body)
 
-            # Ensure doctor exists
+            # Validate Doctor
             doctor = users_collection.find_one({
                 "_id": ObjectId(data["doctorId"]),
                 "userType": "Doctor"
@@ -756,7 +688,7 @@ def book_appointment(request):
             if not doctor:
                 return JsonResponse({"status": "error", "message": "Doctor not found"}, status=404)
 
-            # Ensure patient exists
+            # Validate Patient
             patient = users_collection.find_one({
                 "_id": ObjectId(data["patientId"]),
                 "userType": "Patient"
@@ -764,35 +696,36 @@ def book_appointment(request):
             if not patient:
                 return JsonResponse({"status": "error", "message": "Patient not found"}, status=404)
 
-            # Payment processing
-            payment_data = {
-                "patientId": data["patientId"],
-                "amount": data["amount"],
-                "paymentStatus": "Pending",  # Payment gateway integration required
-                "created_at": datetime.now()
-            }
-            payment_result = payments_collection.insert_one(payment_data)
-            payment_id = str(payment_result.inserted_id)
+            # # Store Payment (Pending)
+            # payment_data = {
+            #     "patientId": data["patientId"],
+            #     "amount": data["amount"],
+            #     "paymentStatus": "Pending",
+            #     "created_at": datetime.now()
+            # }
+            # payment_result = payments_collection.insert_one(payment_data)
+            # payment_id = str(payment_result.inserted_id)
 
-            # Create Appointment
-            appointment_data = {
+            # Store Appointment in Temporary Collection
+            temp_appointment_data = {
                 "patientId": data["patientId"],
                 "doctorId": data["doctorId"],
                 "hospital": data["hospital"],
                 "department": data["department"],
                 "date": data["date"],
-                "timeSlot": None,  # Assigned by Admin
-                "status": "Pending",  # Admin approves
-                "paymentId": payment_id,
+                "timeSlot": data["timeSlot"],  # Now accepting selected time slot
+                "healthIssues": data["healthIssues"],
+                "status": "Pending",  # Awaiting admin approval
+                "paymentId": "null",
                 "created_at": datetime.now()
             }
 
-            result = appointments_collection.insert_one(appointment_data)
+            result = temp_appointments_collection.insert_one(temp_appointment_data)
 
             if result.inserted_id:
                 return JsonResponse({
                     "status": "success",
-                    "message": "Appointment booked, awaiting approval",
+                    "message": "Appointment request submitted. Awaiting approval.",
                     "appointmentId": str(result.inserted_id)
                 })
 
@@ -854,27 +787,7 @@ def approve_appointment(request, appointment_id):
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
-# ✅ Patient Confirms or Rejects Assigned Time Slot
-@csrf_exempt
-def confirm_appointment(request, appointment_id):
-    if request.method == "PUT":
-        try:
-            data = json.loads(request.body)
-            if data["confirm"] not in [True, False]:
-                return JsonResponse({"status": "error", "message": "Invalid confirmation"}, status=400)
 
-            new_status = "Confirmed" if data["confirm"] else "Rejected by Patient"
-            result = appointments_collection.update_one(
-                {"_id": ObjectId(appointment_id)},
-                {"$set": {"status": new_status}}
-            )
-
-            if result.modified_count > 0:
-                return JsonResponse({"status": "success", "message": f"Appointment {new_status}"})
-            return JsonResponse({"status": "error", "message": "Appointment not found"}, status=404)
-
-        except Exception as e:
-            return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
 # ✅ Fetch Pending Appointments (For Admin Approval)
 @csrf_exempt
@@ -892,6 +805,14 @@ def get_pending_appointments(request):
 
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+
+
+
+
+
+
+
 
 
 

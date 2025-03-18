@@ -7,7 +7,6 @@ import { FiMenu, FiX, FiMoon, FiSun, FiBell, FiUser, FiLogOut } from "react-icon
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
-  const [mounted, setMounted] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userType, setUserType] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -15,21 +14,6 @@ export default function Header() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    setMounted(true);
-
-    // Check authentication status from localStorage
-    const token = localStorage.getItem("authToken");
-    const storedUserType = localStorage.getItem("userType");
-    const storedEmail = localStorage.getItem("userEmail");
-    
-    if (token) {
-        setIsAuthenticated(true);
-        setUserType(storedUserType);
-        setUserEmail(storedEmail);
-    }
-  }, []);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -40,52 +24,62 @@ export default function Header() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // Add token check effect
+  
   useEffect(() => {
-    const checkTokenExpiration = () => {
-      const token = localStorage.getItem("authToken");
-      const tokenExpiry = localStorage.getItem("tokenExpiry");
+    const checkSession = async () => {
+      // Check if user data exists in localStorage
+      const storedEmail = localStorage.getItem('userEmail');
+      const storedType = localStorage.getItem('userType');
+
+      console.log("Checking session:", { storedEmail, storedType }); // Debug log
       
-      if (token && tokenExpiry) {
-        const currentTime = Math.floor(Date.now() / 1000);
-        if (currentTime >= parseInt(tokenExpiry)) {
-          // Token has expired, log out user
-          handleLogout();
-          alert("Your session has expired. Please login again.");
-        }
+      if (storedEmail && storedType) {
+        setIsAuthenticated(true);
+        setUserEmail(storedEmail);
+        setUserType(storedType);
+        
+      } else {
+        setIsAuthenticated(false);
+        setUserEmail("");
+        setUserType("");
+        localStorage.clear(); // Clear all localStorage
+        navigate("/login");
       }
     };
 
-    // Check token expiration every minute
-    const intervalId = setInterval(checkTokenExpiration, 60000);
+    checkSession();
+  }, [navigate]);
+  
+    const handleLogout = async () => {
+      try {
+        await fetch("http://127.0.0.1:8000/api/logout/", {
+          method: "POST",
+          credentials: "include",
+        });
 
-    // Initial check
-    checkTokenExpiration();
+          // Clear everything regardless of response
+        localStorage.clear(); // Use clear() instead of removing items one by one
+        setIsAuthenticated(false);
+        setUserEmail("");
+        setUserType("");
+        setShowDropdown(false);
 
-    // Cleanup interval on component unmount
-    return () => clearInterval(intervalId);
-  },);
+        navigate("/login", { replace: true });
+      } catch (err) {
 
-  const handleLogout = () => {
-    try {
-      // Remove auth data from localStorage
-      localStorage.removeItem("authToken");
-      localStorage.removeItem("userEmail");
-      localStorage.removeItem("userType");
-      
-      // Reset state
-      setIsAuthenticated(false);
-      setUserType("");
-      setUserEmail("");
-      setShowDropdown(false);
-      
-      // Navigate to login page
-      navigate("/login", { replace: true });
-    } catch (error) {
-      console.error("Logout error:", error);
-      navigate("/login", { replace: true });
-    }
-  };
+        console.error("Logout error:", err);
+
+        setIsAuthenticated(false);
+        setUserEmail("");
+        setUserType("");
+        setShowDropdown(false);
+        navigate("/login", { replace: true });
+      }
+    };
+  
+    // ...rest of the existing code...
+  
+
 
   // Add sample notifications (replace with real notifications later)
   const sampleNotifications = [
@@ -114,8 +108,6 @@ export default function Header() {
       return newTheme;
     });
   };
-
-  if (!mounted) return null;
 
   return (
     <header className="bg-white dark:bg-gray-800 shadow-sm fixed w-full z-50">

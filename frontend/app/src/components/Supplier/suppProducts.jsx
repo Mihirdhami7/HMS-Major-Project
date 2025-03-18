@@ -433,19 +433,31 @@ const SupplierPortal = () => {
                 />
               </div>
               <div>
-                <label htmlFor="category" className="block text-sm font-medium text-gray-700">Category</label>
+                <label htmlFor="Department" className="block text-sm font-medium text-gray-700">Category</label>
+                <select
+                  id="department"
+                  value={newProduct.department}
+                  onChange={(e) => setNewProduct({...newProduct, department: e.target.value})}
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                >
+                  <option>orthopedic</option>
+                  <option>pediatric</option>
+                  <option>Cardiology</option>
+                  <option>neurology</option>
+                  <option>generic</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="category" className="block text-sm font-medium text-gray-700">Type</label>
                 <select
                   id="category"
                   value={newProduct.category}
                   onChange={(e) => setNewProduct({...newProduct, category: e.target.value})}
                   className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 >
-                  <option>Pain Relief</option>
-                  <option>Antibiotic</option>
-                  <option>Antihistamine</option>
-                  <option>Gastric</option>
-                  <option>Cardiovascular</option>
-                  <option>Diabetes</option>
+                  <option>medicine</option>
+                  <option>equpiment</option>
+                  
                 </select>
               </div>
               <div>
@@ -471,16 +483,6 @@ const SupplierPortal = () => {
                   id="stock"
                   value={newProduct.stock}
                   onChange={(e) => setNewProduct({...newProduct, stock: e.target.value})}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                />
-              </div>
-              <div>
-                <label htmlFor="expiryDate" className="block text-sm font-medium text-gray-700">Expiry Date</label>
-                <input
-                  type="date"
-                  id="expiryDate"
-                  value={newProduct.expiryDate}
-                  onChange={(e) => setNewProduct({...newProduct, expiryDate: e.target.value})}
                   className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 />
               </div>

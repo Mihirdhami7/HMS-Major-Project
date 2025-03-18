@@ -28,41 +28,49 @@ export default function Login() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(formData),
+        credentials: "include",
       });
 
       const data = await response.json();
+      console.log("Login response:", data);
 
-      if (response.ok) {
-        localStorage.setItem("authToken", data.authToken);
+      if (response.ok && data.status === "success") {
+        // Store user data
         localStorage.setItem("userEmail", data.userData.email);
         localStorage.setItem("userType", data.userData.userType.toLowerCase());
-        localStorage.setItem("tokenExpiry", data.userData.tokenExpiry);
+
+        // Debug log to verify storage
+        console.log("Stored in localStorage:", {
+          email: localStorage.getItem("userEmail"),
+          userType: localStorage.getItem("userType")
+        });
+
         
-        alert("Login successful!");
-        
-        // ✅ Superadmin Check (Email + Password Direct Login)
+        const userType = data.userData.userType.toLowerCase();
+        // Superadmin check
         if (
           data.userData.email.toLowerCase() === "21it402@bvmengineering.ac.in" &&
           formData.password === "MihirDhami7@2520"
         ) {
-          navigate("/superadmin");
+          navigate("/superadmin", { replace: true });
           return;
         }
-        switch (data.userData.userType.toLowerCase()) {
+        
+        switch(userType) {
           case "patient":
-            navigate("/patient"); 
+            navigate("/patient", { replace: true });
             break;
           case "doctor":
-            navigate("/doctor");
+            navigate("/doctor", { replace: true });
             break;
           case "admin":
-            navigate("/admin");
+            navigate("/admin", { replace: true });
             break;
-          case "supplier": // ✅ Supplier Navigation
-            navigate("/supplier");
+          case "supplier":
+            navigate("/supplier", { replace: true });
             break;
           default:
-            navigate("/");
+            navigate("/", { replace: true });
         }
       } else {
         setError(data.message || "Login failed");
@@ -73,8 +81,7 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
-  };
-
+};
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center py-8">
       <div className="bg-white shadow-lg rounded-lg p-8 w-full max-w-md">

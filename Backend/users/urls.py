@@ -6,7 +6,7 @@ from .views import (
     #patient views
     get_patient, add_patient, search_patient, update_patient, delete_patient,
     #appointment views
-    get_appointments, book_appointment, approve_appointment, confirm_appointment, get_pending_appointments,
+    get_appointments, book_appointment, approve_appointment,  get_pending_appointments,
     #hospital views
     get_hospitals, add_hospital, update_hospital, delete_hospital,
     #department views
@@ -14,7 +14,7 @@ from .views import (
     #product views
     get_products, add_product, update_product, delete_product,
     #stock views
-    request_restock, check_stock_levels, supplier_get_products, add_stock
+    request_restock, check_stock_levels, supplier_get_products, add_stock,
 
 )
 
@@ -26,6 +26,7 @@ urlpatterns = [
     path('profile/<str:user_type>/<str:email>/', get_user_profile, name='get_user_profile'),
     path('profile/update/', update_user_profile, name='update_user_profile'),
 
+   
     #doctor views
     path('doctor_by_hospital/', get_doctors_by_hospital, name='doctor_by_hospital'),
     path('doctor_by_department/', get_doctors_by_department, name='doctor_by_department'),
@@ -46,7 +47,7 @@ urlpatterns = [
     path('book_appointment', book_appointment, name='book_appointment'),
     path('approve_appointment', approve_appointment, name='approve_appointment'),
     #path('cancel_appointment', cancel_appointment, name='cancel_appointment'),
-    path('confirm_appointment', confirm_appointment, name='confirm_appointment'),
+
     path('get_pending_appointment', get_pending_appointments, name='get_pending_appointment'),
 
     #hospital views

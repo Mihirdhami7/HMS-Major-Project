@@ -11,6 +11,7 @@ import SignUp from "../pages/Signup"
 import PatientSection from "../pages/PatientSection"
 import Appointment from "../components/Patients/Appointments"
 import Disease from "../components/Patients/Disease"    
+import Book from "../components/Patients/Book"
 
 import DoctorSection from "../pages/DoctorSection"
 import DoctorAppointments from '../components/Doctors/Dappointments'
@@ -62,8 +63,10 @@ const Routers = () => {
                 {/* Patient Routes */}
                 <Route path="/patient" element={<PatientSection />} />
                 <Route path="/patient/appointments" element={<Appointment />} />
+                <Route path="/patient/appointments/book" element={<Book />} />
                 <Route path="/patient/disease" element={<Disease />} />
                 <Route path="/patient/profile/:email" element={<Profiile />} />
+
 
                 {/* Admin Routes */}
                 <Route path="/admin" element={<AdminSection />} />

@@ -1,4 +1,4 @@
-import React from "react";
+
 import { useParams } from "react-router-dom";
 import Slidebar from "../../pages/Slidebar";
 

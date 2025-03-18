@@ -1,6 +1,8 @@
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 
 export default function Signup() {
@@ -30,6 +32,10 @@ export default function Signup() {
   const [otp, setOtp] = useState("");
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
+
+  const handleDateChange = (date) => {
+    setFormData({ ...formData, dateOfBirth: date });
+  };
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -222,7 +228,15 @@ export default function Signup() {
             {errors.contactNo && <p className="text-red-500 text-sm">{errors.contactNo}</p>}
 
             <label className="block text-gray-700">Date of Birth</label>
-            <input name="dateOfBirth" type="date"  className="w-full p-2 border rounded" value={formData.dateOfBirth} onChange={handleChange} />
+            <DatePicker
+              selected={formData.dateOfBirth}
+              onChange={handleDateChange}
+              className="w-full p-2 border rounded"
+              dateFormat="yyyy/mm/dd"  // Custom date format
+              showYearDropdown
+              scrollableYearDropdown
+              yearDropdownItemNumber={100} // Allow scrolling through years
+            />
             {errors.dateOfBirth && <p className="text-red-500 text-sm">{errors.dateOfBirth}</p>}
 
             <select name="userType" className="w-full p-2 border rounded" value={formData.userType} onChange={handleChange}>
