@@ -11,7 +11,6 @@ import SignUp from "../pages/Signup"
 import PatientSection from "../pages/PatientSection"
 import Appointment from "../components/Patients/Appointments"
 import Disease from "../components/Patients/Disease"    
-import Book from "../components/Patients/Book"
 
 import DoctorSection from "../pages/DoctorSection"
 import DoctorAppointments from '../components/Doctors/Dappointments'
@@ -23,6 +22,7 @@ import Profiile from "../pages/Profile"
 
 import NewRegister from "../components/Admin/NewRegister"
 import Products from "../components/Admin/Products"
+import GiveMedicine from '../components/Admin/GiveMedicine'
 import Medicine from "../components/Admin/Medicine"
 import AdminSection from "../pages/AdminSection"
 import Department from "../components/Admin/Department"
@@ -63,17 +63,18 @@ const Routers = () => {
                 {/* Patient Routes */}
                 <Route path="/patient" element={<PatientSection />} />
                 <Route path="/patient/appointments" element={<Appointment />} />
-                <Route path="/patient/appointments/book" element={<Book />} />
+                
                 <Route path="/patient/disease" element={<Disease />} />
                 <Route path="/patient/profile/:email" element={<Profiile />} />
 
 
                 {/* Admin Routes */}
                 <Route path="/admin" element={<AdminSection />} />
+                <Route path="/admin/givemedicine" element={<GiveMedicine />} />
+                <Route path="/admin/givemedicine/medicine" element={<Medicine />} />
                 <Route path="/admin/dashboard" element={<Dashboard />} />
                 <Route path="/admin/newRegister" element={<NewRegister />} />
                 <Route path="/admin/product" element={<Products />} />
-                <Route path="/admin/product/medicine" element={<Medicine />} />
                 <Route path="/admin/department" element={<Department />} />
 
                 {/* Supplier Routes */}

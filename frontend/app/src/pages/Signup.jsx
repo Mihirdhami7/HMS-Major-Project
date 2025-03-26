@@ -9,11 +9,11 @@ export default function Signup() {
   const navigate = useNavigate();
   const [step, setStep] = useState("registration"); // registration, verification
   const departments = [
-    "Cardiology",
-    "Neurology",
-    "Orthopedics",
-    "Pediatrics",
-    "Generic"
+    "cardiology",
+    "neurology",
+    "orthopedic",
+    "pediatrics",
+    "general medicine",
   ];
   const [formData, setFormData] = useState({
     name: "",
@@ -88,7 +88,30 @@ export default function Signup() {
     else if (!phonePattern.test(formData.contactNo)) newErrors.contactNo = "Contact number must be exactly 10 digits";
 
     // Date of Birth validation
-    if (!formData.dateOfBirth) newErrors.dateOfBirth = "Date of Birth is required";
+    if (!formData.dateOfBirth) {
+      newErrors.dateOfBirth = "Date of Birth is required";
+    } else {
+      if(formData.userType === "Doctor") {
+        // Age validation (now applied to all users)
+        const today = new Date();
+        const birthDate = new Date(formData.dateOfBirth);
+        const age = today.getFullYear() - birthDate.getFullYear();
+      
+        // Adjust age if birthday hasn't occurred yet this year
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          const adjustedAge = age - 1;
+          
+          if (adjustedAge < 18) {
+            newErrors.dateOfBirth = "You must be at least 18 years old to register";
+          }
+        } else {
+          if (age < 18) {
+            newErrors.dateOfBirth = "You must be at least 18 years old to register";
+          }
+        }
+    }
+  }
 
     // Doctor-specific fields validation
     if (formData.userType === "Doctor") {
@@ -135,6 +158,8 @@ export default function Signup() {
         if (response.data.debug_otp) {
           setOtp(response.data.debug_otp);
         }
+        console.log("%c OTP CODE: " + response.data.debug_otp, "background: #222; color: #bada55; font-size: 16px; padding: 10px;");
+        
       }
     } catch (error) {
       setMessage(error.response?.data?.message || "An error occurred during signup");
@@ -232,7 +257,7 @@ export default function Signup() {
               selected={formData.dateOfBirth}
               onChange={handleDateChange}
               className="w-full p-2 border rounded"
-              dateFormat="yyyy/mm/dd"  // Custom date format
+              dateFormat="dd/MM/yyyy"  // Custom date format
               showYearDropdown
               scrollableYearDropdown
               yearDropdownItemNumber={100} // Allow scrolling through years

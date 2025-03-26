@@ -1,5 +1,4 @@
 # Environment variables
-.env 
 backend/.env
 backend/venv/
 backend/__pycache__/

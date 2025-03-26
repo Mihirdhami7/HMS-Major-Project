@@ -10,12 +10,14 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+
 from pathlib import Path
 from datetime import timedelta
 import os
 from dotenv import load_dotenv
 from urllib.parse import quote_plus
 
+# Load environment variables
 load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -37,10 +39,10 @@ ALLOWED_HOSTS = ["*"]  # Allow all hosts in development
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
     'django.contrib.sessions',
+    'django.contrib.auth',
+    'django.contrib.admin',
+    'django.contrib.contenttypes',
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',
@@ -50,8 +52,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -133,26 +135,51 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",  
     "http://localhost:5173",  # React frontend URL
 ]
 
-SESSION_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = False
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'cache-control',  # Add this explicitly
+]
 
+# Session settings
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+SESSION_COOKIE_NAME = 'easytreat_sessionid'
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+SESSION_COOKIE_SAMESITE = 'Lax'  # Use 'None' if frontend and backend are on different domains
+SESSION_EXPIRY_HOURS = 4
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  # Fallback value for development
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # You need to set this in .env file
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+EMAIL_HOST_USER = 'hmstemp07@gmail.com'  # Your email address
+EMAIL_HOST_PASSWORD = 'ivdi baqv kzdj tqzd'  # Your email password or app password
+DEFAULT_FROM_EMAIL = 'HMS Healthcare <hmstemp07@gmail.com>'
 
 EMAIL_TIMEOUT = 60
 
 # For development/testing, use console backend to avoid email sending:
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # This will print emails to console instead of sending
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # This will print emails to console instead of sending
 
 # OTP Settings
 OTP_SETTINGS = {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom"; // ✅ Import navigation hook
+import { useNavigate } from "react-router-dom";
 
 export default function Login() {
   const [formData, setFormData] = useState({
@@ -10,7 +10,7 @@ export default function Login() {
 
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate(); // ✅ Use react-router for redirection
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -22,41 +22,56 @@ export default function Login() {
     setError(null);
 
     try {
+      console.log("Attempting login with:", { 
+        email: formData.email, 
+        category: formData.category 
+      });
+      
       const response = await fetch("http://127.0.0.1:8000/api/login/", {
         method: "POST",
+        credentials: "include", // This ensures cookies are sent & received
         headers: {
           "Content-Type": "application/json",
+          "Accept": "application/json"
         },
-        body: JSON.stringify(formData),
-        credentials: "include",
+        body: JSON.stringify(formData)
       });
 
       const data = await response.json();
       console.log("Login response:", data);
 
       if (response.ok && data.status === "success") {
-        // Store user data
-        localStorage.setItem("userEmail", data.userData.email);
-        localStorage.setItem("userType", data.userData.userType.toLowerCase());
-
-        // Debug log to verify storage
-        console.log("Stored in localStorage:", {
-          email: localStorage.getItem("userEmail"),
-          userType: localStorage.getItem("userType")
-        });
-
+        let userType = data.userData.userType;
+        const email = data.userData.email.toLowerCase();
         
-        const userType = data.userData.userType.toLowerCase();
+        if (userType) {
+          userType = userType.toLowerCase();
+        } else {
+          console.error("userType is undefined");
+          setError("Invalid user type received");
+          return;
+        }
+
+
+        sessionStorage.setItem("session_Id", data.session_Id);
+        sessionStorage.setItem("userType", userType);
+        sessionStorage.setItem("email", email);
+        sessionStorage.setItem("name", data.userData.name);
+
+
+        console.log("Login successful user data are ", data.userData);
+
+         // Debug: Check user type before redirection
+        console.log("About to redirect based on userType:", userType);
+
         // Superadmin check
-        if (
-          data.userData.email.toLowerCase() === "21it402@bvmengineering.ac.in" &&
-          formData.password === "MihirDhami7@2520"
-        ) {
+        if (email === "21it402@bvmengineering.ac.in" && formData.password === "MihirDhami7@2520") {
           navigate("/superadmin", { replace: true });
           return;
         }
-        
-        switch(userType) {
+
+        // Redirect based on user type
+        switch (userType) {
           case "patient":
             navigate("/patient", { replace: true });
             break;
@@ -81,61 +96,81 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
-};
+  };
+
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center py-8">
-      <div className="bg-white shadow-lg rounded-lg p-8 w-full max-w-md">
-        <h2 className="text-2xl font-bold text-gray-800 text-center">
-          Hello! <span className="text-blue-600">Welcome Back</span> 🎉
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-green-50 flex items-center justify-center py-8">
+      <div className="bg-white shadow-2xl rounded-lg p-8 w-full max-w-md">
+        <h2 className="text-2xl font-bold text-gray-800 text-center mb-6">
+          Welcome to <span className="text-blue-600">EasyTreat</span> 🏥
         </h2>
 
-        {error && <div className="text-red-600 text-center">{error}</div>}
+        {error && (
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
+            <p className="text-red-700">{error}</p>
+          </div>
+        )}
         
-        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-          <input
-            type="email"
-            name="email"
-            placeholder="Email"
-            value={formData.email}
-            onChange={handleChange}
-            className="w-full p-3 border border-gray-300 rounded-md focus:ring focus:ring-blue-300"
-          />
-          <input
-            type="password"
-            name="password"
-            placeholder="Password"
-            value={formData.password}
-            onChange={handleChange}
-            className="w-full p-3 border border-gray-300 rounded-md focus:ring focus:ring-blue-300"
-          />
+        <form className="mt-6 space-y-6" onSubmit={handleSubmit}>
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+            <input
+              id="email"
+              type="email"
+              name="email"
+              placeholder="Enter your email"
+              value={formData.email}
+              onChange={handleChange}
+              required
+              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input
+              id="password"
+              type="password"
+              name="password"
+              placeholder="Enter your password"
+              value={formData.password}
+              onChange={handleChange}
+              required
+              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
 
           {/* Category Dropdown */}
-          <select
-            name="category"
-            value={formData.category}
-            onChange={handleChange}
-            className="w-full p-3 border border-gray-300 rounded-md"
-          >
-            <option value="Patient">Patient</option>
-            <option value="Doctor">Doctor</option>
-            <option value="Admin">Admin</option>
-            <option value="Supplier">Supplier</option>
-
-          </select>
+          <div>
+            <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">User Type</label>
+            <select
+              id="category"
+              name="category"
+              value={formData.category}
+              onChange={handleChange}
+              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="Patient">Patient</option>
+              <option value="Doctor">Doctor</option>
+              <option value="Admin">Admin</option>
+              <option value="Supplier">Supplier</option>
+            </select>
+          </div>
 
           {/* Login Button */}
           <button
             type="submit"
-            className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700"
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-blue-500 to-green-500 text-white py-3 px-6 rounded-md hover:from-blue-600 hover:to-green-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:opacity-70"
           >
             {loading ? "Logging in..." : "Login"}
           </button>
         </form>
 
         {/* Register Link */}
-        <p className="mt-4 text-center text-gray-600">
-            Do not have an account?{" "}
-          <a href="/register" className="text-blue-600">
+        <p className="mt-6 text-center text-gray-600">
+          Dont have an account?{" "}
+          <a href="/register" className="text-blue-600 hover:text-blue-800 font-medium">
             Register
           </a>
         </p>

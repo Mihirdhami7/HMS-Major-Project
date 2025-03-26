@@ -20,7 +20,7 @@ const SupplierPortal = () => {
   // Supplier company info
   const supplierInfo = {
     name: "PharmaCo Medical Supplies",
-    logo: "P",
+    
     totalProducts: 35,
     pendingOrders: 8,
     lowStockRequests: 3,

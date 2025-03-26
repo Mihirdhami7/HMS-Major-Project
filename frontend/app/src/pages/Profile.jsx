@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { FiUser, FiMail, FiPhone, FiCalendar, FiMapPin, FiEdit, FiSave, FiX } from "react-icons/fi";
 import { MdOutlineSchool, MdOutlineMedicalServices } from "react-icons/md";
 import Slidebar from "../pages/Slidebar";
 import axios from "axios";
+import { useParams } from "react-router-dom";
 
-function UserProfile() {
+function Profile() {  // Changed name to match what's imported in routes
     const navigate = useNavigate();
-    const { email } = useParams();
     const [userData, setUserData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -16,29 +16,34 @@ function UserProfile() {
     const [profilePhoto, setProfilePhoto] = useState(null);
     const [photoPreview, setPhotoPreview] = useState(null);
 
-    // Get and normalize user type from localStorage
-    const storedUserType = localStorage.getItem("userType");
+    // Get user information from sessionStorage
+    const storedUserType = sessionStorage.getItem("userType");
     const userType = storedUserType ? storedUserType.toLowerCase() : null;
     const isDoctor = userType === "doctor";
+
+    const sessionID = sessionStorage.getItem("session_Id");
+    const { email: urlEmail } = useParams();
+     // Use the email from session storage as backup if URL param is null
+     const emailToUse = urlEmail !== "null" && urlEmail ? urlEmail : sessionStorage.getItem("email");
 
     useEffect(() => {
         const fetchUserProfile = async () => {
             try {
-                const token = localStorage.getItem("authToken");
-                
-                if (!token || !email || !userType) {
-                    console.log("Missing required data:", { token, email, userType });
+                // Fix logical OR operator (changed from | to ||)
+                if (!sessionID || !emailToUse || !userType) {
+                    console.log("Missing required data:", { sessionID, emailToUse, userType });
                     navigate("/login");
                     return;
                 }
 
-                console.log(`Fetching ${userType} profile for: ${email}`);
+                console.log(`Fetching ${userType} profile for: ${emailToUse}`);
 
                 const response = await axios.get(
-                    `http://127.0.0.1:8000/api/profile/${userType}/${email}/`,
+                    `http://127.0.0.1:8000/api/profile/${userType}/${emailToUse}/`,
                     {
                         headers: {
-                            Authorization: `Bearer ${token}`
+                            
+                            Authorization: `Bearer ${sessionID}`
                         }
                     }
                 );
@@ -57,7 +62,7 @@ function UserProfile() {
         };
 
         fetchUserProfile();
-    }, [navigate, email, userType]);
+    }, [navigate, emailToUse, userType, sessionID]);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -79,51 +84,67 @@ function UserProfile() {
         }
     };
 
+
+    const getLinkPath = (userType, value) => {
+        // Handle profile navigation specially to include email 
+        if (value === 'profile') {
+          const email = sessionStorage.getItem("email");
+          return `/${userType}/profile/${email}`;
+        }
+        
+        // Default case for other routes
+        return `/${userType}/${value}`;
+      };
+    // Add missing cancelEdit function
+    const cancelEdit = () => {
+        setIsEditing(false);
+        setEditableData(userData);  // Reset to original data
+        setPhotoPreview(null);      // Reset photo preview
+        setProfilePhoto(null);      // Reset photo file
+    };
+
     const handleSaveChanges = async () => {
         try {
             setLoading(true);
-            const token = localStorage.getItem("authToken");
-
-            if (!token) {
+            
+            if (!sessionID) {
                 navigate("/login");
                 return;
             }
 
+            // Create FormData to handle file upload
             const formData = new FormData();
             
-            // Add all editable fields to formData except protected ones
+            // Add all editable fields to form data
             Object.entries(editableData).forEach(([key, value]) => {
-                if (value && !['email', '_id', 'userType', 'hpassword'].includes(key)) {
-                    // Handle doctor-specific fields
-                    if (isDoctor && ['doctorQualification', 'doctorSpecialization'].includes(key)) {
-                        formData.append(key, value);
-                    }
-                    // Handle common fields
-                    else if (!key.startsWith('doctor')) {
-                        formData.append(key, value);
-                    }
+                if (key !== 'photo' && value !== undefined) {
+                    formData.append(key, value);
                 }
             });
             
+            // Add photo if it exists
             if (profilePhoto) {
-                formData.append("profilePhoto", profilePhoto);
+                formData.append('photo', profilePhoto);
             }
 
-            formData.append("email", email);
-            
-            const response = await axios.put(`http://127.0.0.1:8000/api/profile/update/`, formData, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "multipart/form-data"
+            // Send update request
+            const response = await axios.put(
+                `http://127.0.0.1:8000/api/update-profile/${userType}/${emailToUse}/`,
+                formData,
+                {
+                    headers: {
+                        'Content-Type': 'multipart/form-data',
+                        Authorization: `Bearer ${sessionID}`
+                    }
                 }
-            });
-            
+            );
+
             if (response.status === 200) {
+                console.log("Profile updated successfully:", response.data);
                 setUserData(response.data);
-                setEditableData(response.data);
                 setIsEditing(false);
-                setPhotoPreview(null);
-                alert("Profile updated successfully");
+            } else {
+                setError("Failed to update profile");
             }
         } catch (err) {
             console.error("Update error:", err);
@@ -131,12 +152,6 @@ function UserProfile() {
         } finally {
             setLoading(false);
         }
-    };
-
-    const cancelEdit = () => {
-        setIsEditing(false);
-        setEditableData(userData);
-        setPhotoPreview(null);
     };
 
     if (loading) {
@@ -165,7 +180,7 @@ function UserProfile() {
 
     return (
         <div className="flex h-screen bg-blue-50 overflow-hidden">
-            <Slidebar userType={userType} activeTab="profile" setActiveTab={() => {}} />
+            <Slidebar activeTab="profile" userType={userType} />
             <div className="flex flex-col flex-1 p-8 overflow-auto">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-3xl font-bold text-blue-800">My Profile</h2>
@@ -194,6 +209,7 @@ function UserProfile() {
                     )}
                 </div>
 
+                {/* Rest of your component JSX remains the same */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {/* Profile Photo Card */}
                     <div className="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center">
@@ -358,7 +374,7 @@ function UserProfile() {
                     )}
 
                     {/* Medical History (Patient Only) */}
-                    {userType === "Patient" && (
+                    {userType === "patient" && (
                         <div className="md:col-span-3 bg-white p-6 rounded-lg shadow-lg">
                             <h3 className="text-xl font-semibold text-blue-800 mb-4 pb-2 border-b border-blue-100">
                                 Medical History
@@ -406,4 +422,4 @@ function UserProfile() {
     );
 }
 
-export default UserProfile;
+export default Profile;

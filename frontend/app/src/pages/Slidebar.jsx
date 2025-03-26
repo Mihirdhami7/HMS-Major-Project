@@ -2,13 +2,15 @@ import { useNavigate } from "react-router-dom";
 import { FiHome, FiUsers, FiUserPlus, FiFileText, FiCalendar, FiUser, FiPackage} from "react-icons/fi";
 import PropTypes from "prop-types";
 
+
 // Sidebar Navigation Items for Different User Types
 const slidebars = {
   admin: [
     { icon: FiHome, label: "Dashboard", value: "dashboard" },
     { icon: FiUserPlus, label: "New Register", value: "newRegister" },
     { icon: FiUserPlus, label: "Products", value: "product" },
-    { icon: FiUsers, label: "Departments", value: "department" },
+    { icon: FiUsers, label: "Departments", value: "department" }, 
+    { icon: FiUsers, label: "GiveMedicine", value: "givemedicine" }, 
     { icon: FiFileText, label: "Reports", value: "reports" },
   ],
   doctor: [
@@ -37,24 +39,27 @@ const slidebars = {
 const getLinkPath = (userType, value) => {
   // Special case for profile links
   if (value === "profile") {
-    const userEmail = localStorage.getItem("userEmail");
-    const storedUserType = localStorage.getItem("userType");
+    const userEmail = sessionStorage.getItem("userEmail");
+    const storedUserType = sessionStorage.getItem("userType");
     return `/${storedUserType}/profile/${userEmail}`;
   }
   return `/${userType}/${value}`;
 };
 
+
 function Slidebar({ activeTab = "dashboard", setActiveTab = () => {} }) {
-  const userType = localStorage.getItem("userType") || "patient";
+  const userType = sessionStorage.getItem("userType") || "patient";
   const navigate = useNavigate();
   const navItems = slidebars[userType] || [];
 
+
+  
   const handleNavigation = (path, value) => {
     // Prevent default navigation
     const allowedPaths = {
       doctor: ['appointments', 'profile', 'medical_products'],
       patient: ['appointments', 'disease', 'profile'],
-      admin: ['dashboard', 'newRegister', 'product', 'department', 'reports'],
+      admin: ['dashboard', 'newRegister', 'product', 'department', 'reports','givemedicine'],
       supplier: ['suppdashboard', 'suppproduct'],
       superadmin: ['dashboard', 'hospitals', 'reports']
     };
@@ -66,6 +71,9 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {} }) {
       console.log(`Navigation to ${path} not allowed for ${userType}`);
     }
   };
+
+  
+
 
   return (
     <aside className="w-64 h-screen bg-white shadow-md dark:bg-gray-800 flex flex-col">
