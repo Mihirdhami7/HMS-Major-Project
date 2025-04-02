@@ -1,12 +1,11 @@
-
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
 from bson.objectid import ObjectId
 
-# Import MongoDB collections from a central location
-from views import users_collection
-
+# Import MongoDB collections from the central views.py file
+from users.views import users_collection
+# Doctors all backend code 
 @csrf_exempt
 def get_doctors_by_hospital(request, hospital_id):
     if request.method == "GET":
@@ -24,8 +23,8 @@ def get_doctors_by_hospital(request, hospital_id):
             
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=500)
-    
-    return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
+
+
 
 @csrf_exempt
 def get_doctor_details(request):
@@ -59,8 +58,8 @@ def get_doctor_details(request):
                 "status": "error", 
                 "message": "Failed to fetch doctor details"
             }, status=500)
-    
-    return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
+
+
 
 @csrf_exempt
 def update_doctor(request, doctor_id):
@@ -84,8 +83,6 @@ def update_doctor(request, doctor_id):
                 
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=500)
-    
-    return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
 
 @csrf_exempt
 def delete_doctor(request, doctor_id):
@@ -100,5 +97,3 @@ def delete_doctor(request, doctor_id):
                 
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=500)
-    
-    return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)

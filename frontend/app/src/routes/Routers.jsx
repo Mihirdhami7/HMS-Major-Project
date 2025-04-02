@@ -1,9 +1,4 @@
-import {Routes,Route, Navigate} from 'react-router-dom'
-// import Service from "../components/Features"
-// import HealthTips from "../components/HealthTips"
-// import EmergencyServices from "../components/EmergencyServices"
-// import ContactUs from "../components/ContactUs"
-// import FindADoctor from "../components/Doctors/FindDoctor"
+import {Routes, Route, Navigate} from 'react-router-dom'
 import Home from "../pages/Home"
 import Login from "../pages/Login"
 import SignUp from "../pages/Signup"
@@ -36,11 +31,7 @@ import SuperAdminSection from "../pages/SuperAdminSection"
 import SuperAdminDashboard from "../components/SuperAdmin/AdminDashborad"
 import Hospitals from "../components/SuperAdmin/Hospital"
 import Reports from "../components/SuperAdmin/Reports"
-
-
-
 import ProtectedRoute from "../components/ProtectedRoute";
-
 
 const Routers = () => {
     console.log("Routers component rendered");

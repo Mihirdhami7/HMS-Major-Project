@@ -3,8 +3,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
 import bcrypt
-from pymongo import MongoClient
 import json
 import random
 import string
@@ -12,24 +13,20 @@ import hashlib
 from datetime import datetime, timedelta
 import backend.settings as settings
 
+# Import from views.py where collections are defined
+from users.views import (
+    users_collection, temp_users_collection, otp_collection, sessions_collection,
+    generate_otp, generate_session_id, clear_expired_sessions,
 
-try:
-    client = MongoClient(settings.MONGO_URI)
-    db = client[settings.MONGO_DATABASE]
+)
 
-    users_collection = db["user"]
-    temp_users_collection = db["temp_users"]
-    otp_collection = db["otps"]
-    sessions_collection = db["sessions"]
 
-    print("Successfully connected to MongoDB Atlas!")
 
-except Exception as e:
-    print(f"Error connecting to MongoDB Atlas: {e}")
 
-def generate_otp():
-    """Generate a random 6-digit OTP."""
-    return "".join(random.choices(string.digits, k=6))
+
+
+
+
 
 @csrf_exempt
 def register_user(request):
@@ -99,12 +96,22 @@ def register_user(request):
             try:
                 if not settings.EMAIL_HOST_USER:
                     raise ValueError("EMAIL_HOST_USER is not configured in settings.")
-                
+
+                message = f"""
+                <html>
+                    <body>
+                        <h2>Welcome to HMS</h2>
+                        <p>Your OTP for email verification is: <strong>{otp}</strong></p>
+                        <p>Please enter this OTP to verify your email address.</p>
+                        <p>Thank you for registering!</p>
+                    </body>
+                </html> 
+                """
 
                 # Send email
                 email_message = EmailMultiAlternatives(
                     subject="HMS - Email Verification OTP",
-                    body=f" hqlqnsm sknnsd  slnss {otp}",
+                    body=message,
                     from_email=f'HMS Team <{settings.EMAIL_HOST_USER}>',
                     to=[email],
                 )
@@ -114,6 +121,8 @@ def register_user(request):
 
             except Exception as e:
                 print(f"Error sending email: {str(e)}")
+                import traceback
+                print(traceback.format_exc())
                 
                 return JsonResponse({
                     "status": "error",
@@ -203,16 +212,20 @@ def verify_email(request):
 
     return JsonResponse({"status": "error", "message": "Invalid request method"}, status=405)
 
-# Function to clear expired sessions
-def clear_expired_sessions():
-    now = datetime.now()
-    sessions_collection.delete_many({"expires_at": {"$lt": now}})
 
-# Function to generate a session ID
-def generate_session_id(email):
-    timestamp = datetime.now().isoformat()
-    session_id = hashlib.sha256(f"{email}{timestamp}".encode()).hexdigest()
-    return session_id
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 @csrf_exempt
 def login_view(request):
@@ -323,6 +336,22 @@ def logout_view(request):
 
     return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+# logic for user profile and update views
+
+# user profile all backend code
 @csrf_exempt
 def get_user_profile(request, user_type, email):
     if request.method == "GET":
@@ -332,7 +361,7 @@ def get_user_profile(request, user_type, email):
             # Verify session instead of token
             auth_header = request.headers.get('Authorization')
             if not auth_header or not auth_header.startswith('Bearer '):
-                return JsonResponse({"status": "error", "message": "Invalid authorization header"}, status=401)
+                return JsonResponse({"status": "error", "message": "No session ID provided"}, status=401)
             
             session_id = auth_header.split(' ')[1]
             
@@ -344,16 +373,20 @@ def get_user_profile(request, user_type, email):
                 
             # Check if session is expired
             if session_data["expires_at"] < datetime.now():
+                sessions_collection.delete_one({"session_id": session_id})  # Clean up expired session
                 return JsonResponse({"status": "error", "message": "Session expired"}, status=401)
 
             # Find user in MongoDB
             user = users_collection.find_one({
                 "email": email,
-                "userType": user_type.capitalize()
+                "userType": user_type.capitalize()  # Match user type
             })
             
             if not user:
-                return JsonResponse({"status": "error", "message": "User not found"}, status=404)
+                return JsonResponse({
+                    "status": "error", 
+                    "message": f"User not found with email: {email} and type: {user_type}"
+                }, status=404)
             
             # Convert ObjectId to string
             user["_id"] = str(user["_id"])
@@ -366,52 +399,48 @@ def get_user_profile(request, user_type, email):
             
         except Exception as e:
             print(f"Error in get_user_profile: {str(e)}")
-            return JsonResponse({"status": "error", "message": f"Error: {str(e)}"}, status=500)
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
     return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
 
-# @csrf_exempt
-# def update_user_profile(request):
-#     if request.method == 'POST':
-#         try:
-#             # Implement your update user profile logic here
-#             data = json.loads(request.body)
-#             user_id = data.get("userId")
-            
-#             if not user_id:
-#                 return JsonResponse({"status": "error", "message": "User ID is required"}, status=400)
-            
-#             # Update user in the database
-#             update_data = {k: v for k, v in data.items() if k != "userId"}
-#             result = users_collection.update_one(
-#                 {"_id": ObjectId(user_id)},
-#                 {"$set": update_data}
-#             )
-            
-#             if result.modified_count > 0:
-#                 return JsonResponse({"status": "success", "message": "Profile updated successfully"})
-#             else:
-#                 return JsonResponse({"status": "error", "message": "No changes made or user not found"}, status=404)
 
-#         except Exception as e:
-#             return JsonResponse({"status": "error", "message": str(e)}, status=500)
+@csrf_exempt
+def update_user_profile(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            email = data.get('email')
+            user_type = data.get('userType')
 
-#     return JsonResponse({
-#         "status": "error",
-#         "message": "Method not allowed"
-#     }, status=405)
+            # Remove fields that shouldn't be updated
+            data.pop('email', None)
+            data.pop('userType', None)
+            data.pop('_id', None)
 
-# def send_email(to_email, subject, body):
-#     """Send email notifications"""
-#     try:
-#         email_message = EmailMultiAlternatives(
-#             subject=subject,
-#             body=body,
-#             from_email=f'HMS Team <{settings.EMAIL_HOST_USER}>',
-#             to=[to_email],
-#         )
-#         email_message.send(fail_silently=False)
-#         return True
-#     except Exception as e:
-#         print(f"Failed to send email: {e}")
-#         return False
+            # Update the user in MongoDB
+            result = users_collection.update_one(
+                {"email": email, "userType": user_type},
+                {"$set": data}
+            )
+
+            if result.modified_count > 0:
+                return JsonResponse({
+                    "status": "success",
+                    "message": "Profile updated successfully"
+                })
+            else:
+                return JsonResponse({
+                    "status": "error",
+                    "message": "No changes made to profile"
+                }, status=400)
+
+        except Exception as e:
+            return JsonResponse({
+                "status": "error",
+                "message": str(e)
+            }, status=500)
+
+    return JsonResponse({
+        "status": "error",
+        "message": "Method not allowed"
+    }, status=405)

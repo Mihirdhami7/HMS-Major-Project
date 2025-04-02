@@ -4,22 +4,13 @@ from django.core.mail import EmailMultiAlternatives
 import json
 import random
 import string
-from pymongo import MongoClient
 import bcrypt
 from datetime import datetime
 from bson.objectid import ObjectId
 import backend.settings as settings
 
-
-try: 
-    client = MongoClient(settings.MONGO_URI)
-    db = client[settings.MONGO_DATABASE]
-
-    users_collection = db["users"]
-    
-
-except Exception as e:
-    print(f"Error connecting to MongoDB Atlas: {e}")
+# Import MongoDB collections from centralized location
+from users.views import users_collection
 
 # SECRET_KEY = "1fy%j02cvs&0$)-ny@3pj6l$+p)%cl6_ogu0h8-z=!&sy*v_ju"
 

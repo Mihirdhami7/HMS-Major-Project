@@ -289,12 +289,11 @@ const NewRegister = () => {
         setShowNewAppointmentDialog(false);
         setNewAppointmentData({
           patientEmail: "",
-          patientInfo: null,
           department: "",
           doctorEmail: "",
           symptoms: "",
           appointmentDate: new Date().toISOString().split('T')[0],
-          appointmentTime: new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5)
+          appointmentTime: ""
         });
         setSuccess("");
       }, 1500);
@@ -555,27 +554,21 @@ const NewRegister = () => {
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Patient</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Doctor </th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                           {searchResults.map((appt) => (
                             <tr key={appt.id}>
-                              <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{appt.patientName}</td>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{appt.doctorName}</td>
                               <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
                                 {new Date(appt.appointmentDate).toLocaleDateString()}
                               </td>
-                              <td className="px-4 py-2 whitespace-nowrap text-sm">
-                                <span className={`px-2 py-1 rounded text-xs ${
-                                  appt.status === "approved" ? "bg-green-100 text-green-800" :
-                                  appt.status === "pending" ? "bg-yellow-100 text-yellow-800" :
-                                  "bg-blue-100 text-blue-800"
-                                }`}>
-                                  {appt.status}
-                                </span>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                                {appt.confirmedTime ? appt.confirmedTime.split(" - ")[0] : "N/A"}
                               </td>
                               <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
                                 <button
@@ -592,6 +585,49 @@ const NewRegister = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Appointment Details Modal */}
+                ``{selectedAppointment && (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg">
+                      <h3 className="text-2xl font-bold text-blue-600 mb-6 text-center">Appointment Details</h3>
+                      <div className="space-y-4">
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-700">Doctor Name:</span>
+                          <span className="text-gray-900">{selectedAppointment.doctorName}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-700">Appointment Date:</span>
+                          <span className="text-gray-900">
+                            {new Date(selectedAppointment.appointmentDate).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-700">Appointment Time:</span>
+                          <span className="text-gray-900">
+                            {selectedAppointment.confirmedTime ? selectedAppointment.confirmedTime: "N/A"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-700">Patient Email:</span>
+                          <span className="text-gray-900">{selectedAppointment.patientEmail}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-700">Symptoms:</span>
+                          <span className="text-gray-900">{selectedAppointment.symptoms || "N/A"}</span>
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-4 mt-6">
+                        <button
+                          onClick={() => setSelectedAppointment(null)}
+                          className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}``
 
                 {/* Selected Appointment Details */}
                 {/* Pending Appointment Review Modal */}

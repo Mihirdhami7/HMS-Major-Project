@@ -150,7 +150,7 @@ const openModal = (doctor) => {
       doctorName: selectedDoctor.name // Additional data that might be useful
     };
     try {
-      const response = await axios.post("http://127.0.0.1:8000/api/book-appointment/", appointmentData);
+      const response = await axios.post("http://127.0.0.1:8000/api/book_appointment/", appointmentData);
       
       if (response.data.status === "success") {
         alert("Appointment request sent for approval.");
