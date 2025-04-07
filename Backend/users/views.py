@@ -31,8 +31,9 @@ try:
     temp_users_collection = db["temp_users"]
     otp_collection = db["otps"]
     sessions_collection = db["sessions"]
+    doctors_collection = db["doctors"]
 
-
+    
     payments_collection = db["payments"]
     departments_collection = db["departments"]
     hospitals_collection = db["hospitals"]

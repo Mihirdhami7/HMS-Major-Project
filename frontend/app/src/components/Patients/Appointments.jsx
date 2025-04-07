@@ -3,110 +3,115 @@ import Slidebar from "../../pages/Slidebar"; // Ensure correct path
 import { FiCalendar, FiPhoneCall } from "react-icons/fi";
 import axios from "axios";
 
-const specializations = [
-  { id: "orthopedic", label: "Orthopedic" },
-  { id: "cardiology", label: "Cardiology" },
-  { id: "pediatrics", label: "Pediatrics" },
-  { id: "neurology", label: "Neurology" },
-  { id: "general medicine", label: "General Medicine" },
-];
-
-// API call to fetch doctor details
-const fetchDoctorDetails = async () => {
-  try {
-    const response = await fetch("http://127.0.0.1:8000/api/get_doctor_details/", {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      credentials: "include",
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log("Doctor details response:", data);
-
-    if (!data || !data.doctors) {
-      throw new Error("Invalid data format received");
-    }
-
-    return data; // Return response data for further processing
-  } catch (error) {
-    console.error("Error fetching doctor details:", error);
-    return { status: "error", message: "Something went wrong" };
-  }
-};
-
 function Appointment() {
-  const [selectedSpecialization, setSelectedSpecialization] = useState("");
-  const [doctorsBySpecialization, setDoctorsBySpecialization] = useState({});
   const [activeTab, setActiveTab] = useState("appointments");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedDoctor, setSelectedDoctor] = useState(null);
+  // const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [appointmentDate, setAppointmentDate] = useState("");
   const [appointmentTime, setAppointmentTime] = useState("");
   const [symptoms, setSymptoms] = useState("");
-
-  useEffect(() => {
-    const getDoctors = async () => {
-      setLoading(true);
-
-      try{
-        const response = await fetchDoctorDetails();
-        console.log("", response);
-
-        if (response.status === "success") {
-          const doctors = response.doctors;
-
-        // Group doctors by specialization
-        const groupedDoctors = specializations.reduce((acc, spec) => {
-          acc[spec.id] = doctors.filter((doctor) => {
-            // Normalize both strings for comparison
-            const doctorSpec = (doctor.doctorSpecialization || "").trim().toLowerCase();
-            const currentSpec = spec.label.trim().toLowerCase();
-            return doctorSpec === currentSpec;
-          });
-          return acc;
-        }, {});
-
-
-        console.log("Received doctors:", doctors.map(d => ({
-          name: d.name,
-          specialization: d.specialization
-        })));
-
-        setDoctorsBySpecialization(groupedDoctors);
-        setError(null);
-      } else {
-        setError(response.message || "failed to fetch doctors")
-        setDoctorsBySpecialization({});
+ // const [hospitalName, setHospitalName] = useState("");
+  
+  
+  const [departments, setDepartments] = useState([]);
+  const [doctors, setDoctors] = useState([]);
+  const [selectedDoctor, setSelectedDoctor] = useState(null);
+  const [selectedDepartment, setSelectedDepartment] = useState("");
+  
+  
+  const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
+    // Fetch hospital and departments on component mount
+    useEffect(() => {
+      fetchDepartments();
+    }, []);
+  
+    // Fetch doctors and patients when department is selected
+    useEffect(() => {
+      if (selectedDepartment) {
+        fetchDoctorsByDepartment(selectedDepartment._id);
+    
       }
-    }catch(err){
-      setError("Failed to fetch doctor details",err);
-      setDoctorsBySpecialization({});
-    }
-    finally {
+    }, [selectedDepartment]);
+  
+
+
+  // API call to fetch departments for a hospital
+  const fetchDepartments = async () => {
+    try {
+      setLoading(true);
+      
+      if (!hospitalName) return; 
+      
+      const sessionTd = sessionStorage.getItem("session_Id");
+      if (!sessionTd) return; // Ensure session ID is available
+      
+      
+      const response = await fetch(`http://localhost:8000/api/get_hospital_departments/${hospitalName}`, {
+        headers: {
+          "Authorization": sessionTd,
+        },
+      });
+      console.log("Departments response:", response); 
+      if (!response.ok) {
+        throw new Error("Network response was not ok");
+      }
+      const data = await response.json();
+  
+      if (data.status === "success" && Array.isArray(data.departments)) 
+        {
+          console.log("Departments:", data.departments);
+          setDepartments(data.departments);
+        }
+        else {
+          console.error("Invalid departments response:", data);
+          setDepartments([]); // Set to empty array if no departments found
+        }
+  
+  
+      } catch (error) {
+        setError("Failed to fetch departments");
+        console.error("Error fetching departments:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+  const fetchDoctorsByDepartment = async (departmentId) => {
+    try {
+      setLoading(true);
+      const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
+      if (!hospitalName) return;
+      const response = await axios.get(`http://localhost:8000/api/get_hospital_doctors/${departmentId}/${hospitalName}`, {
+        headers: {
+          "Authorization": sessionStorage.getItem("session_Id")
+        }
+      });
+      setDoctors(response.data.doctors);
+    } catch (error) {
+      setError("Failed to fetch doctors");
+      console.error("Error fetching doctors:", error);
+    } finally {
       setLoading(false);
     }
   };
-    getDoctors();
-    
-  }, []);
 
-const openModal = (doctor) => {
-  setSelectedDoctor(doctor);
-  setShowModal(true);
-};
+  const handleDepartmentSelect = (department) => {
+    setSelectedDepartment(department);
+  };
+
+
+  const openModal = (doctor) => {
+    setSelectedDoctor(doctor);
+    setShowModal(true);
+  };
 
   const closeModal = () => {
     setShowModal(false);
     setSelectedDoctor(null);
     setAppointmentDate("");
+    setSymptoms("");
     setAppointmentTime("");
   };
 
@@ -175,6 +180,15 @@ const openModal = (doctor) => {
             <FiCalendar className="mr-2 text-green-600" /> Doctor Appointments
           </h2>
   
+           {/* Hospital Name Display */}
+          {hospitalName && (
+            <div className="mb-4 p-3 bg-blue-50 border-l-4 border-blue-500 rounded">
+              <p className="text-lg font-medium text-blue-700">
+                Hospital: <span className="font-bold">{hospitalName}</span>
+              </p>
+            </div>
+          )}
+
           {/* Contact Admin Section */}
           <div className="w-full flex justify-between items-center border-b border-blue-200 pb-4 mb-6">
             <span className="text-lg font-semibold text-gray-700">Contact Admin to book Appointments</span>
@@ -186,104 +200,112 @@ const openModal = (doctor) => {
             </button>
           </div>
   
-         {/* Specialization Selection */}
-        <div className="flex space-x-4 mb-6 overflow-x-auto py-2">
-          {specializations.map((spec) => (
-            <button
-              key={spec.id}
-              onClick={() => setSelectedSpecialization(spec.id)}
-              className={`px-6 py-3 rounded-lg border-2 transition-all duration-300 ${
-                selectedSpecialization === spec.id 
-                  ? "bg-blue-500 text-white border-blue-600 shadow-md" 
-                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-              }`}
-            >
-              {spec.label}
-            </button>
-          ))}
-        </div>
-
-       {/* Display loading state */}
-       {loading && (
-          <div className="text-center py-4">
-            <p className="text-gray-600">Loading doctors...</p>
-          </div>
-        )}
-
-        {/* Display error state */}
-        {error && (
-          <div className="text-center py-4">
-            <p className="text-red-500">{error}</p>
-          </div>
-        )}
-      
-      {/* Doctor Cards Section */}
-      {selectedSpecialization && !loading && !error && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {doctorsBySpecialization[selectedSpecialization]?.length > 0 ? (
-            doctorsBySpecialization[selectedSpecialization].map((doctor) => (
-              <div
-                key={doctor._id}
-                className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
-              >
-                <div className="relative">
-                  <img
-                    src={doctor.image || "/public/images/doctor.png"}
-                    alt={doctor.name}
-                    className="w-full h-48 object-cover rounded-t-xl"
-                    onError={(e) => {
-                      e.target.src = "/public/images/doctor.png";
-                      e.target.onerror = null;
-                    }}
-                  />
-                  <div className="absolute top-4 right-4">
-                    <span className="bg-green-100 text-green-600 px-3 py-1 rounded-full text-sm font-medium">
-                      ● Available
-                    </span>
-                  </div>
-                </div>
-                
-                <div className="p-5">
-                  <h3 className="font-bold text-xl mb-2 text-gray-800">{doctor.name}</h3>
-                  <div className="space-y-2">
-                    <p className="text-blue-600 font-medium">{doctor.doctorSpecialization}</p>
-                    <p className="text-gray-600">{doctor.doctorQualification}</p>
-                    <p className="text-gray-500 text-sm">{doctor.email}</p>
-                  </div>
-                  
-                  <div className="mt-6 flex gap-3">
-                    <button 
-                      className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg flex items-center justify-center transition-colors"
-                      onClick={() => openModal(doctor)}
-                    >
-                      <FiCalendar className="mr-2" /> Book
-                    </button>
-                    <button 
-                      className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg flex items-center justify-center transition-colors"
-                      onClick={() => window.location.href = `tel:${doctor.phone}`}
-                    >
-                      <FiPhoneCall className="mr-2" /> Call
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="col-span-full text-center py-10">
-              <p className="text-gray-500 text-lg">
-                No doctors available for {specializations.find(s => s.id === selectedSpecialization)?.label}.
-              </p>
+          {/* Loading state */}
+          {loading && (
+            <div className="text-center py-8">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+              <p className="mt-2 text-gray-600">Loading departments and doctors...</p>
             </div>
           )}
-        </div>
-      )}
+
+          {/* Error state */}
+          {error && (
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
+              <p className="text-red-700">{error}</p>
+            </div>
+          )}
+        {!loading && !error && (
+          <>
+            {/* Department Selection */}
+            <div className="flex space-x-4 mb-6 overflow-x-auto py-2">
+              {departments.length > 0 ? (
+                departments.map((dept) => (
+                  <button
+                    key={dept._id}
+                    onClick={() => handleDepartmentSelect(dept)}
+                    className={`px-6 py-3 rounded-lg border-2 transition-all duration-300 ${
+                      selectedDepartment && selectedDepartment._id === dept._id
+                        ? "bg-blue-500 text-white border-blue-600 shadow-md" 
+                        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    {dept.name}
+                  </button>
+                ))
+              ) : (
+                <p className="text-gray-500">No departments found for this hospital</p>
+              )}
+            </div>
+
+            {/* Doctor Cards Section */}
+            {selectedDepartment && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {doctors.length > 0 ? (
+                  doctors.map((doctor) => (
+                    <div
+                      key={doctor.name}
+                      className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                    >
+                      <div className="relative">
+                        <img
+                          src={doctor.image || "/public/images/doctor.png"}
+                          alt={doctor.name}
+                          className="w-full h-48 object-cover rounded-t-xl"
+                          onError={(e) => {
+                            e.target.src = "/public/images/doctor.png";
+                            e.target.onerror = null;
+                          }}
+                        />
+                        <div className="absolute top-4 right-4">
+                          <span className="bg-green-100 text-green-600 px-3 py-1 rounded-full text-sm font-medium">
+                            ● Available
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="p-5">
+                        <h3 className="font-bold text-xl mb-2 text-gray-800">{doctor.name}</h3>
+                        <div className="space-y-2">
+                          <p className="text-blue-600 font-medium">{doctor.doctorSpecialization || doctor.Department}</p>
+                          <p className="text-gray-600">{doctor.doctorQualification}</p>
+                          <p className="text-gray-500 text-sm">{doctor.email}</p>
+                        </div>
+                        
+                        <div className="mt-6 flex gap-3">
+                          <button 
+                            className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg flex items-center justify-center transition-colors"
+                            onClick={() => openModal(doctor)}
+                          >
+                            <FiCalendar className="mr-2" /> Book
+                          </button>
+                          <button 
+                            className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg flex items-center justify-center transition-colors"
+                            onClick={() => window.location.href = `tel:${doctor.contactNo || '#'}`}
+                          >
+                            <FiPhoneCall className="mr-2" /> Call
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="col-span-full text-center py-10">
+                    <p className="text-gray-500 text-lg">
+                      No doctors available for {selectedDepartment.name}.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
 
         {/* Modal for booking appointment */}
         {showModal && selectedDoctor && (
           <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl relative">
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl relative max-h-[80vh] flex flex-col">
               {/* Header with close button */}
-              <div className="bg-gradient-to-r from-blue-500 to-green-500 text-white p-5 rounded-t-xl flex justify-between items-center">
+              <div className="bg-gradient-to-r from-blue-500 to-green-500 text-white p-5 rounded-t-xl flex justify-between items-center sticky top-0 z-10">
                 <h2 className="text-2xl font-bold">Book Appointment</h2>
                 <button 
                   className="text-white hover:text-gray-200 text-xl" 
@@ -292,8 +314,8 @@ const openModal = (doctor) => {
                   ✕
                 </button>
               </div>
-
-              <div className="p-8">
+              
+              <div className="p-8 overflow-y-auto flex-1 custom-scrollbar">
                 {/* Doctor info */}
                 <div className="flex items-center mb-6 border-b pb-6">
                   <div className="w-24 h-24 rounded-full overflow-hidden mr-6 bg-gray-200">
@@ -312,6 +334,49 @@ const openModal = (doctor) => {
                     <p className="text-blue-600 font-medium">{selectedDoctor.doctorSpecialization}</p>
                     <p className="text-gray-600">{selectedDoctor.doctorQualification}</p>
                     <p className="text-gray-500 text-sm">{selectedDoctor.email}</p>
+                      
+
+                    {/* Added doctor rating - with dynamic stars */}
+                    <div className="flex items-center mt-1">
+                      <div className="flex text-yellow-400">
+                        {[1, 2, 3, 4, 5].map((star) => {
+                          const rating = parseFloat(selectedDoctor.rating) || 4.5;
+                          return (
+                            <svg 
+                              key={star} 
+                              className={`w-4 h-4 ${star <= Math.round(rating) 
+                                ? "text-yellow-400 fill-current" 
+                                : star - 0.5 <= rating 
+                                  ? "text-yellow-400 fill-current opacity-80" // For partial stars
+                                  : "text-gray-300 fill-current"             // For empty stars
+                              }`} 
+                              viewBox="0 0 20 20"
+                            >
+                              <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
+                            </svg>
+                          );
+                        })}
+                      </div>
+                      <span className="ml-1 text-sm text-gray-600">
+                        {selectedDoctor.rating || "4.5"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {/* Doctor description - NEW */}
+                <div className="mb-6 bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-gray-700 mb-2">About Doctor</h4>
+                  <p className="text-gray-600">
+                    {selectedDoctor.description || 
+                    `Dr. ${selectedDoctor.name} is a highly qualified ${selectedDoctor.doctorSpecialization} specialist with ${selectedDoctor.experience || "several"} years of experience in treating patients with various conditions.`}
+                  </p>
+                  
+                  {/* Doctor's available schedule - NEW */}
+                  <div className="mt-3">
+                    <h4 className="font-medium text-gray-700">Availability</h4>
+                    <p className="text-sm text-gray-600">
+                      {selectedDoctor.time_slot || "Available weekdays 9:00 AM - 5:00 PM"}
+                    </p>
                   </div>
                 </div>
 

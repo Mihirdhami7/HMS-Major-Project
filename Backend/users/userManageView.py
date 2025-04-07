@@ -237,14 +237,19 @@ def login_view(request):
             email = data.get("email", "").strip().lower()
             password = data.get("password", "")
             category = data.get("category", "")
+            hospital_name = data.get("hospitalName", "")
 
             if not email or not password:
                 return JsonResponse({"status": "error", "message": "Email and password are required"}, status=400)
 
+            if not hospital_name and email != "21it402@bvmengineering.ac.in":  # Super admin doesn't need hospital
+                return JsonResponse({"status": "error", "message": "Hospital selection is required"}, status=400)
+            
             # User lookup
             user_query = {"email": email}
             if email != "21it402@bvmengineering.ac.in":  # Exclude super admin
                 user_query["userType"] = category
+                user_query["hospitalName"] = hospital_name
 
             user = users_collection.find_one(user_query)
             if not user:
@@ -264,6 +269,7 @@ def login_view(request):
                 "session_id": session_id,
                 "email": email,
                 "userType": user.get("userType"),
+                "hospitalName": user.get("hospitalName"),
                 "expires_at": expires_at
             }
             sessions_collection.insert_one(session_data)
@@ -273,7 +279,9 @@ def login_view(request):
                 "message": "Login successful",
                 "userData": {
                     "userType": user.get("userType"),
-                    "email": email
+                    "email": email,
+                    "hospitalName": user.get("hospitalName"),
+                    "name": user.get("name"),
                 },
                 "session_Id": session_id
             }, status=200)
@@ -310,6 +318,7 @@ def check_session(request):
         "message": "Session is valid",
         "email": session_data.get("email"),
         "userType": session_data.get("userType"),
+        "hospitalName": session_data.get("hospitalName"),
     }, status=200)
 
 @csrf_exempt

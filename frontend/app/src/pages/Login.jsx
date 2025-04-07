@@ -6,11 +6,37 @@ export default function Login() {
     email: "",
     password: "",
     category: "Patient",
+    hospitalName: "Zydus"
   });
+  const [hospitals] = useState([
+    "Zydus",
+    "Iris",
+    "Agrawal Medical"
+  ]); // Default hospitals - replace with API call
 
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+
+    // Uncomment this to fetch hospitals from API
+  /*
+  useEffect(() => {
+    const fetchHospitals = async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/hospitals/");
+        if (response.ok) {
+          const data = await response.json();
+          setHospitals(data.hospitals);
+        }
+      } catch (error) {
+        console.error("Error fetching hospitals:", error);
+      }
+    };
+    
+    fetchHospitals();
+  }, []);
+  */
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -57,6 +83,7 @@ export default function Login() {
         sessionStorage.setItem("userType", userType);
         sessionStorage.setItem("email", email);
         sessionStorage.setItem("name", data.userData.name);
+        sessionStorage.setItem("hospitalName", formData.hospitalName);
 
 
         console.log("Login successful user data are ", data.userData);
@@ -157,6 +184,27 @@ export default function Login() {
             </select>
           </div>
 
+        {/* Hospital Dropdown */}
+        <div>
+            <label htmlFor="hospitalName" className="block text-sm font-medium text-gray-700 mb-1">Hospital</label>
+            <select
+              id="hospitalName"
+              name="hospitalName"
+              value={formData.hospitalName}
+              onChange={handleChange}
+              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              required
+            >
+              <option value="">Select Hospital</option>
+              {hospitals.map((hospital, index) => (
+                <option key={index} value={hospital}>
+                  {hospital}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          
           {/* Login Button */}
           <button
             type="submit"
@@ -166,6 +214,7 @@ export default function Login() {
             {loading ? "Logging in..." : "Login"}
           </button>
         </form>
+
 
         {/* Register Link */}
         <p className="mt-6 text-center text-gray-600">

@@ -13,8 +13,14 @@ export default function Signup() {
     "neurology",
     "orthopedic",
     "pediatrics",
-    "general medicine",
+    "General Medicine",
   ];
+  const [hospitals] = useState([
+    "Zydus",
+    "Iris",
+    "Agrawal Medical"
+  ]); // Default hospitals - replace with API call
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -28,7 +34,25 @@ export default function Signup() {
     doctorQualification: "",
     doctorSpecialization: "",
     doctorCertificate: null,
+    hospitalName: "",
   });
+
+    // Uncomment this to fetch hospitals from API
+  /*
+  useEffect(() => {
+    const fetchHospitals = async () => {
+      try {
+        const response = await axios.get("http://127.0.0.1:8000/api/hospitals/");
+        if (response.status === 200) {
+          setHospitals(response.data.hospitals);
+        }
+      } catch (error) {
+        console.error("Error fetching hospitals:", error);
+      }
+    };
+    fetchHospitals();
+  }, []);
+  */
   const [otp, setOtp] = useState("");
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
@@ -102,16 +126,21 @@ export default function Signup() {
         if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
           const adjustedAge = age - 1;
           
-          if (adjustedAge < 18) {
+          if (adjustedAge < 25) {
             newErrors.dateOfBirth = "You must be at least 18 years old to register";
           }
         } else {
-          if (age < 18) {
+          if (age < 25) {
             newErrors.dateOfBirth = "You must be at least 18 years old to register";
           }
         }
     }
   }
+     // Hospital validation
+     if (!formData.hospitalName) {
+      newErrors.hospitalName = "Hospital selection is required";
+    }
+
 
     // Doctor-specific fields validation
     if (formData.userType === "Doctor") {
@@ -263,6 +292,24 @@ export default function Signup() {
               yearDropdownItemNumber={100} // Allow scrolling through years
             />
             {errors.dateOfBirth && <p className="text-red-500 text-sm">{errors.dateOfBirth}</p>}
+
+
+            {/* Hospital selection dropdown */}
+            <div>
+              <label className="block text-gray-700">Select Hospital</label>
+              <select
+                name="hospitalName"
+                value={formData.hospitalName}
+                onChange={handleChange}
+                className="w-full p-2 border rounded"
+              >
+                <option value="">Select a hospital</option>
+                {hospitals.map((hospital, index) => (
+                  <option key={index} value={hospital}>{hospital}</option>
+                ))}
+              </select>
+              {errors.hospitalName && <p className="text-red-500 text-sm">{errors.hospitalName}</p>}
+            </div>
 
             <select name="userType" className="w-full p-2 border rounded" value={formData.userType} onChange={handleChange}>
               <option value="Patient">Patient</option>

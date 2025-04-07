@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Package, AlertCircle, Truck, RefreshCw, Search } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import Slidebar from '../../pages/Slidebar';
 import axios from 'axios';
 
@@ -11,8 +10,7 @@ const Products = () => {
   const [selectedType, setSelectedType] = useState("All Types");
   const [selectedStatus, setSelectedStatus] = useState("All Status");
   const [loading, setLoading] = useState(true);
-  
-  const navigate = useNavigate();
+
   
   const [notifications, setNotifications] = useState([
     { id: 1, message: "New stock received from PharmaCo", time: "2 hours ago", read: false },

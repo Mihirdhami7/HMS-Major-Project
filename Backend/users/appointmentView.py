@@ -294,36 +294,18 @@ def get_pending_appointments(request):
             # Get all pending appointments
             appointments = list(temp_appointments_collection.find())
             
+            result = []
             # Process appointments
             for appointment in appointments:
                 appointment['_id'] = str(appointment['_id'])
+                del appointment['_id'] 
+
                 
-                # Add patient details
-                patient = users_collection.find_one({'email': appointment['patientEmail']})
-                if patient:
-                    appointment['patient'] = {
-                        'id': str(patient['_id']),
-                        'name': patient.get('full_name', 'Unknown'),
-                        'email': patient.get('email', 'N/A'),
-                        'contact': patient.get('contact', 'N/A')
-                    }
-                
-                # Add doctor details
-                doctor = users_collection.find_one({'email': appointment['doctorEmail']})
-                if doctor:
-                    appointment['doctor'] = {
-                        'id': str(doctor['_id']),
-                        'name': doctor.get('full_name', 'Unknown'),
-                        'email': doctor.get('email', 'N/A'),
-                        'specialization': doctor.get('specialization', 'N/A')
-                    }
-                
-                # Convert ObjectIds
-                appointment['patient_id'] = str(appointment['patient_id'])
-                appointment['doctor_id'] = str(appointment['doctor_id'])
+                result.append(appointment)
             
             return JsonResponse({
-                'appointments': appointments
+                "status": "success",
+                'appointments': result
             })
             
         except Exception as e:
