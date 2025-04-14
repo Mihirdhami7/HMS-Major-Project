@@ -13,6 +13,8 @@ from users.views import (
     temp_appointments_collection,
     notifications_collection,
     prescriptions_collection,
+    products_collection,
+    invoices_collection
 )
 
 @csrf_exempt
@@ -21,6 +23,7 @@ def book_appointment(request):
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
+            appointment_id = data.get('appointmentId')
             # Extract appointment data
             patientName = data.get('patientName')
             patientEmail = data.get('patientEmail')
@@ -30,6 +33,8 @@ def book_appointment(request):
             symptoms = data.get('symptoms', '')
             doctorEmail = data.get('doctorEmail')
             doctorName = data.get('doctorName')
+            hospitalName = data.get('hospitalName')
+            
             
             # Validate required fields
             if not all([patientEmail, doctorEmail, appointmentDate, requestedTime]):
@@ -56,6 +61,7 @@ def book_appointment(request):
                 'symptoms': symptoms,
                 'doctorEmail': doctorEmail,
                 'doctorName': doctorName,
+                'hospitalName': hospitalName,
                 'status': 'pending',
                 'create_at': datetime.now()
             }
@@ -118,109 +124,204 @@ def approve_appointment(request):
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            appointment_id = data.get('appointment_id')
-            action = data.get('action')  # 'approve' or 'reject'
+            appointment_id = data.get('appointmentId')
+            if not appointment_id:
+                return JsonResponse({'error': 'Appointment ID is required'}, status=400)
             
-            if not appointment_id or not action:
-                return JsonResponse({'error': 'Missing appointment ID or action'}, status=400)
-            
-            # Find temporary appointment
-            temp_appointment = temp_appointments_collection.find_one({'_id': ObjectId(appointment_id)})
-            if not temp_appointment:
-                return JsonResponse({'error': 'Appointment not found'}, status=404)
-            
-            patient_id = temp_appointment['patient_id']
-            doctor_id = temp_appointment['doctor_id']
-            
-            # Get patient and doctor details
-            patient = users_collection.find_one({'_id': patient_id})
-            doctor = users_collection.find_one({'_id': doctor_id})
-            
-            if action == 'approve':
-                # Move to confirmed appointments
-                appointment = temp_appointment.copy()
-                appointment['status'] = 'confirmed'
-                appointments_collection.insert_one(appointment)
+            patient_name = data.get('patientName')
+            patient_email = data.get('patientEmail')
+            doctor_email = data.get('doctorEmail')
+            doctor_name = data.get('doctorName')
+            hospital_name = data.get('hospitalName')
+            department = data.get('department')
+
+            appointment_date = data.get('appointmentDate')
+            appointment_time = data.get('appointmentTime')
+            dateSlot = data.get('dateSlot')
+            timeSlot = data.get('timeSlot')
+            status = data.get('status')
+            symptoms = data.get('symptoms', '')
+
+
+            if not patient_name or not patient_email or not doctor_email:
+                return JsonResponse({'error': 'Missing required fields'}, status=400)
+
+            if status == 'approve':
                 
-                # Create notification for patient
-                notification = {
-                    'user_id': patient_id,
+                if(dateSlot != None and timeSlot != None):
+                    confrim_date = dateSlot
+                    confrim_time = timeSlot
+                    message = f"""
+                    <html>
+                        <body>
+                            <h2>Your Appointment Confirmation is done , but the time slot has been reschuled due to certain circumstances</h2>
+                            <p>Dear {patient_name},</p>
+                            <p>Your appointment has been confirmed with the following details:</p>
+                            <ul>
+
+                                <li><strong>Doctor:</strong> Dr. {doctor_name}</li>
+                                <li><strong>Department:</strong> {department}</li>
+                                <li><strong>Date:</strong> {confrim_date}</li>
+                                <li><strong>Time:</strong> {confrim_time}</li>
+                                <li><strong>Hospital:</strong> {hospital_name}</li>
+                            </ul>
+                            <p>Please arrive 15 minutes before your appointment time.</p>
+                            <p>If you have any questions, feel free to contact us.</p>
+                            <p>Best regards,</p>
+                            <p>HMS Healthcare Team</p>
+                            <p><small>This is an automated message. Please do not reply.</small></p>
+                            <p><small>&copy; {datetime.now().year} {hospital_name}. All rights reserved.</small></p>
+
+                        </body>
+                    </html> 
+                    """
+
+                    # Send email
+                    email_message = EmailMultiAlternatives(
+                        subject="HMS - apointment Confirmation",
+                        body=message,
+                        from_email=f'HMS Team <{settings.EMAIL_HOST_USER}>',
+                        to=[patient_email],
+                    )
+                    email_message.send(fail_silently=False)
+
+                    print(f"appointment approved for {patient_email}")
+
+                else:
+
+                    confrim_date = appointment_date
+                    confrim_time = appointment_time
+                    message = f"""
+                    <html>
+                        <body>
+                            <h2>Congratulations, Your Appointment Confirmation is approved with your scheduled time and date. </h2>
+                            <p>Dear {patient_name},</p>
+                            <p>Your appointment has been confirmed with the following details:</p>
+                            <ul>
+
+                                <li><strong>Doctor:</strong> Dr. {doctor_name}</li>
+                                <li><strong>Department:</strong> {department}</li>
+                                <li><strong>Date:</strong> {confrim_date}</li>
+                                <li><strong>Time:</strong> {confrim_time}</li>
+                                <li><strong>Hospital:</strong> {hospital_name}</li>
+                            </ul>
+                            <p>Please arrive 15 minutes before your appointment time.</p>
+                            <p>If you have any questions, feel free to contact us.</p>
+                            <p>Best regards,</p>
+                            <p>HMS Healthcare Team</p>
+                            <p><small>This is an automated message. Please do not reply.</small></p>
+                            <p><small>&copy; {datetime.now().year} {hospital_name}. All rights reserved.</small></p>
+
+                        </body>
+                    </html> 
+                    """
+
+                    # Send email
+                    email_message = EmailMultiAlternatives(
+                        subject="HMS - apointment Confirmation",
+                        body=message,
+                        from_email=f'HMS Team <{settings.EMAIL_HOST_USER}>',
+                        to=[patient_email],
+                    )
+                    email_message.send(fail_silently=False)
+
+                    print(f"appointment approved for {patient_email}")
+    
+                
+                
+                # Create appointment in the main collection
+                appointment = {
+                    'patientEmail': patient_email,
+                    'patientName': patient_name,
+                    'doctorEmail': doctor_email,
+                    'doctorName': doctor_name,
+                    'department': department,
+                    'appointmentDate': confrim_date,
+                    'confirmedTime': confrim_time,
+                    'requestedTime': appointment_time,
+                    'requestedDate': appointment_date,
+                    'symptoms': symptoms,
+                    'hospitalName': hospital_name,
+                    'status': status,
+                    'approved_at': datetime.now()
+                }
+                
+                # Insert the approved appointment
+                result = appointments_collection.insert_one(appointment)
+                temp_appointments_collection.delete_one({'_id': ObjectId(appointment_id)})
+                # Create notifications
+                patient_notification = {
+                    'userEmail': patient_email,
                     'title': 'Appointment Confirmed',
-                    'message': f'Your appointment on {temp_appointment["date"]} at {temp_appointment["time"]} with Dr. {doctor["full_name"]} has been confirmed.',
+                    'message': f'Your appointment on {appointment_date} at {appointment_time} with Dr. {doctor_name} has been confirmed.',
                     'read': False,
                     'created_at': datetime.now()
                 }
-                notifications_collection.insert_one(notification)
                 
-                # Send email to patient
-                if patient.get('email'):
-                    subject = 'Appointment Confirmed'
-                    body = f"""
-                    Dear {patient.get('full_name')},
-                    
-                    Your appointment has been confirmed:
-                    
-                    Doctor: {doctor.get('full_name')}
-                    Date: {temp_appointment.get('date')}
-                    Time: {temp_appointment.get('time')}
-                    
-                    Please arrive 15 minutes before your scheduled time.
-                    
-                    Regards,
-                    HMS Healthcare
+               
+            elif status == 'reject':
+                
+                # Create notification for patient about rejection
+                message = f"""
+                    <html>
+                        <body>
+                            <h2>Your Appointment has been rejected, beacuse your information seems to be not proper according to your selected department and doctor </h2>
+                         
+                            <p>If you have any questions, feel free to contact us.</p>
+                            <p>Best regards,</p>
+                            <p>HMS Healthcare Team</p>
+                            <p><small>This is an automated message. Please do not reply.</small></p>
+                            <p><small>&copy; {datetime.now().year} {hospital_name}. All rights reserved.</small></p>
+
+                        </body>
+                    </html> 
                     """
-                    
-                
-                message = 'Appointment approved successfully'
-            
-            elif action == 'reject':
-                # Create notification for patient
-                notification = {
-                    'user_id': patient_id,
-                    'title': 'Appointment Rejected',
-                    'message': f'Your appointment request on {temp_appointment["date"]} at {temp_appointment["time"]} with Dr. {doctor["full_name"]} has been rejected.',
+
+                    # Send email
+                email_message = EmailMultiAlternatives(
+                        subject="HMS - apointment Confirmation",
+                        body=message,
+                        from_email=f'HMS Team <{settings.EMAIL_HOST_USER}>',
+                        to=[patient_email],
+                    )
+                email_message.send(fail_silently=False)
+
+                print(f"appointment approved for {patient_email}")
+    
+
+
+                rejection_notification = {
+                    'userEmail': patient_email,
+                    'title': 'Appointment Request Rejected',
+                    'message': f'Your appointment request has been rejected.',
                     'read': False,
                     'created_at': datetime.now()
                 }
-                notifications_collection.insert_one(notification)
                 
-                # Send email to patient
-                if patient.get('email'):
-                    subject = 'Appointment Request Rejected'
-                    body = f"""
-                    Dear {patient.get('full_name')},
-                    
-                    Your appointment request has been rejected:
-                    
-                    Doctor: {doctor.get('full_name')}
-                    Date: {temp_appointment.get('date')}
-                    Time: {temp_appointment.get('time')}
-                    
-                    Please contact the hospital for more information or to schedule a different time.
-                    
-                    Regards,
-                    HMS Healthcare
-                    """
-                    
-                
-                message = 'Appointment rejected successfully'
+                notifications_collection.insert_one(rejection_notification)
             
+                        
+                    
+                
             else:
-                return JsonResponse({'error': 'Invalid action. Use "approve" or "reject"'}, status=400)
-            
-            # Delete from temporary appointments
+                return JsonResponse({'status': 'error', 'message': 'Invalid action. Use "approve" or "reject"'}, status=400)
+                
+            # Delete from temporary appointments collection in both cases
             temp_appointments_collection.delete_one({'_id': ObjectId(appointment_id)})
             
             return JsonResponse({
-                'success': True,
+                'status': 'success',
                 'message': message
             })
             
         except Exception as e:
-            print(f"Error processing appointment approval: {e}")
-            return JsonResponse({'error': str(e)}, status=500)
+            print(f"Error processing appointment: {e}")
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     
-    return JsonResponse({'error': 'Only POST method is allowed'}, status=405)
+    return JsonResponse({'status': 'error', 'message': 'Only POST method is allowed'}, status=405)
+
+
+
 
 @csrf_exempt
 def get_appointments(request, user_id):
@@ -291,14 +392,17 @@ def get_pending_appointments(request):
     """Get all pending appointments (for admin or hospital staff)"""
     if request.method == 'GET':
         try:
+            hospital_name = request.GET.get('hospitalName')
+            if not hospital_name:
+                return JsonResponse({'error': 'Hospital name is required'}, status=400)
+            
             # Get all pending appointments
-            appointments = list(temp_appointments_collection.find())
+            appointments = list(temp_appointments_collection.find({"hospitalName": hospital_name}))
             
             result = []
             # Process appointments
             for appointment in appointments:
                 appointment['_id'] = str(appointment['_id'])
-                del appointment['_id'] 
 
                 
                 result.append(appointment)
@@ -349,9 +453,10 @@ def create_appointment(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
+
             
             # Validate required fields
-            required_fields = ["patientEmail", "department", "appointmentDate", "appointmentTime", "doctorEmail", "symptoms"]
+            required_fields = ["patientEmail", "department", "appointmentDate", "appointmentTime", "doctorEmail", "symptoms", "hospitalName"]
             if not all(field in data and data[field] for field in required_fields):
                 return JsonResponse({"status": "error", "message": "All fields are required"}, status=400)
             
@@ -364,6 +469,7 @@ def create_appointment(request):
                 "appointmentDate": data["appointmentDate"],
                 "requestedTime": data["appointmentTime"],  # Change key to match requestedTime
                 "symptoms": data["symptoms"],
+                "hospitalName": data.get["hospitalName"],
                 "doctorEmail": data["doctorEmail"],
                 "doctorName": data.get("doctorName", ""),  # Default if not provided
                 "status": "pending",  # Default status
@@ -417,45 +523,33 @@ def create_appointment(request):
 @csrf_exempt
 def get_doctor_appointments(request):
     """Get appointments for a specific doctor on a specific date"""
-    if request.method == 'GET':
+    if request.method == 'POST':
         try:
-            doctor_id = request.GET.get('doctor_id')
-            date = request.GET.get('date')
+            data = json.loads(request.body)
+            email = data.get('email')
+            hospital_name = data.get('hospitalName')
             
-            if not doctor_id:
+            if not email:
                 return JsonResponse({'error': 'Doctor ID is required'}, status=400)
             
-            query = {'doctor_id': ObjectId(doctor_id)}
-            if date:
-                query['date'] = date
+            # Build query to find appointments for this doctor
+            query = {
+                'doctorEmail': email
+            }
             
-            # Get confirmed appointments
-            confirmed = list(appointments_collection.find(query))
+            # Add hospital filter if available
+            if hospital_name:
+                query['hospitalName'] = hospital_name
             
-            # Get pending appointments
-            pending = list(temp_appointments_collection.find(query))
-            
-            # Process appointments
-            all_appointments = []
-            for appointment in confirmed + pending:
-                # Convert ObjectIds to strings
+            # Get all appointments for this doctor
+            appointments = list(appointments_collection.find(query))
+            for appointment in appointments:
                 appointment['_id'] = str(appointment['_id'])
-                appointment['patient_id'] = str(appointment['patient_id'])
-                appointment['doctor_id'] = str(appointment['doctor_id'])
-                
-                # Add patient details
-                patient = users_collection.find_one({'_id': ObjectId(appointment['patient_id'])})
-                if patient:
-                    appointment['patient'] = {
-                        'name': patient.get('full_name', 'Unknown'),
-                        'contact': patient.get('contact', 'N/A')
-                    }
-                
-                all_appointments.append(appointment)
-            
+
             return JsonResponse({
-                'appointments': all_appointments,
-                'count': len(all_appointments)
+                'appointments': appointments,
+                'count': len(appointments),
+                'status': 'success'
             })
             
         except Exception as e:
@@ -464,76 +558,158 @@ def get_doctor_appointments(request):
     
     return JsonResponse({'error': 'Only GET method is allowed'}, status=405)
 
+
+@csrf_exempt
+def get_hospital_medicines(request):
+    try:
+        data = json.loads(request.body)
+        hospital_name = data.get('hospitalName', '')
+        # department = data.get('department', '')
+        
+        if not hospital_name:
+            return JsonResponse({'status': 'error', 'message': 'Hospital name is required'}, status=400)
+        
+         # Find medicines for this hospital
+        query = {"Hospital Name": hospital_name, "Product Type": "Medicine"}
+        
+        # Only fetch necessary fields for better performance
+        projection = {
+            "_id": 1,
+            "Product Name": 1,
+            "Stock": 1,
+            "Price (Per Unit/Strip)": 1
+        }
+        
+        # Get medicines from MongoDB collection
+        medicines = list(products_collection.find(query, projection))
+
+        processed_medicines = []
+        for medicine in medicines:
+            medicine['_id'] = str(medicine['_id'])
+            # Ensure these fields exist with default values
+            if 'Product Name' not in medicine:
+                medicine['Product Name'] = 'Unknown Medicine'
+            
+            if 'Stock' not in medicine:
+                medicine['Stock'] = 0
+            else:
+                try:
+                    medicine['Stock'] = int(medicine['Stock'])
+                except (ValueError, TypeError):
+                    medicine['Stock'] = 0
+            
+            if 'Price (Per Unit/Strip)' in medicine:
+                try:
+                    medicine['Price (Per Unit/Strip)'] = float(medicine['Price (Per Unit/Strip)'])
+                except (ValueError, TypeError):
+                    medicine['Price (Per Unit/Strip)'] = 0.0
+            else:
+                medicine['Price (Per Unit/Strip)'] = 0.0
+                
+            processed_medicines.append(medicine)
+
+        
+        return JsonResponse({
+            'status': 'success',
+            'medicines': processed_medicines
+
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+
+
+
+
+
+
+
+
+
 @csrf_exempt
 def save_prescription(request):
     """Save prescription details for an appointment"""
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            appointment_id = data.get('appointment_id')
-            diagnosis = data.get('diagnosis')
-            medications = data.get('medications', [])
-            instructions = data.get('instructions')
-            next_visit = data.get('next_visit')
+            patient_email = data.get('patientEmail')
+            doctor_email = data.get('doctorEmail')
+            appointment_id = data.get('appointmentId')
+
+            # Required validation
+            if not patient_email or not doctor_email:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Patient email and doctor email are required'
+                }, status=400)
             
             if not appointment_id:
                 return JsonResponse({'error': 'Appointment ID is required'}, status=400)
             
-            # Find the appointment
-            appointment = appointments_collection.find_one({'_id': ObjectId(appointment_id)})
-            if not appointment:
-                return JsonResponse({'error': 'Appointment not found'}, status=404)
-            
-            # Create prescription
+            # Create prescription document
             prescription = {
-                'appointment_id': ObjectId(appointment_id),
-                'patient_id': appointment['patient_id'],
-                'doctor_id': appointment['doctor_id'],
-                'diagnosis': diagnosis,
-                'medications': medications,
-                'instructions': instructions,
-                'next_visit': next_visit,
+                'patientName': data.get('patientName'),
+                'patientEmail': patient_email,
+                'patientAge': data.get('patientAge'),
+                'patientGender': data.get('patientGender'),
+                'patientPhone': data.get('patientPhone'),
+                'patientAddress': data.get('patientAddress'),
+                
+                'doctorName': data.get('doctorName'),
+                'doctorEmail': doctor_email,
+                'department': data.get('department'),
+                'hospitalName': data.get('hospitalName'),
+                
+                'vitals': data.get('vitals', {}),
+                'medicines': data.get('medicines', []),
+                'suggestions': data.get('suggestions', ''),
+                
+                'reportType': data.get('reportType', 'none'),
+                'reportValues': data.get('reportValues'),
+                
+                'appointmentId': appointment_id,  # May be null if not from appointment
                 'created_at': datetime.now(),
-                'issued_date': datetime.now().strftime('%Y-%m-%d')
+                'status': 'active'  # Default status
             }
-            
             # Save prescription
             result = prescriptions_collection.insert_one(prescription)
             
             # Update appointment status
-            appointments_collection.update_one(
-                {'_id': ObjectId(appointment_id)},
-                {'$set': {'status': 'completed'}}
-            )
-            
-            # Get patient details for notification
-            patient = users_collection.find_one({'_id': appointment['patient_id']})
-            if patient:
-                # Create notification
-                notification = {
-                    'user_id': appointment['patient_id'],
-                    'title': 'New Prescription Available',
-                    'message': 'Your doctor has issued a new prescription. Please check the details in your prescription section.',
-                    'read': False,
-                    'created_at': datetime.now()
-                }
-                notifications_collection.insert_one(notification)
+            if appointment_id:
+                appointments_collection.update_one(
+                    {'_id': ObjectId(appointment_id)},
+                    {'$set': {'status': 'completed'}}
+                )
+
+            # Send email notification to patient
+            try:
+                message = f"""
+                <html>
+                    <body>
+                        <h2>New Prescription Available</h2>
+                        <p>Dear {data.get('patientName')},</p>
+                        <p>Dr. {data.get('doctorName')} has created a prescription for you.</p>
+                        <p>You can view the details in your HMS account.</p>
+                        <p>Best regards,</p>
+                        <p>HMS Healthcare Team</p>
+                        <p><small>This is an automated message. Please do not reply.</small></p>
+                    </body>
+                </html>
+                """
                 
-                # Send email notification
-                if patient.get('email'):
-                    subject = 'New Prescription Available'
-                    body = f"""
-                    Dear {patient.get('full_name')},
-                    
-                    Your doctor has issued a new prescription after your recent appointment.
-                    
-                    Please log in to the system to view your prescription details.
-                    
-                    Diagnosis: {diagnosis}
-                    
-                    Regards,
-                    HMS Healthcare
-                    """
+                email_message = EmailMultiAlternatives(
+                    subject="HMS - New Prescription Available",
+                    body=message,
+                    from_email=f'HMS Team <{settings.EMAIL_HOST_USER}>',
+                    to=[patient_email],
+                )
+                email_message.content_subtype = "html"
+                email_message.send(fail_silently=True)
+            except Exception as e:
+                print(f"Email notification error: {e}")
             
             return JsonResponse({
                 'success': True,
@@ -547,20 +723,139 @@ def save_prescription(request):
     
     return JsonResponse({'error': 'Only POST method is allowed'}, status=405)
 
-# @csrf_exempt
-# def get_prescriptions(request):
-#     """Get prescriptions for a patient or by appointment"""
-#     if request.method == 'GET':
-#         try:
-#             patient_id = request.GET.get('patient_id')
-#             appointment_id = request.GET.get('appointment_id')
+@csrf_exempt
+def get_prescriptions(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            hospital_name = data.get('hospitalName')
             
-#             if not patient_id and not appointment_id:
-#                 return JsonResponse({'error': 'Patient ID or appointment ID is required'}, status=400)
+            if not hospital_name:
+                return JsonResponse({'error': 'Hospital name is required'}, status=400)
             
-#             if patient_id:
-#                 query = {'patient_id': ObjectId(patient_id)}
-#             else:
-#                 query = {'appointment_id': ObjectId(appointment_id)}
+            # Query prescriptions for the hospital
+            prescriptions = list(prescriptions_collection.find({'hospitalName': hospital_name, 'status': {'$ne': 'completed'}}))
             
-#             prescriptions = list(# filepath: d:\HMS Major Project\backend\users\appointmentView.py
+            # Process prescriptions
+            for prescription in prescriptions:
+                prescription['_id'] = str(prescription['_id'])
+                prescription['patientEmail'] = prescription.get('patientEmail', 'N/A')
+                prescription['doctorEmail'] = prescription.get('doctorEmail', 'N/A')
+                prescription['department'] = prescription.get('department', 'N/A')
+                prescription['hospitalName'] = prescription.get('hospitalName', 'N/A')
+                prescription['medicines'] = prescription.get('medicines', [])
+                prescription['suggestions'] = prescription.get('suggestions', 'N/A')
+                prescription['reportType'] = prescription.get('reportType', 'N/A')
+                prescription['reportValues'] = prescription.get('reportValues', 'N/A')
+                prescription['created_at'] = prescription.get('created_at', 'N/A')
+
+                prescription['appointmentId'] = str(prescription.get('appointmentId', 'N/A'))  # Convert ObjectId to string
+                prescription['patientName'] = prescription.get('patientName', 'N/A')
+                prescription['patientAge'] = prescription.get('patientAge', 'N/A')
+                prescription['patientGender'] = prescription.get('patientGender', 'N/A')
+                prescription['patientPhone'] = prescription.get('patientPhone', 'N/A')
+                prescription['patientAddress'] = prescription.get('patientAddress', 'N/A')
+
+                prescription['vitals'] = prescription.get('vitals', {})  # Ensure vitals is a dict
+
+            
+            return JsonResponse({
+                'status': 'success',
+                'prescriptions': prescriptions
+            })
+            
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+    
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+
+@csrf_exempt
+def generate_invoice(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            
+            # Extract data
+            prescription_id = data.get('prescriptionId')
+            patient_name = data.get('patientName')
+            patient_email = data.get('patientEmail')
+            medicines = data.get('medicines', [])
+            total_amount = data.get('totalAmount')
+            hospital_name = data.get('hospitalName')
+            
+            # Create invoice document
+            invoice = {
+                'prescriptionId': prescription_id,
+                'patientName': patient_name,
+                'patientEmail': patient_email,
+                'medicines': medicines,
+                'totalAmount': total_amount,
+                'hospitalName': hospital_name,
+                'status': 'generated',
+                'created_at': datetime.now()
+            }
+            
+            # Save invoice to database
+            result = invoices_collection.insert_one(invoice)
+
+            prescriptions_collection.update_one(
+                {'_id': ObjectId(prescription_id)},
+                {'$set': {'status': 'completed'}}
+            )
+            
+            
+            # Update stock quantities
+            for medicine in medicines:
+                products_collection.update_one(
+                    {'_id': ObjectId(medicine['_id'])},
+                    {'$inc': {'Stock': -medicine['quantity']}}
+                )
+            
+            # Send email notification
+            try:
+                message = f"""
+                <html>
+                    <body>
+                        <h2>Invoice Generated</h2>
+                        <p>Dear {patient_name},</p>
+                        <p>Your medicine invoice has been generated:</p>
+                        <ul>
+                            <li>Total Amount: ₹{total_amount}</li>
+                            <li>Hospital: {hospital_name}</li>
+                        </ul>
+                        <p>Please collect your medicines from the pharmacy.</p>
+                        <p>Best regards,</p>
+                        <p>HMS Healthcare Team</p>
+                    </body>
+                </html>
+                """
+                
+                email_message = EmailMultiAlternatives(
+                    subject="HMS - Medicine Invoice Generated",
+                    body=message,
+                    from_email=f'HMS Team <{settings.EMAIL_HOST_USER}>',
+                    to=[patient_email]
+                )
+                email_message.content_subtype = "html"
+                email_message.send(fail_silently=True)
+            except Exception as e:
+                print(f"Email notification error: {e}")
+            
+            return JsonResponse({
+                'status': 'success',
+                'invoice_id': str(result.inserted_id),
+                'message': 'Invoice generated successfully'
+            })
+            
+        except Exception as e:
+            print(f"Error generating invoice: {e}")
+            return JsonResponse({
+                'status': 'error',
+                'message': str(e)
+            }, status=500)
+    
+    return JsonResponse({
+        'status': 'error',
+        'message': 'Method not allowed'
+    }, status=405)

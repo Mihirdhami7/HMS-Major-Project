@@ -202,3 +202,9 @@ MONGO_DATABASE = os.getenv('MONGO_DATABASE')
 
 # MongoDB URI - use the cluster from your screenshot
 MONGO_URI = f"mongodb+srv://{MONGO_USERNAME}:{MONGO_PASSWORD}@cluster0.sqzac.mongodb.net/{MONGO_DATABASE}?retryWrites=true&w=majority"
+
+
+#razor pay
+# settings.py
+RAZORPAY_KEY_ID = "rzp_test_vcajFSq04fkAk"
+RAZORPAY_SECRET_KEY = "1z3ak928OOoeZehAR6rcgTxO"

@@ -15,7 +15,7 @@ import backend.settings as settings
 
 # Import from views.py where collections are defined
 from users.views import (
-    users_collection, temp_users_collection, otp_collection, sessions_collection,
+    users_collection, temp_users_collection, otp_collection, sessions_collection, doctors_collection,
     generate_otp, generate_session_id, clear_expired_sessions,
 
 )
@@ -242,23 +242,48 @@ def login_view(request):
             if not email or not password:
                 return JsonResponse({"status": "error", "message": "Email and password are required"}, status=400)
 
-            if not hospital_name and email != "21it402@bvmengineering.ac.in":  # Super admin doesn't need hospital
+            if not hospital_name and email != "21it402@bvmengineering.ac.in" and category != "Supplier":  # Super admin doesn't need hospital
                 return JsonResponse({"status": "error", "message": "Hospital selection is required"}, status=400)
             
             # User lookup
-            user_query = {"email": email}
-            if email != "21it402@bvmengineering.ac.in":  # Exclude super admin
-                user_query["userType"] = category
-                user_query["hospitalName"] = hospital_name
+            user = None
 
-            user = users_collection.find_one(user_query)
+           # Check if it's a super admin
+            if email == "21it402@bvmengineering.ac.in":
+                user = users_collection.find_one({"email": email})
+            else:
+                # For regular user lookup based on category
+                if category == "Doctor":
+                    # Doctors are stored in doctors_collection
+                    user_query = {
+                        "email": email,
+                        "userType": category,
+                        "Hospital": hospital_name
+                    }
+                    user = doctors_collection.find_one(user_query)
+                elif category == "Supplier":
+                    # Suppliers don't need hospital name in query
+                    user_query = {
+                        "email": email,
+                        "userType": category
+                    }
+                    user = users_collection.find_one(user_query)
+                else:
+                    # For other user types (Patient, Admin)
+                    user_query = {
+                        "email": email,
+                        "userType": category,
+                        "hospitalName": hospital_name
+                    }
+                    user = users_collection.find_one(user_query)
+
             if not user:
-                return JsonResponse({"status": "error", "message": "Invalid credentials"}, status=401)
+                return JsonResponse({"status": "error", "message": "user not found"}, status=401)
 
             # Password verification (bcrypt)
             stored_hashed_password = user.get("hpassword", "").encode("utf-8")
             if not stored_hashed_password or not bcrypt.checkpw(password.encode("utf-8"), stored_hashed_password):
-                return JsonResponse({"status": "error", "message": "Invalid credentials"}, status=401)
+                return JsonResponse({"status": "error", "message": "Invalid credentials password is diff"}, status=401)
 
             # Generate a new session ID
             session_id = generate_session_id(email)
@@ -414,42 +439,44 @@ def get_user_profile(request, user_type, email):
 
 
 @csrf_exempt
-def update_user_profile(request):
+def update_profile(request, user_type, email):
     if request.method == 'POST':
         try:
-            data = json.loads(request.body)
-            email = data.get('email')
-            user_type = data.get('userType')
+            # Verify session
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return JsonResponse({"status": "error", "message": "No session ID provided"}, status=401)
+            
+            session_id = auth_header.split(' ')[1]
+            session_data = sessions_collection.find_one({"session_id": session_id})
+            if not session_data or session_data["expires_at"] < datetime.now():
+                return JsonResponse({"status": "error", "message": "Session expired"}, status=401)
 
-            # Remove fields that shouldn't be updated
-            data.pop('email', None)
-            data.pop('userType', None)
-            data.pop('_id', None)
+            # Parse form data
+            data = request.POST.dict()
+            photo = request.FILES.get('photo')
 
-            # Update the user in MongoDB
+            # Update user data
+            update_data = {key: value for key, value in data.items() if key not in ['email', '_id']}
+
+            if photo:
+                photo_name = default_storage.save(f"profile_photos/{email}/{photo.name}", ContentFile(photo.read()))
+                update_data['photo'] = default_storage.url(photo_name)
+            # print("UPDATE DATA:", update_data)
+            # print("PHOTO:", photo)
             result = users_collection.update_one(
-                {"email": email, "userType": user_type},
-                {"$set": data}
+                {"email": email, "userType": user_type.capitalize()},
+                {"$set": update_data}
             )
 
             if result.modified_count > 0:
-                return JsonResponse({
-                    "status": "success",
-                    "message": "Profile updated successfully"
-                })
+               updated_user = users_collection.find_one({"email": email, "userType": user_type.capitalize()}, {"_id": 0})
+               return JsonResponse(updated_user)
+
             else:
-                return JsonResponse({
-                    "status": "error",
-                    "message": "No changes made to profile"
-                }, status=400)
+                return JsonResponse({"status": "error", "message": "No changes made to profile"}, status=200)
 
         except Exception as e:
-            return JsonResponse({
-                "status": "error",
-                "message": str(e)
-            }, status=500)
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
-    return JsonResponse({
-        "status": "error",
-        "message": "Method not allowed"
-    }, status=405)
+    return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)

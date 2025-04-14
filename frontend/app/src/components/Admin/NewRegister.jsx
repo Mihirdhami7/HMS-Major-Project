@@ -36,6 +36,8 @@ const NewRegister = () => {
   const [acceptPatientDate, setAcceptPatientDate] = useState(true);
   const [adminDateSlot, setAdminDateSlot] = useState("");
   
+  const [approvalAction, setApprovalAction] = useState("approve");
+
   // New Appointment Dialog State
   const [showNewAppointmentDialog, setShowNewAppointmentDialog] = useState(false);
   const [newAppointmentData, setNewAppointmentData] = useState({
@@ -119,8 +121,11 @@ const NewRegister = () => {
     try {
       setIsLoadingPending(true);
       setError("");
+      const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
       
-      const response = await axios.get("http://localhost:8000/api/get_pending_appointment/");
+      const response = await axios.get("http://localhost:8000/api/get_pending_appointment/", {
+        params: { hospitalName }
+      });
       
       if (response.data.status === "success") {
         setPendingAppointments(response.data.appointments);
@@ -137,42 +142,57 @@ const NewRegister = () => {
     }
   };
 
-  const handleApproveAppointment = async (appointmentId) => {
+  const handleApproveAppointment = async () => {
+    if (!selectedPendingAppointment || !selectedPendingAppointment._id) {
+      setError("No appointment selected for approval/rejection");
+      return;
+    }
     try {
       setLoading(true);
       setError("");
       
-      let requestData = {
-        appointmentId: appointmentId,
-        acceptPatientTime,
-        acceptPatientDate
-      };
-      
-      // If admin chooses a different time, include it in the request
-      if (!acceptPatientTime && adminTimeSlot) {
-        requestData.timeSlot = adminTimeSlot;
+      const appointmentData ={
+        appointmentId: selectedPendingAppointment._id,
+        patientName: selectedPendingAppointment.patientName,
+        patientEmail: selectedPendingAppointment.patientEmail,
+        doctorName: selectedPendingAppointment.doctorName,
+        doctorEmail: selectedPendingAppointment.doctorEmail,
+
+        department: selectedPendingAppointment.department,
+        appointmentDate: selectedPendingAppointment.appointmentDate,
+        appointmentTime: selectedPendingAppointment.requestedTime,
+        symptoms: selectedPendingAppointment.symptoms, 
+        status: approvalAction === "approve" ? "approve" : "reject",
+        hospitalName: selectedPendingAppointment.hospitalName || sessionStorage.getItem("hospitalName")
       }
-      if (!acceptPatientDate && adminDateSlot) {
-        requestData.dateSlot = adminDateSlot;
+      
+      if (approvalAction === "approve") {
+        if (!acceptPatientTime && adminTimeSlot) {
+          appointmentData.timeSlot = adminTimeSlot;
+        }
+        if (!acceptPatientDate && adminDateSlot) {
+          appointmentData.dateSlot = adminDateSlot;
+        }
       }
       
-      const response = await axios.post("http://localhost:8000/api/approve-appointment/", requestData);
+      const response = await axios.post("http://localhost:8000/api/approve-appointment/", appointmentData);
       
       if (response.data.status === "success") {
-        setSuccess("Appointment approved successfully!");
+        setSuccess(`Appointment ${approvalAction}d successfully!`);
         setSelectedPendingAppointment(null);
         setAdminTimeSlot("");
         setAdminDateSlot("");
         setAcceptPatientTime(true);
         setAcceptPatientDate(true);
+        setApprovalAction("approve");
         
         // Refresh the pending appointments list
         fetchPendingAppointments();
       } else {
-        setError(response.data.message || "Failed to approve appointment");
+        setError(response.data.message || `Failed to ${approvalAction} appointment`);
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to approve appointment");
+      setError(err.response?.data?.message || `Failed to ${approvalAction} appointment`);
     } finally {
       setLoading(false);
     }
@@ -400,50 +420,8 @@ const NewRegister = () => {
                   rows="3"
                 ></textarea>
               </div>
-{/* 
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block mb-1">Blood Group</label>
-                  <select
-                    name="bloodGroup"
-                    value={formData.bloodGroup}
-                    onChange={handleChange}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="">Select</option>
-                    <option value="A+">A+</option>
-                    <option value="A-">A-</option>
-                    <option value="B+">B+</option>
-                    <option value="B-">B-</option>
-                    <option value="AB+">AB+</option>
-                    <option value="AB-">AB-</option>
-                    <option value="O+">O+</option>
-                    <option value="O-">O-</option>
-                  </select>
-                </div>
 
-                <div>
-                  <label className="block mb-1">Height (cm)</label>
-                  <input
-                    type="number"
-                    name="height"
-                    value={formData.height}
-                    onChange={handleChange}
-                    className="w-full p-2 border rounded"
-                  />
-                </div>
-
-                <div>
-                  <label className="block mb-1">Weight (kg)</label>
-                  <input
-                    type="number"
-                    name="weight"
-                    value={formData.weight}
-                    onChange={handleChange}
-                    className="w-full p-2 border rounded"
-                  />
-                </div>
-              </div> */}
+  
 
               {error && <div className="p-3 bg-red-100 text-red-700 rounded">{error}</div>}
               {success && <div className="p-3 bg-green-100 text-green-700 rounded">{success}</div>}
@@ -482,7 +460,7 @@ const NewRegister = () => {
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
                         {pendingAppointments.map((appt) => (
-                          <tr key={appt.id}>
+                          <tr key={appt._id}>
                             <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{appt.patientName}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{appt.doctorName}</td>  
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{appt.department}</td>
@@ -634,16 +612,24 @@ const NewRegister = () => {
                 {selectedPendingAppointment && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
                   <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl">
-                    <h3 className="text-xl font-bold text-orange-600 mb-4">
+                    <h3 className="text-xl font-bold text-teal-600 mb-4 flex items-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
                       Review Appointment Request
                     </h3>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {/* Left Column: Appointment Details */}
-                      <div className="p-4 bg-orange-50 rounded-lg shadow-sm">
-                        <h4 className="font-semibold text-lg mb-3 text-orange-700">Appointment Information</h4>
+                      <div className="p-4 bg-gradient-to-br from-green-50 to-blue-50 rounded-lg shadow-sm border border-blue-100">
+                        <h4 className="font-semibold text-lg mb-3 text-green-700 flex items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Appointment Information
+                        </h4>
                         
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                           <div className="flex flex-col">
                             <span className="font-medium text-gray-700">Patient Name:</span>
                             <span className="text-gray-800 font-semibold">{selectedPendingAppointment.patientName}</span>
@@ -679,13 +665,23 @@ const NewRegister = () => {
                       </div>
                       
                       {/* Right Column: Modify Appointment */}
-                      <div className="p-4 bg-blue-50 rounded-lg shadow-sm">
-                        <h4 className="font-semibold text-lg mb-3 text-blue-700">Schedule Appointment</h4>
+                      <div className="p-4 bg-gradient-to-br from-blue-50 to-green-50 rounded-lg shadow-sm border border-green-100">
+                        <h4 className="font-semibold text-lg mb-3 text-blue-700 flex items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          Schedule Appointment
+                        </h4>
                         
                         <div className="space-y-4">
                           {/* Date Section */}
                           <div className="mb-4">
-                            <h5 className="font-medium mb-2 text-gray-700">Appointment Date</h5>
+                            <h5 className="font-medium mb-2 text-gray-700 flex items-center">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              Appointment Date
+                            </h5>
                             
                             <div className="flex items-center mb-2">
                               <input
@@ -697,7 +693,7 @@ const NewRegister = () => {
                               />
                               <label htmlFor="acceptDate" className="flex flex-col">
                                 <span>Accept requested date</span>
-                                <span className="text-sm font-semibold text-blue-600">
+                                <span className="text-sm font-semibold text-teal-600">
                                   {selectedPendingAppointment.appointmentDate}
                                 </span>
                               </label>
@@ -721,7 +717,7 @@ const NewRegister = () => {
                                   type="date"
                                   value={adminDateSlot}
                                   onChange={(e) => setAdminDateSlot(e.target.value)}
-                                  className="w-full p-2 border rounded"
+                                  className="w-full p-2 border rounded focus:ring-2 focus:ring-teal-300 focus:border-teal-300"
                                   min={new Date().toISOString().split('T')[0]}
                                   required
                                 />
@@ -731,7 +727,12 @@ const NewRegister = () => {
                           
                           {/* Time Section */}
                           <div className="mb-4">
-                            <h5 className="font-medium mb-2 text-gray-700">Appointment Time</h5>
+                            <h5 className="font-medium mb-2 text-gray-700 flex items-center">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Appointment Time
+                            </h5>
                             
                             <div className="flex items-center mb-2">
                               <input
@@ -743,7 +744,7 @@ const NewRegister = () => {
                               />
                               <label htmlFor="acceptTime" className="flex flex-col">
                                 <span>Accept requested time</span>
-                                <span className="text-sm font-semibold text-blue-600">
+                                <span className="text-sm font-semibold text-teal-600">
                                   {selectedPendingAppointment.requestedTime}
                                 </span>
                               </label>
@@ -767,11 +768,48 @@ const NewRegister = () => {
                                   type="time"
                                   value={adminTimeSlot}
                                   onChange={(e) => setAdminTimeSlot(e.target.value)}
-                                  className="w-full p-2 border rounded"
+                                  className="w-full p-2 border rounded focus:ring-2 focus:ring-teal-300 focus:border-teal-300"
                                   required
                                 />
                               </div>
                             )}
+                          </div>
+                          
+                          {/* Action Options (approve/reject) */}
+                          <div className="mb-4 mt-6 pt-4 border-t border-gray-200">
+                            <h5 className="font-medium mb-3 text-gray-700">Appointment Action</h5>
+                            
+                            <div className="grid grid-cols-2 gap-3">
+                              <button
+                                type="button"
+                                onClick={() => setApprovalAction("approve")}
+                                className={`py-2 px-3 rounded-md flex items-center justify-center transition-all ${
+                                  approvalAction === "approve" 
+                                    ? "bg-green-100 text-green-700 border-2 border-green-300" 
+                                    : "bg-gray-100 text-gray-600 border border-gray-200 hover:bg-green-50"
+                                }`}
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Approve
+                              </button>
+                              
+                              <button
+                                type="button"
+                                onClick={() => setApprovalAction("reject")}
+                                className={`py-2 px-3 rounded-md flex items-center justify-center transition-all ${
+                                  approvalAction === "reject" 
+                                    ? "bg-red-100 text-red-700 border-2 border-red-300" 
+                                    : "bg-gray-100 text-gray-600 border border-gray-200 hover:bg-red-50"
+                                }`}
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                                Reject
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -798,19 +836,25 @@ const NewRegister = () => {
                           setAdminDateSlot("");
                           setAcceptPatientTime(true);
                           setAcceptPatientDate(true);
+                          setApprovalAction("approve");
                         }}
-                        className="px-5 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
+                        className="px-5 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors border border-gray-300"
                       >
                         Cancel
                       </button>
+                      
                       <button
-                        onClick={() => handleApproveAppointment(selectedPendingAppointment.id)}
+                        onClick={() => handleApproveAppointment()}
                         disabled={loading || 
-                                (!acceptPatientTime && !adminTimeSlot) || 
-                                (!acceptPatientDate && !adminDateSlot)}
-                        className="px-5 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                          (approvalAction === "approve" && !acceptPatientTime && !adminTimeSlot) || 
+                          (approvalAction === "approve" && !acceptPatientDate && !adminDateSlot)}
+                        className={`px-5 py-2 rounded-md transition-colors ${
+                          approvalAction === "approve"
+                            ? "bg-gradient-to-r from-green-500 to-teal-500 text-white hover:from-green-600 hover:to-teal-600"
+                            : "bg-gradient-to-r from-red-500 to-orange-500 text-white hover:from-red-600 hover:to-orange-600"
+                        } disabled:bg-gray-300 disabled:cursor-not-allowed`}
                       >
-                        {loading ? "Processing..." : "Approve Appointment"}
+                        {loading ? "Processing..." : approvalAction === "approve" ? "Approve Appointment" : "Reject Appointment"}
                       </button>
                     </div>
                   </div>

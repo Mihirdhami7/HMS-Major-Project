@@ -11,7 +11,7 @@ const Disease = () => {
       {
         name: "Osteoarthritis",
         description: "A degenerative joint disease that occurs when the protective cartilage that cushions the ends of bones wears down over time.",
-        image: "/images/diseases/osteoarthritis.jpg",
+        image: "/images/ostho.jpg",
         symptoms: [
           "Joint pain and stiffness",
           "Reduced range of motion",
@@ -23,7 +23,7 @@ const Disease = () => {
       {
         name: "Rheumatoid Arthritis",
         description: "An autoimmune disorder that causes inflammation of the joints, leading to painful swelling that can eventually result in bone erosion and joint deformity.",
-        image: "/images/diseases/rheumatoid.jpg",
+        image: "/images/rh.jpg",
         symptoms: [
           "Tender, warm, swollen joints",
           "Joint stiffness worse in mornings",
@@ -37,7 +37,7 @@ const Disease = () => {
       {
         name: "Coronary Artery Disease",
         description: "A condition where the major blood vessels that supply your heart become damaged or diseased, often due to cholesterol-containing deposits.",
-        image: "/images/diseases/coronary.jpg",
+        image: "/images/heart.jpg",
         symptoms: [
           "Chest pain (angina)",
           "Shortness of breath",
@@ -49,7 +49,7 @@ const Disease = () => {
       {
         name: "Hypertension",
         description: "A common condition where the long-term force of blood against artery walls is high enough to cause health problems.",
-        image: "/images/diseases/hypertension.jpg",
+        image: "/images/hyper.jpg",
         symptoms: [
           "Headaches",
           "Shortness of breath",
@@ -63,7 +63,7 @@ const Disease = () => {
       {
         name: "Alzheimer's Disease",
         description: "A progressive disorder that causes brain cells to degenerate and die, leading to a continuous decline in thinking, behavioral and social skills.",
-        image: "/images/diseases/alzheimers.jpg",
+        image: "/images/al.jpg",
         symptoms: [
           "Memory loss",
           "Difficulty planning or problem solving",
@@ -75,7 +75,7 @@ const Disease = () => {
       {
         name: "Parkinson's Disease",
         description: "A progressive nervous system disorder that affects movement, often including tremors.",
-        image: "/images/diseases/parkinsons.jpg",
+        image: "/images/parkinson.jpeg.jpg",
         symptoms: [
           "Tremor",
           "Slowed movement",
@@ -89,7 +89,7 @@ const Disease = () => {
       {
         name: "Asthma",
         description: "A condition in which airways narrow and swell and produce extra mucus, making breathing difficult.",
-        image: "/images/diseases/asthma.jpg",
+        image: "/images/asthma.jpeg.jpg",
         symptoms: [
           "Shortness of breath",
           "Chest tightness or pain",
@@ -101,7 +101,7 @@ const Disease = () => {
       {
         name: "Type 1 Diabetes",
         description: "A chronic condition in which the pancreas produces little or no insulin, leading to increased blood sugar levels.",
-        image: "/images/diseases/diabetes.jpg",
+        image: "/images/type1.jpeg.jpg",
         symptoms: [
           "Increased thirst",
           "Frequent urination",

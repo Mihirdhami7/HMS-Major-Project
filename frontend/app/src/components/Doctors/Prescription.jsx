@@ -15,30 +15,34 @@ function Prescription() {
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
     const appointmentData = location.state?.appointment;
+    const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
 
-    // Added missing patient state
     const [patient, setPatient] = useState({
-        patientName: appointmentData?.patientName || "Unknown",
+        patientName: appointmentData?.patientName || "patient",
         patientEmail: appointmentData?.patientEmail || "",
-        patientId: appointmentData?.patientId || "",
         patientAge: "",
         patientGender: "",
         patientPhone: "",
         patientAddress: "",
         patientDOB: ""
     });
+    const [department, setDepartment] = useState(appointmentData?.department || "General");
+    // Available medicines from database
+    const [availableMedicines, setAvailableMedicines] = useState([]);
+    
 
     useEffect(() => {
         if (appointmentData?.patientEmail) {
             fetchPatientDetails(appointmentData.patientEmail);
         }
+        // Fetch medicines based on hospital
+        fetchAvailableMedicines();
         
         // Set common suggestions based on department
         if (appointmentData?.department) {
-            setDepartment(appointmentData.department);
             setCommonSuggestions(
                 commonSuggestionsList[appointmentData.department] || 
-                commonSuggestionsList["Generic"]
+                commonSuggestionsList["General Medicine"]
             );
         }
     }, [appointmentData]);
@@ -72,7 +76,6 @@ function Prescription() {
                 setPatient({
                     patientName: patientData.name || appointmentData?.patientName || "Unknown",
                     patientEmail: patientData.email || appointmentData?.patientEmail || "",
-                    patientId: patientData.id || appointmentData?.patientId || "",
                     patientAge: age.toString(),
                     patientGender: patientData.gender || "",
                     patientPhone: patientData.contactNo || "",
@@ -110,6 +113,35 @@ function Prescription() {
         }
     };
     
+    // New function to fetch medicines from database based on hospital
+    const fetchAvailableMedicines = async () => {
+        try {
+            setLoading(true);
+            const response = await axios.post("http://localhost:8000/api/get-hospital-medicines/", {
+                hospitalName: hospitalName,
+                // department: appointmentData?.department
+            });
+            
+            if (response.data.status === "success") {
+                const medicines = response.data.medicines.map(med => ({
+                    id: med._id,
+                    name: med['Product Name'] || 'Unknown Medicine',
+                    stock: med['Stock'] || 0,
+                    price: med['Price (Per Unit/Strip)'] || 0
+                }));
+                setAvailableMedicines(medicines);
+            } else {
+                throw new Error(response.data.message || "Failed to load medicines");
+            }
+        } catch (err) {
+            console.error("Error fetching medicines:", err);
+            setError("Failed to load available medicines");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+
     const [vitals, setVitals] = useState({
         temperature: "",
         bloodPressure: "",
@@ -121,7 +153,6 @@ function Prescription() {
 
     const [medicineSearch, setMedicineSearch] = useState("");
     const [selectedMedicines, setSelectedMedicines] = useState([]);
-    const [department, setDepartment] = useState("Orthopedic");
     const [reportType, setReportType] = useState("none");
     const [reportFile, setReportFile] = useState(null);
     const [existingReports, setExistingReports] = useState([]);
@@ -243,13 +274,6 @@ function Prescription() {
         setSuggestions(prev => prev ? `${prev}\n${suggestion}` : suggestion);
     };
 
-    const handleDepartmentChange = (e) => {
-        const newDepartment = e.target.value;
-        setDepartment(newDepartment);
-        // Update common suggestions based on department
-        setCommonSuggestions(commonSuggestionsList[newDepartment] || commonSuggestionsList["Generic"]);
-    };
-
     // Format date helper function
     const formatDate = (dateString) => {
         if (!dateString) return "Not available";
@@ -260,13 +284,11 @@ function Prescription() {
         }
     };
     // Add this function to your component
-    const sendPrescriptionData = async () => {
+    const savePrescription = async () => {
         try {
             setLoading(true);
             setError(null);
-            
-            // Get doctor information from session storage
-            const doctorName = sessionStorage.getItem("name") || "Unknown Doctor";
+            const doctorName = sessionStorage.getItem("name") || "Doctor";
             const doctorEmail = sessionStorage.getItem("email") || "doctor@example.com";
             
             // Prepare data to be sent
@@ -274,12 +296,19 @@ function Prescription() {
                 // Patient information
                 patientName: patient.patientName,
                 patientEmail: patient.patientEmail,
-                patientId: patient.patientId,
-
+                patientAge: patient.patientAge,
+                patientGender: patient.patientGender,
+                patientPhone: patient.patientPhone,
+                patientAddress: patient.patientAddress,
+                
+                
                 // Doctor information
                 doctorName: doctorName,
                 doctorEmail: doctorEmail,
+
+
                 department: department,
+                hospitalName: hospitalName,
                 
                 // Medical details
                 vitals: vitals,
@@ -291,25 +320,16 @@ function Prescription() {
                 reportValues: reportType === "manual" ? reportValues : null,
                 
                 // Appointment information if available
-                appointmentId: appointmentData?.id || null,
-                
-                // Timestamp
-                createdAt: new Date().toISOString()
+                appointmentId: appointmentData?._id || null,
             };
             
-            // If there's a file upload for outside reports
-            let formData = null;
-            if (reportType === "outside" && reportFile) {
-                formData = new FormData();
-                formData.append('reportFile', reportFile);
-                formData.append('prescriptionData', JSON.stringify(prescriptionData));
-            }
+
             
             // Send the data to the backend
             const response = await axios.post(
                 "http://localhost:8000/api/save-prescription/", 
-                formData || prescriptionData,
-                formData ? { headers: { 'Content-Type': 'multipart/form-data' } } : {}
+                prescriptionData
+
             );
             
             if (response.data.status === "success") {
@@ -317,25 +337,25 @@ function Prescription() {
                 
             // Show alert notification
             alert("Prescription written successfully!");
-                
-                // Update appointment status if we have an ID
-                if (appointmentData?.id) {
-                    await axios.post("http://localhost:8000/api/update-appointment-status/", {
-                        appointmentId: appointmentData.id,
-                        hasPrescription: true
-                    });
-                }
+            return true;
             } else {
                 throw new Error(response.data.message || "Failed to send prescription data");
             }
         } catch (err) {
+                // Check if this is actually a success message wrongly processed
+            if (err.message === "Prescription saved successfully") {
+                setSuccess("Prescription data saved successfully!");
+                alert("Prescription written successfully!");
+                return true;
+            }
+            
             console.error("Error sending prescription data:", err);
-            setError(`Failed to send prescription data: ${err.message}`);
+            setError(`Failed to save prescription data: ${err.message}`);
+        return false;
         } finally {
             setLoading(false);
         }
     };
-
     const generateReport = () => {
         try {
             // Create a new PDF document
@@ -361,7 +381,7 @@ function Prescription() {
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(18);
             doc.setFont(undefined, 'bold');
-            doc.text("HMS Healthcare System", 60, 15);
+            doc.text(hospitalName, 60, 15);
             
             // Add a simple logo (simulate with shapes since we can't import an image)
             doc.setFillColor(255, 255, 255);
@@ -589,7 +609,7 @@ function Prescription() {
                 doc.setTextColor(255, 255, 255);
                 doc.setFontSize(18);
                 doc.setFont(undefined, 'bold');
-                doc.text("HMS Healthcare System", 60, 15);
+                doc.text(hospitalName, 60, 15);
                 
                 // Logo on new page
                 doc.setFillColor(255, 255, 255);
@@ -635,7 +655,7 @@ function Prescription() {
             doc.text("Doctor's Signature", pageWidth - 80, footerY + 5);
             
             // Doctor's name
-            const doctorName = sessionStorage.getItem("userName") || "Doctor";
+            const doctorName = sessionStorage.getItem("name") || "Doctor";
             doc.setFont(undefined, 'bold');
             doc.text(doctorName, pageWidth - 80, footerY + 12);
             
@@ -646,7 +666,7 @@ function Prescription() {
             doc.setFontSize(8);
             doc.text("OFFICIAL STAMP", 35, footerY - 5);
             doc.setFont(undefined, 'normal');
-            doc.text("HMS Healthcare", 35, footerY);
+            doc.text(hospitalName, 35, footerY);
             doc.text("Verified " + new Date().toLocaleDateString(), 35, footerY + 5);
             
             // Bottom line
@@ -656,7 +676,7 @@ function Prescription() {
             
             // Contact info in footer
             doc.setFontSize(8);
-            doc.text("HMS Healthcare System | Phone: +123-456-7890 | Email: contact@hmshealthcare.com", pageWidth/2, pageHeight - 5, { align: "center" });
+            doc.text(`${hospitalName} | Phone: +123-456-7890 | Email: contact@hospital.com`, pageWidth/2, pageHeight - 5, { align: "center" });
             
             // Save the PDF with improved filename
             const safeName = patient.patientName 
@@ -665,27 +685,10 @@ function Prescription() {
             
             const safeDate = new Date().toLocaleDateString().replace(/\//g, '-');
             
-            doc.save(`HMS_Prescription_${safeName}_${safeDate}.pdf`);
+            doc.save(`${hospitalName}_Prescription_${safeName}_${safeDate}.pdf`);
             
-            // Update appointment status if we have an ID
-            if (appointmentData?.id) {
-                try {
-                    axios.post("http://localhost:8000/api/update_appointment_status/", {
-                        appointmentId: appointmentData.id,
-                        hasPrescription: true
-                    })
-                    .then(() => {
-                        setSuccess("Prescription generated and saved successfully!");
-                    })
-                    .catch(err => {
-                        console.error("Failed to update appointment status:", err);
-                    });
-                } catch (err) {
-                    console.error("Error in update appointment status:", err);
-                }
-            } else {
-                setSuccess("Prescription generated and saved successfully!");
-            }
+            // Save the prescription to database
+            savePrescription();
             
             return true;
         } catch (error) {
@@ -694,16 +697,19 @@ function Prescription() {
             return false;
         }
     };
+
+
     const updateMedicine = (index, field, value) => {
         const updatedMedicines = [...selectedMedicines];
         updatedMedicines[index][field] = value;
         setSelectedMedicines(updatedMedicines);
     };
 
-    // Add this function to filter medicines based on search
-    const filteredMedicines = departments[department]?.filter(medicine =>
-        medicine.toLowerCase().includes(medicineSearch.toLowerCase())
-    ) || [];
+    const filteredMedicines = medicineSearch.trim() !== "" 
+    ? availableMedicines.filter(med => 
+        med.name.toLowerCase().includes(medicineSearch.toLowerCase())
+      )
+    : [];
 
     return (
         <div className="flex h-screen bg-gradient-to-br from-blue-50 to-green-50 overflow-hidden">
@@ -765,21 +771,18 @@ function Prescription() {
                     </div>
                 </div>
 
-                {/* Department Selection */}
+                {/* Reports Section */}
                 <div className="bg-white p-6 rounded-lg shadow-lg mb-6 border-l-4 border-indigo-500">
                     <h3 className="text-xl font-semibold mb-4 text-blue-700">Department & Reports</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="text-gray-600 block mb-2">Department:</label>
-                            <select
+                            <input
+                                type="text"
                                 value={department}
-                                onChange={handleDepartmentChange}
-                                className="w-full p-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            >
-                                {Object.keys(departments).map(dep => (
-                                    <option key={dep} value={dep}>{dep}</option>
-                                ))}
-                            </select>
+                                disabled
+                                className="w-full p-2 border border-blue-200 rounded-lg bg-gray-50"
+                            />
                         </div>
                         <div>
                             <label className="text-gray-600 block mb-2">Report Type:</label>
@@ -826,12 +829,16 @@ function Prescription() {
                         <div className="bg-gradient-to-r from-blue-50 to-green-50 p-4 rounded-lg">
                             <h4 className="font-medium mb-2">Select Existing Reports:</h4>
                             <div className="grid grid-cols-1 gap-2">
-                                {existingReports.map((report) => (
-                                    <div key={report.id} className="flex items-center">
-                                        <input type="checkbox" id={`report-${report.id}`} className="mr-2" />
-                                        <label htmlFor={`report-${report.id}`}>{report.name}</label>
-                                    </div>
-                                ))}
+                                {existingReports.length > 0 ? (
+                                    existingReports.map((report) => (
+                                        <div key={report.id} className="flex items-center">
+                                            <input type="checkbox" id={`report-${report.id}`} className="mr-2" />
+                                            <label htmlFor={`report-${report.id}`}>{report.name}</label>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-gray-500">No existing reports found for this patient</p>
+                                )}
                             </div>
                         </div>
                     )}
@@ -890,17 +897,22 @@ function Prescription() {
                                                 key={index}
                                                 className="p-2 hover:bg-blue-50 cursor-pointer"
                                                 onClick={() => {
+                                                    setMedicineSearch(medicine.name);
                                                     const newMedicine = {
-                                                        name: medicine,
+                                                        name: medicine.name,
                                                         dosage: dosage,
                                                         frequency: frequency,
-                                                        duration: duration
+                                                        duration: duration,
+                                                        medicineId: medicine._id
                                                     };
                                                     setSelectedMedicines([...selectedMedicines, newMedicine]);
                                                     setMedicineSearch("");
                                                 }}
                                             >
-                                                {medicine}
+                                                <span className="font-medium">{medicine.name}</span>
+                                                <span className={`text-sm ${medicine.stock > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                                    {medicine.stock > 0 ? `In Stock: ${medicine.stock}` : 'Out of Stock'}
+                                                </span>
                                             </div>
                                         ))
                                     ) : (
@@ -1084,7 +1096,7 @@ function Prescription() {
                     {/* Generate Report Button */}
                     <div className="flex justify-end mt-6 space-x-4">
                         <button 
-                            onClick={sendPrescriptionData}
+                            onClick={savePrescription}
                             className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-6 py-3 rounded-lg shadow-lg hover:from-purple-600 hover:to-indigo-600 flex items-center"
                             disabled={loading}
                         >
@@ -1111,7 +1123,7 @@ function Prescription() {
                             className="bg-gradient-to-r from-blue-500 to-green-500 text-white px-6 py-3 rounded-lg shadow-lg hover:from-blue-600 hover:to-green-600 flex items-center"
                         >
                             <FiClipboard className="mr-2" />
-                            Generate Report
+                            Generate PDF Report
                         </button>
                     </div>
                 </div>

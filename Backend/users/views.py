@@ -41,6 +41,7 @@ try:
     products_collection = db["products"]
     notifications_collection = db["notifications"]
     prescriptions_collection = db["prescriptions"]
+    invoices_collection = db["invoices"]
 
 
     temp_appointments_collection = db["temp_appointments"]

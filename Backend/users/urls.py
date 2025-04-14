@@ -3,7 +3,7 @@ from django.urls import path
 # Authentication and User Management views
 from users.userManageView import (
     register_user, verify_email, login_view, check_session, logout_view,
-    get_user_profile, 
+    get_user_profile, update_profile
 )
 
 # Doctor related views
@@ -22,9 +22,8 @@ from users.patientView import (
 from users.appointmentView import (
     get_appointments, book_appointment, approve_appointment, 
     get_pending_appointments, search_appointment, create_appointment, 
-    get_doctor_appointments, save_prescription, 
-    # get_prescriptions,
-    # update_appointment_status
+    get_doctor_appointments, save_prescription, get_hospital_medicines, get_prescriptions,
+    generate_invoice
 )
 
 # Hospital and Department management
@@ -35,7 +34,7 @@ from users.MultiDepartmentView import (
     get_hospital_departments, get_department_doctors,
     get_department_patients, add_department, update_department, delete_department
 )
-
+from users.orderManageView import get_products
 # Pharmacy and inventory management
 # from users.orderManageView import (
 #     # get_products, add_product, update_product, delete_product,
@@ -50,9 +49,9 @@ urlpatterns = [
     path('check_session/', check_session, name='check_session'),
     path('logout/', logout_view, name='logout'),
     path('profile/<str:user_type>/<str:email>/', get_user_profile, name='get_user_profile'),
+    
     # Remove this line if update_user_profile is not implemented
-    # path('profile/update/', update_user_profile, name='update_user_profile'),
-
+    path('update_profile/<str:userType>/<str:emailToUse>/', update_profile, name='update_user_profile'),
     # Doctor related routes - fixed to include doctor_id parameter
     path('doctor_by_hospital/<str:hospital_id>/', get_doctors_by_hospital, name='doctor_by_hospital'),
     path('get_doctor_details/', get_doctor_details, name='get_doctor_details'),
@@ -66,6 +65,7 @@ urlpatterns = [
     path('add_patient/', add_patient, name='add_patient'),
     path('search_patient/', search_patient, name='search_patient'),
     path('update_patient/<str:patient_id>/', update_patient, name='update_patient'),
+    
     path('delete_patient/<str:patient_id>/', delete_patient, name='delete_patient'),
     path('get-patient-by-email/', get_patient_by_email, name='get_patient_by_email'),
 
@@ -79,9 +79,11 @@ urlpatterns = [
     path('create-appointment/', create_appointment, name='create_appointment'),
     path('get_doctor_appointments/', get_doctor_appointments, name='get_doctor_appointments'),
     path('get_pending_appointment/', get_pending_appointments, name='get_pending_appointment'),
+    path('get-hospital-medicines/', get_hospital_medicines, name='get_hospital_medicines'),
     path('save-prescription/', save_prescription, name='save_prescription'),
-    # path('get_prescriptions/', get_prescriptions,  name='get_prescriptions'),
-    # path('update-appointment-status/', update_appointment_status, name='update_appointment_status'),
+    path('get_prescriptions/', get_prescriptions,  name='get_prescriptions'),
+
+    path('generate-invoice/', generate_invoice, name='generate_invoice'),
     
     # Hospital views - fixed to include hospital_id parameter
     path('get_hospital/', get_hospitals, name='get_hospital'),
@@ -103,10 +105,14 @@ urlpatterns = [
     # path('add_product/', add_product, name='add_product'),
     # path('update_product/<str:product_id>/', update_product, name='update_product'),
     # path('delete_product/<str:product_id>/', delete_product, name='delete_product'),
-    
+    path('get_products/<str:hospital_name>/', get_products, name='get_products'),
     # # Stock views
     # path('restock/', request_restock, name='restock'),
     # path('checkStock/', check_stock_levels, name='checkStock'),
     # path('get_stock/', supplier_get_products, name='get_stock'),
     # path('add_stock/', add_stock, name='add_stock'),
+
+    # Payment views
+    # path('create_order/', create_order, name='create_order'),
+    # path("verify_payment/", verify_payment, name="verify_payment"),
 ]

@@ -19,9 +19,8 @@ function Appointment() {
   const [doctors, setDoctors] = useState([]);
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [selectedDepartment, setSelectedDepartment] = useState("");
-  
-  
   const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
+  
     // Fetch hospital and departments on component mount
     useEffect(() => {
       fetchDepartments();
@@ -136,6 +135,9 @@ function Appointment() {
 
     const userName = sessionStorage.getItem("name");
     const userEmail = sessionStorage.getItem("email");
+    const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
+
+
 
     if ( !userName || !userEmail) {
       alert("User information is incomplete. Please log in again.");
@@ -152,15 +154,19 @@ function Appointment() {
       requestedTime: appointmentTime, // Changed from appointmentTime to requestedTime
       symptoms: symptoms || "No symptoms provided", // Optional field
       doctorEmail: selectedDoctor.email, // Additional data that might be useful
-      doctorName: selectedDoctor.name // Additional data that might be useful
+      doctorName: selectedDoctor.name, // Additional data that might be useful
+      hospitalName: hospitalName, // Added hospital name
     };
     try {
       const response = await axios.post("http://127.0.0.1:8000/api/book_appointment/", appointmentData);
       
       if (response.data.status === "success") {
+        setShowModal(false);
+        setSelectedDoctor(null);
+        setAppointmentDate("");
+        setSymptoms("");
         alert("Appointment request sent for approval.");
         console.log("Appointment sent successfully:", response.data);
-        closeModal();
       } else {
         alert(response.data.message || "Failed to book appointment.");
       }

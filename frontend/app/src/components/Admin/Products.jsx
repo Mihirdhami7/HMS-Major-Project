@@ -5,71 +5,92 @@ import axios from 'axios';
 
 const Products = () => {
   const [products, setProducts] = useState([]);
-  const [appointments, setAppointments] = useState([]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("All Types");
   const [selectedStatus, setSelectedStatus] = useState("All Status");
   const [loading, setLoading] = useState(true);
 
   
-  const [notifications, setNotifications] = useState([
-    { id: 1, message: "New stock received from PharmaCo", time: "2 hours ago", read: false },
-    { id: 2, message: "MediSupply has confirmed your order", time: "5 hours ago", read: false },
-    { id: 3, message: "Low stock alert for Azithromycin", time: "Yesterday", read: true }
-  ]);
-  const [showNotifications, setShowNotifications] = useState(false);
+  // const [notifications, setNotifications] = useState([
+  //   { id: 1, message: "New stock received from PharmaCo", time: "2 hours ago", read: false },
+  //   { id: 2, message: "MediSupply has confirmed your order", time: "5 hours ago", read: false },
+  //   { id: 3, message: "Low stock alert for Azithromycin", time: "Yesterday", read: true }
+  // ]);
+  // const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
     fetchProducts();
-    fetchAppointments();
+
   }, []);
 
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const response = await axios.get("http://127.0.0.1:8000/api/get_product/");
-      if (response.data.status === "success") {
-        // Process products to add status based on stock level
-
-        const allProductDetails = response.data.products;
-
-        const processedProducts = response.data.products.map(product => ({
-          ...product,
-          status: (product.stock || product["Stock"] || 0) <= 40 ? "Low Stock" : "In Stock"
-        }));
-        setProducts(processedProducts);
-        console.log("All product details:", allProductDetails);
-      } else {
-        console.error("Error in API response:", response.data.message);
+      // Get the hospital name from session storage
+      const hospitalName = sessionStorage.getItem("hospitalName");
+     
+      if (!hospitalName ) {
+          console.error("Hospital name is missing in session storage.");
+          return;
       }
-    } catch (error) {
+      console.log("Hospital Name:", hospitalName);
+   
+      // Make an API call to fetch products for the specified hospital
+      const response = await axios.get(`http://127.0.0.1:8000/api/get_products/${hospitalName}/`, {
+          headers: {
+              Authorization: `Bearer ${sessionStorage.getItem("session_Id")}`
+          }
+      });
+
+      if (response.data.status === "success") {
+          // Process products to add status based on stock level
+          const processedProducts = response.data.products.map(product => ({
+            name: product["Product Name"],
+            type: product["Product Type"],
+            supplier: product["Supplier Info"],
+            price: product["Price (Per Unit/Strip)"],
+            stock: product["Stock"],
+            expiryDate: product["Expiry Date"],
+            status: (product["Stock"] || 0) <= 40 ? "Low Stock" : "In Stock",
+          }));
+          setProducts(processedProducts);
+          console.log("Fetched products:", processedProducts);
+      } else {
+          console.error("Error in API response:", response.data.message);
+      }
+  } catch (error) {
       console.error("Error fetching products:", error);
-    } finally {
+  } finally {
       setLoading(false);
-    }
+  }
   };
 
   // Get unique product types from actual data for filter dropdown
-  const productTypes = ["All Types", ...new Set(products.map(product => product.type).filter(Boolean))];
+  // Removed unused productTypes variable
+const filteredProducts = products.filter((product) => {
+  const name = typeof product.name === "string" ? product.name : "";
+  const type = product.type || "";
+  const status = product.status || "";
 
-  const filteredProducts = products.filter((product) => {
-    return (
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-      (selectedType === "All Types" || product.type === selectedType) &&
-      (selectedStatus === "All Status" || product.status === selectedStatus)
-    );
-  });
+  return (
+    name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+    (selectedType === "All Types" || type === selectedType) &&
+    (selectedStatus === "All Status" || status === selectedStatus)
+  );
+});
 
 
 
-    const fetchAppointments = async () => {
-      try {
-        const response = await axios.get("http://127.0.0.1:8000/api/appointments/");
-        setAppointments(response.data.appointments || []);
-      } catch (error) {
-        console.error("Error fetching appointments:", error);
-      }
-    };
+
+    // const fetchAppointments = async () => {
+    //   try {
+    //     const response = await axios.get("http://127.0.0.1:8000/api/appointments/");
+    //     setAppointments(response.data.appointments || []);
+    //   } catch (error) {
+    //     console.error("Error fetching appointments:", error);
+    //   }
+    // };
 
   // Pending orders data - keeping as is per your request
   const pendingOrders = [
@@ -84,7 +105,6 @@ const Products = () => {
   const totalProducts = products.length;
   const lowStockItems = products.filter(product => product.status === 'Low Stock').length;
   const pendingOrdersCount = pendingOrders.length;
-  const recentUpdatesCount = notifications.length;
 
   // Handle sending request to supplier
   const handleRequestStock = async (productId, productName, supplier) => {
@@ -102,15 +122,15 @@ const Products = () => {
     }
   };
   
-  // Handle notification click
-  const handleNotificationClick = () => {
-    setShowNotifications(!showNotifications);
-  };
+  // // Handle notification click
+  // const handleNotificationClick = () => {
+  //   setShowNotifications(!showNotifications);
+  // };
 
-  // Mark all notifications as read
-  const markAllAsRead = () => {
-    setNotifications(notifications.map(n => ({...n, read: true})));
-  };
+  // // Mark all notifications as read
+  // const markAllAsRead = () => {
+  //   setNotifications(notifications.map(n => ({...n, read: true})));
+  // };
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -164,7 +184,7 @@ const Products = () => {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm text-gray-500">Recent Updates</p>
-                    <h3 className="text-2xl font-bold">{recentUpdatesCount}</h3>
+                    {/* <h3 className="text-2xl font-bold">{recentUpdatesCount}</h3> */}
                   </div>
                 </div>
               </div>
@@ -229,8 +249,8 @@ const Products = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {filteredProducts.length > 0 ? (
-                        filteredProducts.map((product) => (
-                          <tr key={product.id}>
+                        filteredProducts.map((product,index) => (
+                          <tr key={`${product.name || "unknown"}-${index}`}>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                               {product.name}
                             </td>

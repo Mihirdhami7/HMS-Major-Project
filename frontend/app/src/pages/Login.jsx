@@ -39,7 +39,16 @@ export default function Login() {
   */
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+    
+    // Auto-hide hospital field when category is Supplier
+    if (name === "category" && value === "Supplier") {
+      setFormData(prev => ({ ...prev, hospitalName: "" }));
+    } else if (name === "category" && value !== "Supplier" && formData.hospitalName === "") {
+      // Reset to default hospital if changing from Supplier to other roles
+      setFormData(prev => ({ ...prev, hospitalName: "Zydus" }));
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -184,8 +193,9 @@ export default function Login() {
             </select>
           </div>
 
-        {/* Hospital Dropdown */}
-        <div>
+        {/* Hospital Dropdown - conditionally rendered */}
+        {formData.category !== "Supplier" && (
+          <div>
             <label htmlFor="hospitalName" className="block text-sm font-medium text-gray-700 mb-1">Hospital</label>
             <select
               id="hospitalName"
@@ -193,7 +203,7 @@ export default function Login() {
               value={formData.hospitalName}
               onChange={handleChange}
               className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              required
+              required={formData.category !== "Supplier"}
             >
               <option value="">Select Hospital</option>
               {hospitals.map((hospital, index) => (
@@ -203,6 +213,7 @@ export default function Login() {
               ))}
             </select>
           </div>
+        )}
 
           
           {/* Login Button */}

@@ -128,8 +128,8 @@ function Profile() {  // Changed name to match what's imported in routes
             }
 
             // Send update request
-            const response = await axios.put(
-                `http://127.0.0.1:8000/api/update-profile/${userType}/${emailToUse}/`,
+            const response = await axios.post(
+                `http://127.0.0.1:8000/api/update_profile/${userType}/${emailToUse}/`,
                 formData,
                 {
                     headers: {
@@ -181,7 +181,7 @@ function Profile() {  // Changed name to match what's imported in routes
     return (
         <div className="flex h-screen bg-blue-50 overflow-hidden">
             <Slidebar activeTab="profile" userType={userType} />
-            <div className="flex flex-col flex-1 p-8 overflow-auto">
+            <div className="flex flex-col flex-1 p-8 overflow-auto mt-14">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-3xl font-bold text-blue-800">My Profile</h2>
                     {!isEditing ? (
