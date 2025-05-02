@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FiEdit2, FiTrash2, FiPlus, FiCheck, FiX} from "react-icons/fi";
+import { FiEdit2, FiTrash2, FiPlus, FiCheck, FiX, FiRefreshCw} from "react-icons/fi";
 import { MdMedicalServices } from "react-icons/md";
 import Slidebar from "../../pages/Slidebar";
 import axios from "axios";
@@ -8,14 +8,16 @@ const DepartmentManagement = () => {
   const [departments, setDepartments] = useState([]);
   const [doctors, setDoctors] = useState([]);
 
-  
-  // UI control states
+  const [pendingDoctors, setPendingDoctors] = useState([]);
+
   const [selectedDepartment, setSelectedDepartment] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showAddDepartment, setShowAddDepartment] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+
 
   // Form data states
   const [editData, setEditData] = useState({
@@ -39,10 +41,35 @@ const DepartmentManagement = () => {
     "Resident Doctor",
     "Specialist"
   ];
+  const handleRefresh = async () => {
+    setLoading(true);
+    setError("");
+    setSuccess("");
+    
+    try {
+      // Refresh all data
+      await fetchDepartments();
+      await fetchPendingDoctors();
+      
+      // If a department is selected, refresh its doctors too
+      if (selectedDepartment) {
+        await fetchDoctorsByDepartment(selectedDepartment._id);
+      }
+      
+      setSuccess("Data refreshed successfully");
+    } catch (error) {
+      setError("Failed to refresh data");
+      console.error("Error refreshing data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   // Fetch hospital and departments on component mount
   useEffect(() => {
     fetchDepartments();
+    fetchPendingDoctors();
   }, []);
 
   // Fetch doctors and patients when department is selected
@@ -53,11 +80,10 @@ const DepartmentManagement = () => {
     }
   }, [selectedDepartment]);
 
-
-
-
-
-
+  // const getCertificateUrl = (email, certificateFile) => {
+  //   if (!email || !certificateFile) return null;
+  //   return `http://localhost:8000/media/doctor_certificates/${email}/${certificateFile}`;
+  // };
 
   const fetchDepartments = async () => {
     try {
@@ -120,23 +146,6 @@ const DepartmentManagement = () => {
     }
   };
 
-  // const fetchPatientsByDepartment = async (departmentName) => {
-  //   try {
-  //     setLoading(true);
-  //     const response = await axios.get(`http://localhost:8000/api/get_patients/${departmentName}`, {
-  //       headers: {
-  //         Authorization: `Bearer ${localStorage.getItem("authToken")}`
-  //       }
-  //     });
-  //     setPatients(response.data.patients);
-  //   } catch (error) {
-  //     setError("Failed to fetch patients");
-  //     console.error("Error fetching patients:", error);
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
   const handleDepartmentSelect = (department) => {
     setSelectedDepartment(department);
     setEditData({
@@ -145,12 +154,6 @@ const DepartmentManagement = () => {
       roles: department.roles || []
     });
   };
-
-
-
-
-
-
 
   const handleAddDepartment = async () => {
     try {
@@ -312,10 +315,13 @@ const DepartmentManagement = () => {
         }
       }
 
+      const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
       const response = await axios.put(
-        `http://localhost:8000/api/doctors/${doctor._id}/roles/`,
+        `http://localhost:8000/api/doctors/update_roles_by_email`,
         {
-          roles: editingRoles
+          email: doctor.email,
+          roles: updatedRoles,
+          hospitalName: hospitalName
         },
         {
           headers: {
@@ -323,13 +329,13 @@ const DepartmentManagement = () => {
           }
         }
       );
-      
+
       // Update the doctor in the local state
       setDoctors(doctors.map(doc => 
-        doc._id === doctor._id ? { ...doc, roles: editingRoles } : doc
+        doc.email === doctor.email ? { ...doc, roles: updatedRoles } : doc
       ));
       
-      setSuccess("Doctor roles updated successfully");
+      setSuccess("Doctor roles updated successfully", response);
     } catch (error) {
       setError("Failed to update doctor roles");
       console.error("Error updating doctor roles:", error);
@@ -337,6 +343,129 @@ const DepartmentManagement = () => {
       setLoading(false);
     }
   };
+
+  const fetchPendingDoctors = async () => {
+    try {
+      setLoading(true);
+      const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
+      if (!hospitalName) return;
+
+      const response = await axios.get(`http://localhost:8000/api/get_pending_doctors/${hospitalName}`, {
+        headers: {
+          "Authorization": sessionStorage.getItem("session_Id")
+        }
+      });
+
+      if (response.data.status === "success" && Array.isArray(response.data.pendingDoctors)) {
+        setPendingDoctors(response.data.pendingDoctors);
+      } else {
+        console.error("Invalid pending doctors response:", response.data);
+        setPendingDoctors([]); // Set to empty array if no pending doctors found
+      }
+    } catch (error) {
+      setError("Failed to fetch pending doctors");
+      console.error("Error fetching pending doctors:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ...existing code...
+  const handleApproveDoctor = async (doctor) => {
+    try {
+      setLoading(true);
+      if(!doctor.departmentSelected){
+        setError("Please select a department for the doctor before approving.");
+
+        return;
+      }
+      const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
+
+      // Find the department name from the selected department ID
+      const selectedDept = departments.find(dept => dept._id === doctor.departmentSelected);
+      if (!selectedDept) {
+        setError("Selected department not found");
+        return;
+      }
+      console.log("Approving doctor with data:", { 
+        email: doctor.email,
+        status: "approved",
+        departmentName: selectedDept.name,
+        departmentId: doctor.departmentSelected,
+        hospitalName: hospitalName
+      });
+
+      if (!hospitalName) return; // Ensure hospital ID is available
+      if (!doctor.email) return; // Ensure doctor email is available
+      
+
+      const response = await axios.post(`http://localhost:8000/api/approve_doctor/`,
+        { 
+          email: doctor.email,
+          status: "approved",
+          departmentName: selectedDept.name,
+          departmentId: doctor.departmentSelected,  // I
+          hospitalName: hospitalName,
+        },
+        {
+          headers: {
+            "Authorization": sessionStorage.getItem("session_Id")
+          }
+        }
+      );
+      console.log("Approval API response:", response.data);
+      
+       setPendingDoctors(pendingDoctors.filter(d => d.email !== doctor.email));
+      setSuccess("Doctor approved successfully");
+      
+      // Refresh the doctors list if a department is selected
+      if (selectedDepartment && selectedDepartment._id === doctor.departmentSelected) {
+        fetchDoctorsByDepartment(selectedDepartment._id);
+      }
+    } catch (error) {
+      setError("Failed to approve doctor");
+      console.error("Error approving doctor:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRejectDoctor = async (doctorEmail) => {
+    try {
+      if(!window.confirm("Are you sure you want to reject this doctor application?")) {
+        return;
+      }
+      setLoading(true);
+
+      const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
+    
+      console.log("Rejecting doctor:", doctorEmail, "from hospital:", hospitalName);
+      const response = await axios.post(
+        `http://localhost:8000/api/reject_doctor/`,
+        { 
+          email: doctorEmail,
+          hospitalName: hospitalName
+        },
+        {
+          headers: {
+            "Authorization": sessionStorage.getItem("session_Id")
+          }
+        }
+      );
+
+      
+      setPendingDoctors(pendingDoctors.filter(doctor => doctor.email !== doctorEmail));
+      fetchPendingDoctors(); // Refresh the pending doctors list
+      setSuccess("Doctor rejected successfully", response);
+    } catch (error) {
+      setError("Failed to reject doctor");
+      console.error("Error rejecting doctor:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
   
 
   return (
@@ -350,12 +479,23 @@ const DepartmentManagement = () => {
               <h2 className="text-3xl font-bold text-blue-700">Department Management</h2>
               <p className="text-green-600 mt-1">{sessionStorage.getItem("hospitalName") || 'Zydus'}</p>
             </div>
-            <button
-              onClick={() => setShowAddDepartment(true)}
-              className="flex items-center px-4 py-2 bg-gradient-to-r from-blue-600 to-green-500 text-white rounded-lg hover:from-blue-700 hover:to-green-600 transition-all"
-            >
-              <FiPlus className="mr-2" /> Add Department
-            </button>
+            <div className="flex gap-2">
+              {/* Add the refresh button here */}
+              <button
+                onClick={handleRefresh}
+                disabled={loading}
+                className="flex items-center px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all"
+                title="Refresh data"
+              >
+                <FiRefreshCw className={`${loading ? 'animate-spin' : ''} mr-2`} /> Refresh
+              </button>
+              <button
+                onClick={() => setShowAddDepartment(true)}
+                className="flex items-center px-4 py-2 bg-gradient-to-r from-blue-600 to-green-500 text-white rounded-lg hover:from-blue-700 hover:to-green-600 transition-all"
+              >
+                <FiPlus className="mr-2" /> Add Department
+              </button>
+            </div>
           </div>
 
           {/* Error and Success Messages */}
@@ -414,6 +554,7 @@ const DepartmentManagement = () => {
                 </div>
               )}
             </div>
+            
 
             {/* Department Details and Edit */}
             {selectedDepartment ? (
@@ -573,6 +714,106 @@ const DepartmentManagement = () => {
               </div>
             )}
           </div>
+
+          
+          {/* Add Doctor Approval Section */}
+          <div className="bg-white rounded-lg shadow-lg p-6 border-t-4 border-orange-500 mt-8">
+              <h3 className="text-xl font-semibold text-orange-600 mb-4">Doctor Approvals</h3>
+              {pendingDoctors.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">No pending doctor approvals</p>
+              ) : (
+                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                  {pendingDoctors.map(doctor => (
+                    <div
+                      key={doctor._id}
+                      className="p-4 rounded-lg border border-orange-100 bg-orange-50"
+                    >
+                      <div className="flex flex-col gap-2">
+                        <div className="flex justify-between">
+                          <h4 className="font-medium text-blue-700">{doctor.name}</h4>
+                          <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">Pending</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <p className="text-sm text-gray-600"><span className="font-medium">Email:</span> {doctor.email}</p>
+                
+                          <p className="text-sm text-gray-600">
+                            <span className="font-medium">Birth Date:</span> {
+                              doctor.birthDate || doctor.dateOfBirth ? 
+                              new Date(doctor.birthDate || doctor.dateOfBirth).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'long', 
+                                day: 'numeric'
+                              }) : 
+                              'Not provided'
+                            }
+                          </p>
+                          <p className="text-sm text-gray-600"><span className="font-medium">Qualification:</span> {doctor.doctorQualification}</p>
+                          <p className="text-sm text-gray-600"><span className="font-medium">Specialization:</span> {doctor.doctorSpecialization}</p>
+                          <div className="text-sm text-gray-600 col-span-2">
+                            <span className="font-medium">Department:</span>
+                            <select
+                              className="ml-2 p-1 border rounded text-sm"
+                              value={doctor.departmentSelected || ""}
+                              onChange={(e) => {
+                                // Update the department in the local state
+                                setPendingDoctors(
+                                  pendingDoctors.map(d => 
+                                    d._id === doctor._id 
+                                      ? {...d, departmentSelected: e.target.value} 
+                                      : d
+                                  )
+                                );
+                              }}
+                            >
+                              <option value="">Select Department</option>
+                              {departments.map(dept => (
+                                <option key={dept._id} value={dept._id}>
+                                  {dept.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        {/* {doctor.doctorCertificate && (
+                          <div className="mt-2">
+                            <p className="text-sm font-medium text-gray-700 mb-1">Certificate:</p>
+                            <div className="border rounded p-2 bg-white">
+                              <a 
+                                href={getCertificateUrl(doctor.email, doctor.doctorCertificate)} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline flex items-center"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 0v12h8V4H6z" clipRule="evenodd" />
+                                </svg>
+                                View Certificate
+                              </a>
+                            </div>
+                          </div>
+                        )} */}
+                        
+                        <div className="flex justify-end gap-2 mt-2">
+                          <button
+                            onClick={() => handleRejectDoctor(doctor.email)}
+                            className="px-3 py-1 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors text-sm"
+                          >
+                            Reject
+                          </button>
+                          <button
+                            onClick={() => handleApproveDoctor(doctor)}
+                            disabled={!doctor.departmentSelected}
+                            className={`px-3 py-1 ${!doctor.departmentSelected ? 'bg-gray-100 text-gray-400' : 'bg-green-100 text-green-600 hover:bg-green-200'} rounded transition-colors text-sm`}
+                          >
+                            Approve & Assign
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
         </div>
         
         {/* Add Department Modal */}

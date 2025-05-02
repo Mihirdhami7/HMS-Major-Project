@@ -15,8 +15,8 @@ const slidebars = {
   ],
   doctor: [
     { icon: FiCalendar, label: "Appointments", value: "appointments" },
-    { icon: FiUser, label: "Profile", value: "profile" },
     { icon: FiPackage, label: "Medical Products", value: "medical_products" },
+    { icon: FiUser, label: "Profile", value: "profile" },
   ],
   patient: [
     { icon: FiCalendar, label: "Appointments", value: "appointments" },
@@ -39,7 +39,7 @@ const slidebars = {
 const getLinkPath = (userType, value) => {
   // Special case for profile links
   if (value === "profile") {
-    const userEmail = sessionStorage.getItem("userEmail");
+    const userEmail = sessionStorage.getItem("email");
     const storedUserType = sessionStorage.getItem("userType");
     return `/${storedUserType}/profile/${userEmail}`;
   }
@@ -57,10 +57,10 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {} }) {
   const handleNavigation = (path, value) => {
     // Prevent default navigation
     const allowedPaths = {
-      doctor: ['appointments', 'profile', 'medical_products'],
+      doctor: ['appointments', 'medical_products','profile',],
       patient: ['appointments', 'disease', 'profile'],
       admin: ['dashboard', 'newRegister', 'product', 'department', 'reports','givemedicine'],
-      supplier: ['suppdashboard', 'suppproduct'],
+      supplier: ['suppdashboard', 'suppproduct', 'profile'],
       superadmin: ['dashboard', 'hospitals', 'reports']
     };
 

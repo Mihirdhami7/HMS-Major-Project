@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import Slidebar from "../../pages/Slidebar";
-import { FiCheckCircle, FiEdit3, FiCalendar, FiClock } from "react-icons/fi";
+import { FiCheckCircle, FiEdit3, FiCalendar, FiClock, FiSearch } from "react-icons/fi";
 import { IoDocumentTextOutline } from "react-icons/io5";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -13,10 +13,14 @@ function DoctorAppointments() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("appointments");
 
+  const [searchEmail, setSearchEmail] = useState(""); // Add search state
+  // Removed unused state 'filteredCompletedAppointments'
   // Fetch doctor's appointments on component mount
   useEffect(() => {
     fetchDoctorAppointments();
+  
   }, []);
+  // Removed unused filtering logic for 'filteredCompletedAppointments'
 
   const fetchDoctorAppointments = async () => {
     try {
@@ -45,11 +49,14 @@ function DoctorAppointments() {
       
       if (response.data.status === "success") {
         const allAppointments = response.data.appointments || [];
-
-        const approved = allAppointments.filter((appt) => appt.status === "approve");
+        const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
+        const approved = allAppointments.filter((appt) => 
+          appt.status === "approve" && appt.appointmentDate >= today
+        );
         const completed = allAppointments.filter((appt) => appt.status === "completed");
         setApprovedAppointments(approved);
         setCompletedAppointments(completed);
+        // Initialize filtered appointments
       } else {
         setError(response.data.message || "Failed to fetch appointments");
       } 
@@ -60,7 +67,9 @@ function DoctorAppointments() {
       setLoading(false);
     }
   };
-
+  const handleSearchChange = (e) => {
+    setSearchEmail(e.target.value);
+  };
 
 
   // Navigate to Prescription Page
@@ -75,8 +84,39 @@ function DoctorAppointments() {
     <div className="flex h-screen bg-gray-100">
       <Slidebar userType="doctor" activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <div className="flex flex-col flex-1 p-8 overflow-auto">
-        <h2 className="text-3xl font-bold mb-6 text-blue-800">Pending Appointments</h2>
+      <div className="flex flex-col flex-1 p-8 overflow-auto mt-16">
+
+        {/* Hospital Information */}
+        {sessionStorage.getItem("hospitalName") && (
+          <div className="mb-4 p-4 bg-white rounded-lg shadow-lg flex items-center border-l-4 border-blue-500">
+            <img
+              src={
+                sessionStorage.getItem("hospitalName") === "Zydus"
+                  ? "/public/images/zydus.png"
+                  : sessionStorage.getItem("hospitalName") === "Iris"
+                  ? "/public/images/iris.png"
+                  : "/public/images/default-hospital.png"
+              }
+              alt={`${sessionStorage.getItem("hospitalName")} Hospital`}
+              className="w-20 h-20 rounded-full mr-4 object-cover"
+              onError={(e) => {
+                e.target.src = "/public/images/default-hospital.png";
+                e.target.onerror = null;
+              }}
+            />
+            <div>
+              <h3 className="text-lg font-bold text-blue-700">{sessionStorage.getItem("hospitalName")} Hospital</h3>
+              <p className="text-sm text-gray-600">
+                {sessionStorage.getItem("hospitalName") === "Zydus"
+                  ? "Zydus Hospital is a leading healthcare provider offering world-class medical services and facilities."
+                  : sessionStorage.getItem("hospitalName") === "Iris"
+                  ? "Iris Hospital is known for its advanced medical technology and compassionate care."
+                  : "Welcome to our hospital. We are committed to providing quality healthcare services tailored to your needs."}
+              </p>
+            </div>
+          </div>
+        )}
+      
 
         {loading && (
           <div className="w-full flex justify-center my-12">
@@ -180,8 +220,20 @@ function DoctorAppointments() {
             ) : (
               <div className="bg-white p-6 rounded-lg shadow-lg">
                 <h3 className="text-xl font-semibold mb-4 text-green-700">Appointments With Prescriptions</h3>
-                
-                <div className="overflow-x-auto">
+                {/* Search box */}
+                <div className="mb-4 relative">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search by patient email"
+                      value={searchEmail}
+                      onChange={handleSearchChange}
+                      className="w-full p-2 pl-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    <FiSearch className="absolute left-3 top-3 text-gray-400" />
+                  </div>
+                </div>
+                <div className="overflow-x-auto max-h-80 overflow-y-auto">
                   <table className="w-full border-collapse border border-gray-300">
                     <thead>
                       <tr className="bg-gray-100">
@@ -211,7 +263,7 @@ function DoctorAppointments() {
                           </td>
                           <td className="border p-3">
                             <button 
-                              onClick={() => openPrescriptionPage(appt)}
+                              // onClick={() => openPrescriptionPage(appt)}
                               className="flex items-center px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
                             >
                               <IoDocumentTextOutline className="mr-1" /> View Prescription

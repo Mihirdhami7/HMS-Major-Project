@@ -18,7 +18,7 @@ import Profiile from "../pages/Profile"
 import NewRegister from "../components/Admin/NewRegister"
 import Products from "../components/Admin/Products"
 import GiveMedicine from '../components/Admin/GiveMedicine'
-import Medicine from "../components/Admin/Medicine"
+// import Medicine from "../components/Admin/Medicine"
 import AdminSection from "../pages/AdminSection"
 import Department from "../components/Admin/Department"
 import Dashboard from "../components/Admin/Dashboard"
@@ -62,7 +62,7 @@ const Routers = () => {
                 {/* Admin Routes */}
                 <Route path="/admin" element={<AdminSection />} />
                 <Route path="/admin/givemedicine" element={<GiveMedicine />} />
-                <Route path="/admin/givemedicine/medicine" element={<Medicine />} />
+                {/* <Route path="/admin/givemedicine/medicine" element={<Medicine />} /> */}
                 <Route path="/admin/dashboard" element={<Dashboard />} />
                 <Route path="/admin/newRegister" element={<NewRegister />} />
                 <Route path="/admin/product" element={<Products />} />
@@ -72,6 +72,7 @@ const Routers = () => {
                 <Route path="/supplier" element={<SupplierSection />} />
                 <Route path="/supplier/suppdashboard" element={<SuppDashboard />} />
                 <Route path="/supplier/suppproduct" element={<SuppProducts />} />
+                <Route path="/supplier/profile/:email" element={<Profiile />} />
 
                 {/* Super Admin Routes */}
                 <Route path="/superadmin" element={<SuperAdminSection />} />

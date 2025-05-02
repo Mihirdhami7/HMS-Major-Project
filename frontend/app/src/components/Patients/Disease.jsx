@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import Slidebar from "../../pages/Slidebar";
-import { FiInfo } from "react-icons/fi";
 
 const Disease = () => {
   const [activeTab, setActiveTab] = useState("disease");
@@ -110,6 +109,80 @@ const Disease = () => {
           "Fatigue and weakness"
         ]
       }
+    ],
+    general: [
+      {
+        name: "Common Cold",
+        description: "A viral infection of your nose and throat (upper respiratory tract).",
+        image: "/images/common-cold.jpg",
+        symptoms: [
+          "Runny or stuffy nose",
+          "Sore throat",
+          "Cough",
+          "Congestion",
+          "Mild headache"
+        ]
+      },
+      {
+        name: "Influenza (Flu)",
+        description: "A viral infection that attacks your respiratory system — your nose, throat, and lungs.",
+        image: "/images/flu.jpg",
+        symptoms: [
+          "Fever",
+          "Chills",
+          "Muscle aches",
+          "Cough",
+          "Fatigue"
+        ]
+      },
+      {
+        name: "Migraine",
+        description: "A headache of varying intensity, often accompanied by nausea and sensitivity to light and sound.",
+        image: "/images/migraine.jpg",
+        symptoms: [
+          "Throbbing pain",
+          "Nausea",
+          "Sensitivity to light",
+          "Sensitivity to sound",
+          "Blurred vision"
+        ]
+      },
+      {
+        name: "Allergies",
+        description: "A condition in which the immune system reacts abnormally to a foreign substance.",
+        image: "/images/allergies.jpg",
+        symptoms: [
+          "Sneezing",
+          "Runny nose",
+          "Itchy eyes",
+          "Skin rash",
+          "Swelling"
+        ]
+      },
+      {
+        name: "Food Poisoning",
+        description: "An illness caused by eating contaminated food.",
+        image: "/images/food-poisoning.jpg",
+        symptoms: [
+          "Nausea",
+          "Vomiting",
+          "Diarrhea",
+          "Abdominal pain",
+          "Fever"
+        ]
+      },
+      {
+        name: "Acne",
+        description: "A skin condition that occurs when hair follicles become plugged with oil and dead skin cells.",
+        image: "/images/acne.jpg",
+        symptoms: [
+          "Pimples",
+          "Blackheads",
+          "Whiteheads",
+          "Oily skin",
+          "Scarring"
+        ]
+      }
     ]
   };
 
@@ -128,25 +201,37 @@ const Disease = () => {
     <div className="flex h-screen bg-gradient-to-br from-blue-50 to-green-50">
       <Slidebar userType="patient" activeTab={activeTab} setActiveTab={setActiveTab} />
       
-      <div className="flex-1 p-8 overflow-auto">
+      <div className="flex-1 p-8 overflow-auto mt-16">
         <h2 className="text-3xl font-bold mb-6 flex items-center text-blue-700">
-          <FiInfo className="mr-2 text-green-600" />
+          
           Common Diseases & Conditions
         </h2>
 
-        {/* Department Filter */}
-        <div className="mb-6">
-          <select
-            value={selectedDepartment}
-            onChange={(e) => setSelectedDepartment(e.target.value)}
-            className="p-2 border rounded-lg shadow-sm bg-white hover:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+         {/* Department Tabs */}
+        <div className="flex space-x-4 mb-6 overflow-x-auto py-2">
+          {Object.keys(diseases).map((department) => (
+            <button
+              key={department}
+              onClick={() => setSelectedDepartment(department)}
+              className={`px-6 py-3 rounded-lg border-2 transition-all duration-300 ${
+                selectedDepartment === department
+                  ? "bg-blue-500 text-white border-blue-600 shadow-md"
+                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+              }`}
+            >
+              {department.charAt(0).toUpperCase() + department.slice(1)}
+            </button>
+          ))}
+          <button
+            onClick={() => setSelectedDepartment("all")}
+            className={`px-6 py-3 rounded-lg border-2 transition-all duration-300 ${
+              selectedDepartment === "all"
+                ? "bg-blue-500 text-white border-blue-600 shadow-md"
+                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+            }`}
           >
-            <option value="all">All Departments</option>
-            <option value="orthopedic">Orthopedic</option>
-            <option value="cardiology">Cardiology</option>
-            <option value="neurology">Neurology</option>
-            <option value="pediatric">Pediatric</option>
-          </select>
+            All Departments
+          </button>
         </div>
 
         {/* Disease Cards Grid */}

@@ -3,28 +3,53 @@ import { Route, Routes } from "react-router-dom";
 import Slidebar from "./Slidebar";
 import DoctorAppointments from "../components/Doctors/Dappointments";
 import Prescription from "../components/Doctors/Prescription";
-import { FiUsers, FiClock, FiAward } from "react-icons/fi";
+import axios from "axios";
 
 function DoctorSection() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [userData, setUserData] = useState(null);
+  const [doctorInfo, setDoctorInfo] = useState(null); // Store doctor information
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const email = localStorage.getItem("userEmail");
-    const userType = localStorage.getItem("userType");
-    
+    const email = sessionStorage.getItem("email");
+    const userType = sessionStorage.getItem("userType");
+
     setUserData({
       name: email?.split("@")[0] || "Doctor",
       email: email,
       type: userType
     });
+    fetchDoctorInfo(email);
   }, []);
 
-  const stats = [
-    { label: "Total Patients", value: "150+", icon: <FiUsers className="w-6 h-6" /> },
-    { label: "Experience", value: "5+ Years", icon: <FiClock className="w-6 h-6" /> },
-    { label: "Rating", value: "4.8/5", icon: <FiAward className="w-6 h-6" /> },
-  ];
+  const fetchDoctorInfo = async (email) => {
+    try {
+      const hospitalName = sessionStorage.getItem("hospitalName");
+      if (!email || !hospitalName) {
+        setError("User email or hospital name not found in session storage.");
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      const response = await axios.post("http://localhost:8000/api/get_doctor_by_email/", {
+        email: email,
+        hospitalName: hospitalName
+      });
+
+      if (response.data.status === "success") {
+        setDoctorInfo(response.data.doctor);
+      } else {
+        setError(response.data.message || "Failed to fetch doctor information.");
+      }
+    } catch (err) {
+      console.error("Error fetching doctor information:", err);
+      setError("Failed to connect to server. Please try again later.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="flex bg-gray-50">
@@ -45,61 +70,38 @@ function DoctorSection() {
                 </p>
               </div>
 
-              {/* Stats Overview */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                {stats.map((stat, index) => (
-                  <div key={index} className="bg-white p-6 rounded-lg shadow-lg">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="text-blue-500">
-                        {stat.icon}
-                      </div>
-                      <span className="text-2xl font-bold text-gray-800">
-                        {stat.value}
-                      </span>
-                    </div>
-                    <h3 className="text-gray-600">{stat.label}</h3>
+              {/* Doctor Information */}
+              {loading ? (
+                <div className="w-full flex justify-center my-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                </div>
+              ) : error ? (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                  <p>{error}</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Doctor Details */}
+                  <div className="bg-gradient-to-r from-blue-100 to-green-100 p-6 rounded-lg shadow-lg">
+                    <h3 className="text-2xl font-bold text-blue-700 mb-4">Doctor Information</h3>
+                    <p className="text-gray-700"><strong>Name:</strong> {doctorInfo?.name}</p>
+                    <p className="text-gray-700"><strong>Email:</strong> {doctorInfo?.email}</p>
+                    <p className="text-gray-700"><strong>Contact:</strong> {doctorInfo?.contectNo}</p>
+                    <p className="text-gray-700"><strong>Description:</strong> {doctorInfo?.Description}</p>
+                    <p className="text-gray-700"><strong>Hospital:</strong> {doctorInfo?.Hospital}</p>
                   </div>
-                ))}
-              </div>
+                <div className="space-y-3">
+                  {/* Ratings */}
+                  <div className="bg-gradient-to-r from-green-100 to-blue-100 p-6 rounded-lg shadow-lg">
+                    <h3 className="text-2xl font-bold text-green-700 mb-4">Ratings</h3>
+                    <h1 className="text-4xl font-bold text-gray-800">{doctorInfo?.rating || "N/A"} / 5</h1>
+                  </div>
 
-              {/* Today's Schedule */}
-              <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-                <h2 className="text-2xl font-bold text-gray-800 mb-4">Today&apos;s Schedule</h2>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
-                    <div>
-                      <h3 className="font-semibold text-gray-800">Morning Session</h3>
-                      <p className="text-gray-600">09:00 AM - 01:00 PM</p>
-                    </div>
-                    <span className="text-blue-500">4 Appointments</span>
-                  </div>
-                  <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
-                    <div>
-                      <h3 className="font-semibold text-gray-800">Evening Session</h3>
-                      <p className="text-gray-600">05:00 PM - 09:00 PM</p>
-                    </div>
-                    <span className="text-green-500">3 Appointments</span>
-                  </div>
+          
                 </div>
-              </div>
 
-              {/* Quick Actions */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white p-6 rounded-lg shadow-lg">
-                  <h3 className="text-xl font-bold text-gray-800 mb-4">Recent Patients</h3>
-                  <p className="text-gray-600">View and manage your recent patient consultations</p>
-                  <button className="mt-4 text-blue-500 hover:text-blue-600">
-                    View All Patients →
-                  </button>
                 </div>
-                <div className="bg-white p-6 rounded-lg shadow-lg">
-                  <h3 className="text-xl font-bold text-gray-800 mb-4">Medical Resources</h3>
-                  <p className="text-gray-600">Access the latest medical journals and research</p>
-                  <button className="mt-4 text-green-500 hover:text-green-600">
-                    Browse Resources →
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
           } />
         </Routes>

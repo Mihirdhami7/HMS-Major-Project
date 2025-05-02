@@ -3,13 +3,14 @@ from django.urls import path
 # Authentication and User Management views
 from users.userManageView import (
     register_user, verify_email, login_view, check_session, logout_view,
-    get_user_profile, update_profile
+    get_user_profile, update_profile, get_company_name
 )
 
 # Doctor related views
 from users.doctorView import (
-    get_doctors_by_hospital, get_doctor_details, 
-    update_doctor, delete_doctor, add_doctor
+    get_doctors_by_hospital, get_doctor_details, get_doctor_by_email,
+    update_doctor, delete_doctor, add_doctor,
+    get_pending_doctors, approve_doctor, reject_doctor
 )
 
 # Patient related views
@@ -34,11 +35,16 @@ from users.MultiDepartmentView import (
     get_hospital_departments, get_department_doctors,
     get_department_patients, add_department, update_department, delete_department
 )
-from users.orderManageView import get_products
-# Pharmacy and inventory management
-# from users.orderManageView import (
+from users.orderManageView import (
+    get_products, add_product, request_stock, get_new_products, approve_new_product,
+    get_supplier_products, get_stocks_requests_by_hospital, get_stocks_requests_by_supplier, fulfill_request, complete_order
+)
+from users.paymentView import (
+    create_payment, verify_payment, create_payment_products, verify_payment_products
+)
+
 #     # get_products, add_product, update_product, delete_product,
-#     # request_restock, check_stock_levels, supplier_get_products, add_stock
+#     #  check_stock_levels, supplier_get_products, add_stock
 # )I
 
 urlpatterns = [
@@ -50,14 +56,16 @@ urlpatterns = [
     path('logout/', logout_view, name='logout'),
     path('profile/<str:user_type>/<str:email>/', get_user_profile, name='get_user_profile'),
     
-    # Remove this line if update_user_profile is not implemented
-    path('update_profile/<str:userType>/<str:emailToUse>/', update_profile, name='update_user_profile'),
+    path('get_company_name/<str:email>/', get_company_name, name='get_company_name'),
+    path('profile/update_profile/<str:userType>/<str:emailToUse>/', update_profile, name='update_user_profile'),
+
+
     # Doctor related routes - fixed to include doctor_id parameter
     path('doctor_by_hospital/<str:hospital_id>/', get_doctors_by_hospital, name='doctor_by_hospital'),
     path('get_doctor_details/', get_doctor_details, name='get_doctor_details'),
     path("add_doctor/", add_doctor, name="add_doctor"),
     path('update_doctor/<str:doctor_id>/', update_doctor, name='update_doctor'),
-    
+    path('get_doctor_by_email/', get_doctor_by_email, name='get_doctor_by_email'),
     path('delete_doctor/<str:doctorId>/', delete_doctor, name='delete_doctor'),
 
     # Patient views - fixed to include patient_id parameter
@@ -83,7 +91,7 @@ urlpatterns = [
     path('save-prescription/', save_prescription, name='save_prescription'),
     path('get_prescriptions/', get_prescriptions,  name='get_prescriptions'),
 
-    path('generate-invoice/', generate_invoice, name='generate_invoice'),
+    path('generate_invoice/', generate_invoice, name='generate_invoice'),
     
     # Hospital views - fixed to include hospital_id parameter
     path('get_hospital/', get_hospitals, name='get_hospital'),
@@ -100,19 +108,29 @@ urlpatterns = [
     path('update_department/<str:department_id>/', update_department, name='update_department'),
     path('delete_department/<str:department_id>/', delete_department, name='delete_department'),
 
-    # # Product/Pharmacy views
-    # path('get_product/', get_products, name='getproduct'),
-    # path('add_product/', add_product, name='add_product'),
-    # path('update_product/<str:product_id>/', update_product, name='update_product'),
-    # path('delete_product/<str:product_id>/', delete_product, name='delete_product'),
-    path('get_products/<str:hospital_name>/', get_products, name='get_products'),
-    # # Stock views
-    # path('restock/', request_restock, name='restock'),
-    # path('checkStock/', check_stock_levels, name='checkStock'),
-    # path('get_stock/', supplier_get_products, name='get_stock'),
-    # path('add_stock/', add_stock, name='add_stock'),
+    # Doctor approval viewxs
+    path('get_pending_doctors/<str:hospital_name>/', get_pending_doctors, name='get_pending_doctors'),
+    path('approve_doctor/', approve_doctor, name='approve_doctor'),
+    path('reject_doctor/', reject_doctor, name='reject_doctor'),
 
-    # Payment views
-    # path('create_order/', create_order, name='create_order'),
-    # path("verify_payment/", verify_payment, name="verify_payment"),
+    # Order management views
+    path('get_products/<str:hospital_name>/', get_products, name='get_products'),
+    path('add_product/', add_product, name='add_product'),
+    path('request_stock/', request_stock, name='request_stock'),
+    path('get_new_products/<str:hospital_name>/', get_new_products, name='get_new_products'),
+    path('approve_new_product/<str:product_id>/', approve_new_product, name='approve_new_product'),
+    path('get_supplier_products/<str:companyName>/', get_supplier_products, name='get_supplier_products'),
+    path('get_stock_request_by_supplier/<str:companyName>/', get_stocks_requests_by_supplier, name='get_stock_requests'),
+    path('get_stocks_requests_by_hospital/<str:hospitalName>/', get_stocks_requests_by_hospital, name='get_stock_requests'),
+    
+    path('fulfill_request/', fulfill_request, name='fulfill_request'),
+    path('complete_order/<str:order_id>/', complete_order, name='complete_order'),
+    
+    #Payment views
+    path('create_payment/', create_payment, name='create_payment'),
+    path('verify_payment/', verify_payment, name='verify_payment'),
+    path('create_payment_products/', create_payment_products, name='create_payment_products'),
+    path('verify_payment_products/', verify_payment_products, name='verify_payment_products'),
+
+
 ]

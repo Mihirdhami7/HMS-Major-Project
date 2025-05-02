@@ -1,51 +1,51 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Slidebar from "../../pages/Slidebar";
-import { 
-  FiUsers, FiCalendar, FiDollarSign, FiActivity,
-  FiArrowUp,
-} from "react-icons/fi";
-import {
-  LineChart, Line, BarChart, Bar, PieChart, Pie,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, Cell
-} from 'recharts';
+// import { 
+//   FiUsers, FiCalendar, FiDollarSign, FiActivity,
+//   FiArrowUp,
+// } from "react-icons/fi";
+// import {
+//   LineChart, Line, BarChart, Bar, PieChart, Pie,
+//   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+//   ResponsiveContainer, Cell
+// } from 'recharts';
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [timeRange, setTimeRange] = useState("month");
 
-  // Sample data - replace with API calls
-  const stats = {
-    totalAppointments: 1250,
-    completedAppointments: 980,
-    pendingAppointments: 270,
-    totalPatients: 850,
-    totalRevenue: 45000,
-    totalDoctors: 25
-  };
+  // // Sample data - replace with API calls
+  // const stats = {
+  //   totalAppointments: 1250,
+  //   completedAppointments: 980,
+  //   pendingAppointments: 270,
+  //   totalPatients: 850,
+  //   totalRevenue: 45000,
+  //   totalDoctors: 25
+  // };
 
-  const appointmentsByMonth = [
-    { month: 'Jan', appointments: 120, completed: 100, cancelled: 20 },
-    { month: 'Feb', appointments: 150, completed: 130, cancelled: 20 },
-    { month: 'Mar', appointments: 180, completed: 160, cancelled: 20 },
-    // Add more months...
-  ];
+  // const appointmentsByMonth = [
+  //   { month: 'Jan', appointments: 120, completed: 100, cancelled: 20 },
+  //   { month: 'Feb', appointments: 150, completed: 130, cancelled: 20 },
+  //   { month: 'Mar', appointments: 180, completed: 160, cancelled: 20 },
+  //   // Add more months...
+  // ];
 
-  const departmentStats = [
-    { name: 'Orthopedic', value: 350, color: '#0088FE' },
-    { name: 'Cardiology', value: 280, color: '#00C49F' },
-    { name: 'Neurology', value: 200, color: '#FFBB28' },
-    { name: 'Pediatric', value: 180, color: '#FF8042' },
-    { name: 'General', value: 240, color: '#8884d8' }
-  ];
+  // const departmentStats = [
+  //   { name: 'Orthopedic', value: 350, color: '#0088FE' },
+  //   { name: 'Cardiology', value: 280, color: '#00C49F' },
+  //   { name: 'Neurology', value: 200, color: '#FFBB28' },
+  //   { name: 'Pediatric', value: 180, color: '#FF8042' },
+  //   { name: 'General', value: 240, color: '#8884d8' }
+  // ];
 
-  const topMedicines = [
-    { name: 'Paracetamol', sales: 450, revenue: 2250 },
-    { name: 'Amoxicillin', sales: 320, revenue: 4800 },
-    { name: 'Omeprazole', sales: 280, revenue: 3360 },
-    { name: 'Ibuprofen', sales: 250, revenue: 1750 },
-    { name: 'Vitamin D3', sales: 220, revenue: 2200 }
-  ];
+  // const topMedicines = [
+  //   { name: 'Paracetamol', sales: 450, revenue: 2250 },
+  //   { name: 'Amoxicillin', sales: 320, revenue: 4800 },
+  //   { name: 'Omeprazole', sales: 280, revenue: 3360 },
+  //   { name: 'Ibuprofen', sales: 250, revenue: 1750 },
+  //   { name: 'Vitamin D3', sales: 220, revenue: 2200 }
+  // ];
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-blue-50 to-green-50">
@@ -67,7 +67,7 @@ const Dashboard = () => {
             </select>
           </div>
 
-          {/* Stats Cards */}
+          {/* Stats Cards
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-blue-500">
               <div className="flex justify-between items-start">
@@ -128,36 +128,29 @@ const Dashboard = () => {
                 <span className="text-gray-500 ml-2">new this month</span>
               </div>
             </div>
+          </div> */}
+          <div className="flex  items-center">
+            <iframe 
+                title="appointment dashboard" 
+                width="1400" 
+                height="741.25" 
+                src="https://app.powerbi.com/reportEmbed?reportId=aa8fdd44-b1f1-44e9-88cb-6aedc7b426ef&autoAuth=true&embeddedDemo=true" 
+                allowFullScreen="true">         
+            </iframe>
           </div>
           <div className="flex  items-center">
             <iframe 
-              title="Appointments_Dashboard_mihirdhami" 
+              title="healthcare website dashboard" 
               width="1340" 
               height="741.25" 
-              src="https://app.powerbi.com/reportEmbed?reportId=8bbc1dd4-98c8-4d3c-a3e2-d0938d4816dc&autoAuth=true&embeddedDemo=true" 
-              allowFullScreen="true"
-            ></iframe>
+              src="https://app.powerbi.com/reportEmbed?reportId=74201de0-732f-4dc3-bff4-714744514ed5&autoAuth=true&embeddedDemo=true" 
+              allowFullScreen="true">
+            </iframe>
           </div>
-          {/* Charts Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-            {/* Appointments Trend */}
-            <div className="bg-white p-6 rounded-lg shadow-lg">
-              <h3 className="text-xl font-semibold text-blue-700 mb-4">Appointments Trend</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={appointmentsByMonth}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="completed" stroke="#0088FE" />
-                  <Line type="monotone" dataKey="cancelled" stroke="#FF8042" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+         
 
             {/* Department Distribution */}
-            <div className="bg-white p-6 rounded-lg shadow-lg">
+            {/* <div className="bg-white p-6 rounded-lg shadow-lg">
               <h3 className="text-xl font-semibold text-blue-700 mb-4">Department Distribution</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
@@ -179,9 +172,9 @@ const Dashboard = () => {
                 </PieChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </div> */}
 
-          {/* Top Selling Medicines */}
+          {/* Top Selling Medicines
           <div className="bg-white p-6 rounded-lg shadow-lg mb-8">
             <h3 className="text-xl font-semibold text-blue-700 mb-4">Top Selling Medicines</h3>
             <ResponsiveContainer width="100%" height={300}>
@@ -196,9 +189,9 @@ const Dashboard = () => {
                 <Bar yAxisId="right" dataKey="revenue" fill="#82ca9d" name="Revenue ($)" />
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </div> */}
 
-        </div>
+        </div> 
       </div>
     </div>
   );

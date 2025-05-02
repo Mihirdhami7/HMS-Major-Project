@@ -63,7 +63,7 @@ const ProtectedRoute = () => {
     doctor: ["/doctor", "/doctor/appointments", "/doctor/profile", "/doctor/medical_products"],
     patient: ["/patient", "/patient/appointments", "/patient/disease", "/patient/profile", "/patient/appointments/book"],
     admin: ["/admin", "/admin/newregister", "/admin/product", "/admin/departments", "/admin/reports", "/admin/givemedicine", "/admin/givemedicine/medicine"],
-    supplier: ["/supplier", "/supplier/suppdashboard", "/supplier/suppproduct"],
+    supplier: ["/supplier", "/supplier/suppdashboard", "/supplier/suppproduct","/supplier/profile"],
     superadmin: ["/superadmin", "/superadmin/dashboard", "/superadmin/hospitals", "/superadmin/reports"],
   };
 

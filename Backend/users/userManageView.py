@@ -80,6 +80,21 @@ def register_user(request):
                     cert_name = default_storage.save(cert_path, ContentFile(certificate.read()))
                     temp_user_data["doctorCertificate"] = settings.MEDIA_URL + cert_name
 
+
+            # Add supplier-specific fields if userType is Supplier
+            if data.get("userType") == "Supplier":
+                temp_user_data.update({
+                    "companyName": data.get("companyName"),
+                    "companyStartingDate": data.get("companyStartingDate")
+                })
+
+                if request.FILES and 'companyLicense' in request.FILES:
+                    license_file = request.FILES['companyLicense']
+                    license_path = f"company_licenses/{email}/{license_file.name}"
+                    license_name = default_storage.save(license_path, ContentFile(license_file.read()))
+                    temp_user_data["companyLicense"] = settings.MEDIA_URL + license_name
+
+
             # Store OTP with expiry time
             otp_collection.insert_one({
                 "email": email,
@@ -307,6 +322,7 @@ def login_view(request):
                     "email": email,
                     "hospitalName": user.get("hospitalName"),
                     "name": user.get("name"),
+                    "companyName": user.get("companyName"),
                 },
                 "session_Id": session_id
             }, status=200)
@@ -438,44 +454,72 @@ def get_user_profile(request, user_type, email):
     return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
 
 
+
 @csrf_exempt
-def update_profile(request, user_type, email):
-    if request.method == 'POST':
+def update_profile(request, userType, email):
+    if request.method == "POST":
         try:
             # Verify session
             auth_header = request.headers.get('Authorization')
             if not auth_header or not auth_header.startswith('Bearer '):
                 return JsonResponse({"status": "error", "message": "No session ID provided"}, status=401)
-            
-            session_id = auth_header.split(' ')[1]
-            session_data = sessions_collection.find_one({"session_id": session_id})
-            if not session_data or session_data["expires_at"] < datetime.now():
-                return JsonResponse({"status": "error", "message": "Session expired"}, status=401)
 
-            # Parse form data
-            data = request.POST.dict()
-            photo = request.FILES.get('photo')
+            # Parse request data
+            data = request.POST.dict() if request.content_type.startswith('multipart') else json.loads(request.body)
+            update_data = {key: value for key, value in data.items() if key != "email"}
 
-            # Update user data
-            update_data = {key: value for key, value in data.items() if key not in ['email', '_id']}
+            # Handle profile photo upload
+            if request.FILES and 'photo' in request.FILES:
+                photo = request.FILES['photo']
+                photo_name = default_storage.save(
+                    f"profile_photos/{email}/{photo.name}",
+                    ContentFile(photo.read())
+                )
+                update_data["photo"] = default_storage.url(photo_name)
 
-            if photo:
-                photo_name = default_storage.save(f"profile_photos/{email}/{photo.name}", ContentFile(photo.read()))
-                update_data['photo'] = default_storage.url(photo_name)
-            # print("UPDATE DATA:", update_data)
-            # print("PHOTO:", photo)
-            result = users_collection.update_one(
-                {"email": email, "userType": user_type.capitalize()},
-                {"$set": update_data}
-            )
+            # Handle doctor certificate upload (if applicable)
+            if userType.lower() == "doctor" and request.FILES and 'doctorCertificate' in request.FILES:
+                certificate = request.FILES['doctorCertificate']
+                cert_name = default_storage.save(
+                    f"doctor_certificates/{email}/{certificate.name}",
+                    ContentFile(certificate.read())
+                )
+                update_data["doctorCertificate"] = default_storage.url(cert_name)
 
-            if result.modified_count > 0:
-               updated_user = users_collection.find_one({"email": email, "userType": user_type.capitalize()}, {"_id": 0})
-               return JsonResponse(updated_user)
-
+            # Update the appropriate collection
+            if userType.lower() == "doctor":
+                result = doctors_collection.update_one(
+                    {"email": email, "userType": "Doctor"},
+                    {"$set": update_data}
+                )
             else:
-                return JsonResponse({"status": "error", "message": "No changes made to profile"}, status=200)
+                result = users_collection.update_one(
+                    {"email": email, "userType": userType.capitalize()},
+                    {"$set": update_data}
+                )
 
+            if result.matched_count == 0:
+                return JsonResponse({"status": "error", "message": "User not found"}, status=404)
+
+            return JsonResponse({"status": "success", "message": "Profile updated successfully"}, status=200)
+
+        except Exception as e:
+            print(f"Error in update_profile: {str(e)}")
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+    return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
+
+
+@csrf_exempt
+def get_company_name(request,email):
+    if request.method == "GET":
+        try:
+            user = users_collection.find_one({"email": email, "userType": "Supplier"})
+            if not user:
+                return JsonResponse({"status": "error", "message": "Supplier not found"}, status=404)
+            
+            companyName = user.get("companyName")
+            return JsonResponse({"status": "success", "companyName": companyName}, status=200)
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=500)
 

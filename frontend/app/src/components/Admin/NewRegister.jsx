@@ -15,10 +15,6 @@ const NewRegister = () => {
     gender: "Male",
     dateOfBirth: "",
     address: "",
-    bloodGroup: "",
-    height: "",
-    weight: "",
-    searchQuery: "" // For appointment search
   });
   
   // Appointment Management State
@@ -198,7 +194,7 @@ const NewRegister = () => {
     }
   };
 
-  // ==== 3. APPOINTMENT SEARCH FUNCTIONS ====
+
   
   const searchAppointment = async () => {
     if (!formData.searchQuery) {
@@ -212,23 +208,18 @@ const NewRegister = () => {
       setSearchResults([]);
       
       const response = await axios.post("http://localhost:8000/api/search_appointment/", {
-        query: formData.searchQuery
+        email: formData.searchQuery,
+        hospitalName: sessionStorage.getItem("hospitalName") || "Zydus"
       });
       
       if (response.data.status === "success") {
-        // If a single appointment is returned
-        if (response.data.appointment) {
-          setSelectedAppointment(response.data.appointment);
-          setSearchResults([response.data.appointment]);
-          setSuccess("Appointment found!");
-        } 
-        // If multiple appointments are returned
-        else if (response.data.appointments && response.data.appointments.length > 0) {
-          setSearchResults(response.data.appointments);
-          setSelectedAppointment(null);
-          setSuccess(`${response.data.appointments.length} appointments found`);
-        }
+        setSearchResults(response.data.appointments);
+        console.log("Search results:", response.data.appointments);
       }
+      else {
+        setError(response.data.message || "No appointments found");
+      }
+
     } catch (err) {
       setError(err.response?.data?.message || "No appointments found");
       setSelectedAppointment(null);
@@ -237,8 +228,6 @@ const NewRegister = () => {
       setIsSearching(false);
     }
   };
-
-  // ==== 4. NEW APPOINTMENT FUNCTIONS ====
   
   const handleNewAppointment = () => {
     setShowNewAppointmentDialog(true);
@@ -326,8 +315,6 @@ const NewRegister = () => {
       setLoading(false);
     }
   };
-
-  // ==== RENDER UI ====
   
   return (
     <div className="flex h-screen bg-gray-100">
@@ -532,21 +519,27 @@ const NewRegister = () => {
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Doctor </th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Doctor</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                          {searchResults.map((appt) => (
-                            <tr key={appt.id}>
+                          {searchResults.map((appt, index) => (
+                            <tr key={appt._id || index}>
                               <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{appt.doctorName}</td>
                               <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
                                 {new Date(appt.appointmentDate).toLocaleDateString()}
                               </td>
-                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                                {appt.confirmedTime ? appt.confirmedTime.split(" - ")[0] : "N/A"}
+                              <td className="px-4 py-2 whitespace-nowrap text-sm">
+                                <span className={`px-2 py-1 rounded text-xs font-medium 
+                                  ${appt.status === "approve" ? "bg-green-100 text-green-800" : 
+                                    appt.status === "reject" ? "bg-red-100 text-red-800" : 
+                                    "bg-yellow-100 text-yellow-800"}`}>
+                                  {appt.status === "approve" ? "Approved" : 
+                                  appt.status === "reject" ? "Rejected" : "Pending"}
+                                </span>
                               </td>
                               <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
                                 <button

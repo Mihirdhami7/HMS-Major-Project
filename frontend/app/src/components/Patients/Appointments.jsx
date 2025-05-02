@@ -7,6 +7,7 @@ function Appointment() {
   const [activeTab, setActiveTab] = useState("appointments");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [bookingLoading, setBookingLoading] = useState(false); // New state for booking button
   // const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [appointmentDate, setAppointmentDate] = useState("");
@@ -122,26 +123,113 @@ function Appointment() {
     { id: 4, doctorName: "Dr. Emily Brown", suggestion: "Schedule follow-up", reportLink: "/reports/report2.pdf" },
   ];
 
-  const bookAppointment =  async () => {
-    if (!appointmentDate) {
-      alert("Please select an appointment date.");
-      return;
-    }
-    
-    if (!appointmentTime) {
-      alert("Please select a time slot.");
-      return;
-    }
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => {
+        console.log("Razorpay SDK loaded successfully.");
+    };
+    script.onerror = () => {
+        console.error("Failed to load Razorpay SDK.");
+    };
+    document.body.appendChild(script);
+}, []);
 
+
+    const createPayment = async () => {
+      const userEmail = sessionStorage.getItem("email");
+      const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
+    
+      if (!userEmail || !hospitalName) {
+        alert("User information is incomplete. Please log in again.");
+        return;
+      }
+      if (!selectedDoctor) {
+        alert("Please select a doctor to book an appointment.");
+        return;
+      }
+      if (!appointmentDate) {
+        alert("Please select an appointment date.");
+        return;
+      }
+      if (!appointmentTime) {
+        alert("Please select a time slot.");
+        return;
+      }
+      if(appointmentDate < new Date().toISOString().split("T")[0]) {
+        alert("Please select a valid appointment date.");
+        return;
+      }
+    
+      try {
+        setBookingLoading(true);
+        // Create payment order
+        const response = await axios.post("http://127.0.0.1:8000/api/create_payment/", {
+          amount: 100, // Payment fee in rupees
+          patientEmail: userEmail,
+          hospitalName: hospitalName,
+        });
+
+        const { order_id, key } = response.data;
+
+      // Open Razorpay payment modal
+      const options = {
+        key: key,
+        amount: 100 * 100, // Convert to paise
+        currency: "INR",
+        name: "HMS Healthcare",
+        description: "Appointment Booking Fee",
+        order_id: order_id,
+        handler: async function (paymentResult) {
+          // Verify payment and book appointment
+          const payment_id = paymentResult.razorpay_payment_id;
+          const verifyResponse = await axios.post("http://127.0.0.1:8000/api/verify_payment/", {
+            payment_id: payment_id,
+            order_id: order_id,
+            patientEmail: userEmail,
+            hospitalName: hospitalName,
+          });
+
+
+          if (verifyResponse.data.status === "success") {
+            /* alert("Payment successful. Booking appointment..."); */
+            console.log("Payment verification successful:", verifyResponse.data);
+            setBookingLoading(true); // Set loading state for booking
+            bookAppointment(payment_id);
+          } else {
+            alert("Payment verification failed. Please try again.");
+            setBookingLoading(false);
+          }
+        },
+        prefill: {
+          email: userEmail,
+        },
+        theme: {
+          color: "#3399cc",
+        },
+      };
+
+      const razorpay = new window.Razorpay(options);
+      razorpay.open();
+    } catch (error) {
+      console.error("Error creating payment:", error);
+      alert("An error occurred while creating the payment. Please try again.");
+    }finally {
+      setBookingLoading(false); // Reset loading state
+    }
+  };
+
+
+  const bookAppointment =  async (payment_id) => {
+  
+    setBookingLoading(true); // Set loading state for booking
     const userName = sessionStorage.getItem("name");
     const userEmail = sessionStorage.getItem("email");
     const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
 
-
-
-    if ( !userName || !userEmail) {
-      alert("User information is incomplete. Please log in again.");
-      console.error("Missing user info:", {  userName, userEmail });
+    if(!payment_id)  { 
+      alert("Payment ID is missing. Please try again.");
+      console.error("Missing payment ID:", payment_id);
       return;
     }
 
@@ -156,6 +244,7 @@ function Appointment() {
       doctorEmail: selectedDoctor.email, // Additional data that might be useful
       doctorName: selectedDoctor.name, // Additional data that might be useful
       hospitalName: hospitalName, // Added hospital name
+      paymentId: payment_id, // Added payment ID
     };
     try {
       const response = await axios.post("http://127.0.0.1:8000/api/book_appointment/", appointmentData);
@@ -173,6 +262,8 @@ function Appointment() {
     } catch (error) {
       console.error("Error booking appointment:", error);
       alert("An error occurred. Please try again.");
+    }finally {
+      setBookingLoading(false); // Reset loading state
     }
 };
 
@@ -183,15 +274,38 @@ function Appointment() {
   
         <div className="flex-1 p-8 overflow-y-auto mt-16">
           <h2 className="text-3xl font-bold flex items-center mb-6 text-blue-700">
-            <FiCalendar className="mr-2 text-green-600" /> Doctor Appointments
+            <FiCalendar className="mr-2 text-green-600" /> Book Appointments 
           </h2>
   
-           {/* Hospital Name Display */}
+          
+          {/* Hospital Name Display */}
           {hospitalName && (
-            <div className="mb-4 p-3 bg-blue-50 border-l-4 border-blue-500 rounded">
-              <p className="text-lg font-medium text-blue-700">
-                Hospital: <span className="font-bold">{hospitalName}</span>
-              </p>
+            <div className="mb-4 p-4 bg-white rounded-lg shadow-lg flex items-center border-l-4 border-blue-500">
+              <img
+                src={
+                  hospitalName === "Zydus"
+                    ? "/public/images/zydus.png"
+                    : hospitalName === "Iris"
+                    ? "/public/images/iris.png"
+                    : "/public/images/default-hospital.png"
+                }
+                alt={`${hospitalName} Hospital`}
+                className="w-20 h-20 rounded-full mr-4 object-cover"
+                onError={(e) => {
+                  e.target.src = "/public/images/default-hospital.png";
+                  e.target.onerror = null;
+                }}
+              />
+              <div>
+                <h3 className="text-lg font-bold text-blue-700">{hospitalName} Hospital</h3>
+                <p className="text-sm text-gray-600">
+                  {hospitalName === "Zydus"
+                    ? "Zydus Hospital is a leading healthcare provider offering world-class medical services and facilities. Our team of specialists ensures the best care for your health."
+                    : hospitalName === "Iris"
+                    ? "Iris Hospital is known for its advanced medical technology and compassionate care, providing exceptional healthcare services to patients."
+                    : "Welcome to our hospital. We are committed to providing quality healthcare services tailored to your needs."}
+                </p>
+              </div>
             </div>
           )}
 
@@ -436,6 +550,20 @@ function Appointment() {
                   <p className="mt-1">Please arrive 15 minutes before your scheduled appointment time.</p>
                 </div>
 
+                {/* Fee information - Improved design */}
+                <div className="mb-6 border-2 border-green-400 rounded-lg overflow-hidden">
+                  <div className= "bg-green-500 text-white py-2 px-4 font-medium">
+                    Appointment Fee
+                  </div>
+                  <div className="flex items-center justify-between p-4 bg-green-50">
+                    <div>
+                      <p className="text-gray-700 font-medium">Appointmnet Booking Fee</p>
+                      <p className="text-xs text-gray-500 mt-1">This fee is non-refundable for no-shows</p>
+                    </div>
+                    <div className="text-xl font-bold text-green-700">₹100</div>
+                  </div>
+                </div>
+
                 {/* Action buttons */}
                 <div className="flex space-x-4">
                   <button 
@@ -446,9 +574,10 @@ function Appointment() {
                   </button>
                   <button 
                     className="flex-1 bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white py-3 px-4 rounded-lg font-medium transition-all"
-                    onClick={bookAppointment}
+                    onClick={createPayment}
+                    disabled={bookingLoading}
                   >
-                    Confirm Appointment
+                   {bookingLoading ? "Processing..." : "Confirm Appointment"}
                   </button>
                 </div>
               </div>

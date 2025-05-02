@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { FiUser, FiMail, FiPhone, FiCalendar, FiMapPin, FiEdit, FiSave, FiX } from "react-icons/fi";
+import { FiUser, FiMail, FiPhone, FiCalendar, FiMapPin, FiEdit, FiSave, FiX , FiFileText, FiPackage, FiCheck} from "react-icons/fi";
 import { MdOutlineSchool, MdOutlineMedicalServices } from "react-icons/md";
 import Slidebar from "../pages/Slidebar";
 import axios from "axios";
@@ -20,6 +20,7 @@ function Profile() {  // Changed name to match what's imported in routes
     const storedUserType = sessionStorage.getItem("userType");
     const userType = storedUserType ? storedUserType.toLowerCase() : null;
     const isDoctor = userType === "doctor";
+    const isSupplier = userType === "supplier";
 
     const sessionID = sessionStorage.getItem("session_Id");
     const { email: urlEmail } = useParams();
@@ -94,6 +95,7 @@ function Profile() {  // Changed name to match what's imported in routes
         
         // Default case for other routes
         return `/${userType}/${value}`;
+        
       };
     // Add missing cancelEdit function
     const cancelEdit = () => {
@@ -416,6 +418,93 @@ function Profile() {  // Changed name to match what's imported in routes
                             </div>
                         </div>
                     )}
+                    {/* Supplier Information (Supplier Only) */}
+                    {userType === "supplier" && (
+                        <div className="mt-6 bg-white p-6 rounded-lg shadow-lg">
+                            <h3 className="text-xl font-semibold text-blue-800 mb-4 pb-2 border-b border-blue-100">
+                                Supplier Information
+                            </h3>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Company Name */}
+                                <div className="flex items-start space-x-3">
+                                    <FiPackage className="text-blue-600 mt-1 text-xl" />
+                                    <div className="w-full">
+                                        <p className="text-gray-500 text-sm">Company Name</p>
+                                        {isEditing ? (
+                                            <input
+                                                type="text"
+                                                name="companyName"
+                                                value={editableData.companyName || ''}
+                                                onChange={handleInputChange}
+                                                className="border p-2 rounded w-full shadow-sm"
+                                            />
+                                        ) : (
+                                            <p className="font-medium">{userData.companyName || 'Not provided'}</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Business Type */}
+                                <div className="flex items-start space-x-3">
+                                    <FiFileText className="text-blue-600 mt-1 text-xl" />
+                                    <div className="w-full">
+                                        <p className="text-gray-500 text-sm">Business Type</p>
+                                        {isEditing ? (
+                                            <input
+                                                type="text"
+                                                name="businessType"
+                                                value={editableData.businessType || ''}
+                                                onChange={handleInputChange}
+                                                className="border p-2 rounded w-full shadow-sm"
+                                            />
+                                        ) : (
+                                            <p className="font-medium">{userData.businessType || 'Not provided'}</p>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                {/* License Number */}
+                                <div className="flex items-start space-x-3">
+                                    <FiCheck className="text-blue-600 mt-1 text-xl" />
+                                    <div className="w-full">
+                                        <p className="text-gray-500 text-sm">License Number</p>
+                                        {isEditing ? (
+                                            <input
+                                                type="text"
+                                                name="licenseNumber"
+                                                value={editableData.licenseNumber || ''}
+                                                onChange={handleInputChange}
+                                                className="border p-2 rounded w-full shadow-sm"
+                                            />
+                                        ) : (
+                                            <p className="font-medium">{userData.licenseNumber || 'Not provided'}</p>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                {/* Supplier Since */}
+                                <div className="flex items-start space-x-3">
+                                    <FiCalendar className="text-blue-600 mt-1 text-xl" />
+                                    <div className="w-full">
+                                        <p className="text-gray-500 text-sm">Supplier Since</p>
+                                        {isEditing ? (
+                                            <input
+                                                type="date"
+                                                name="supplierSince"
+                                                value={editableData.supplierSince || ''}
+                                                onChange={handleInputChange}
+                                                className="border p-2 rounded w-full shadow-sm"
+                                            />
+                                        ) : (
+                                            <p className="font-medium">{userData.supplierSince || 'Not provided'}</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                 </div>
             </div>
         </div>

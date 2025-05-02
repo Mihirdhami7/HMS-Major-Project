@@ -24,7 +24,6 @@ def book_appointment(request):
         try:
             data = json.loads(request.body)
             appointment_id = data.get('appointmentId')
-            # Extract appointment data
             patientName = data.get('patientName')
             patientEmail = data.get('patientEmail')
             department = data.get('department')
@@ -34,23 +33,14 @@ def book_appointment(request):
             doctorEmail = data.get('doctorEmail')
             doctorName = data.get('doctorName')
             hospitalName = data.get('hospitalName')
+            paymentId = data.get('paymentId')
             
             
             # Validate required fields
-            if not all([patientEmail, doctorEmail, appointmentDate, requestedTime]):
+            if not all([patientEmail, doctorEmail, appointmentDate, requestedTime, department, hospitalName, paymentId]):
                 return JsonResponse({'error': 'Missing required fields'}, status=400)
             
-            # # Check if patient exists
-            # patient = users_collection.find_one({'email': patientEmail, 'user_type': 'patient'})
-            # if not patient:
-            #     return JsonResponse({'error': 'Patient not found'}, status=404)
-            
-            # # Check if doctor exists
-            # doctor = users_collection.find_one({'email': doctorEmail, 'user_type': 'doctor'})
-            # if not doctor:
-            #     return JsonResponse({'error': 'Doctor not found'}, status=404)
-            
-            # Create appointment object
+        
             appointment = {
                 #'patient_id': patient['_id'],
                 'patientName': patientName,
@@ -62,6 +52,7 @@ def book_appointment(request):
                 'doctorEmail': doctorEmail,
                 'doctorName': doctorName,
                 'hospitalName': hospitalName,
+                'paymentId': paymentId,
                 'status': 'pending',
                 'create_at': datetime.now()
             }
@@ -107,7 +98,7 @@ def book_appointment(request):
                 print(f"Request sent successfully to {doctorEmail}")
             
             return JsonResponse({
-                'success': True,
+                'status': 'success',
                 'appointment_id': str(result.inserted_id),
                 'message': 'Appointment request submitted successfully'
             })
@@ -396,15 +387,21 @@ def get_pending_appointments(request):
             if not hospital_name:
                 return JsonResponse({'error': 'Hospital name is required'}, status=400)
             
+            # Get today's date in YYYY-MM-DD format
+            today = datetime.now().strftime('%Y-%m-%d')
+             # Get all pending appointments with appointment date >= today
+            query = {
+                "hospitalName": hospital_name,
+                "appointmentDate": {"$gte": today}  # Greater than or equal to today's date
+            }
+            
             # Get all pending appointments
-            appointments = list(temp_appointments_collection.find({"hospitalName": hospital_name}))
+            appointments = list(temp_appointments_collection.find(query))
             
             result = []
             # Process appointments
             for appointment in appointments:
-                appointment['_id'] = str(appointment['_id'])
-
-                
+                appointment['_id'] = str(appointment['_id'])                
                 result.append(appointment)
             
             return JsonResponse({
@@ -423,28 +420,48 @@ def search_appointment(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
-            search_query = data.get("query", "").strip()
+            patient_email = data.get("email")
+            hospital_name = data.get("hospitalName")
             
-            if not search_query:
-                return JsonResponse({"status": "error", "message": "Search query is required"}, status=400)
+            if not patient_email or not hospital_name:
+                return JsonResponse({"status": "error", "message": "Email and hospital name are required"}, status=400)
             
-            # Search for approved appointments by patient email
-            appointments = list(appointments_collection.find({"patientEmail": search_query, "status": "approved"}))
+            # Search for appointments in both collections
+            approved_appointments = list(appointments_collection.find({
+                "patientEmail": patient_email,
+                "hospitalName": hospital_name
+            }))
             
-            if appointments:
-                for appt in appointments:
-                    appt["_id"] = str(appt["_id"])  # Convert ObjectId to string
-                return JsonResponse({"status": "success", "appointments": appointments})
+            pending_appointments = list(temp_appointments_collection.find({
+                "patientEmail": patient_email,
+                "hospitalName": hospital_name
+            }))
             
-            return JsonResponse({"status": "error", "message": "No approved appointments found"}, status=404)
+            # Convert ObjectIds to strings for JSON serialization
+            for appt in approved_appointments:
+                appt["_id"] = str(appt["_id"])
+                appt["status"] = appt.get("status", "approve")  # Ensure status field exists
+            
+            for appt in pending_appointments:
+                appt["_id"] = str(appt["_id"])
+                appt["status"] = "pending"  # Mark all temp appointments as pending
+            
+            # Combine results
+            all_appointments = approved_appointments + pending_appointments
+            
+            if all_appointments:
+                return JsonResponse({
+                    "status": "success", 
+                    "appointments": all_appointments
+                })
+            
+            return JsonResponse({"status": "error", "message": "No appointments found for this email"}, status=404)
         
-        except json.JSONDecodeError:
-            return JsonResponse({"status": "error", "message": "Invalid JSON data"}, status=400)
         except Exception as e:
+            print(f"Error in search_appointment: {str(e)}")
             return JsonResponse({"status": "error", "message": str(e)}, status=500)
     
     return JsonResponse({"status": "error", "message": "Invalid request method"}, status=405)
-
 
 
 
@@ -472,7 +489,7 @@ def create_appointment(request):
                 "hospitalName": data.get["hospitalName"],
                 "doctorEmail": data["doctorEmail"],
                 "doctorName": data.get("doctorName", ""),  # Default if not provided
-                "status": "pending",  # Default status
+                "status": "approve",  
                 "createdAt": datetime.now()
             }
             
@@ -487,6 +504,7 @@ def create_appointment(request):
                 'message': f'An appointment has been scheduled with you.',
                 'appointment_id': str(result.inserted_id),  
                 'read': False,
+
                 'created_at': datetime.now()
             }
             notifications_collection.insert_one(doctor_notification)
@@ -532,9 +550,10 @@ def get_doctor_appointments(request):
             if not email:
                 return JsonResponse({'error': 'Doctor ID is required'}, status=400)
             
-            # Build query to find appointments for this doctor
+            
             query = {
-                'doctorEmail': email
+                'doctorEmail': email,
+               
             }
             
             # Add hospital filter if available
@@ -783,6 +802,7 @@ def generate_invoice(request):
             medicines = data.get('medicines', [])
             total_amount = data.get('totalAmount')
             hospital_name = data.get('hospitalName')
+            payment_id = data.get('paymentId')
             
             # Create invoice document
             invoice = {
@@ -792,6 +812,7 @@ def generate_invoice(request):
                 'medicines': medicines,
                 'totalAmount': total_amount,
                 'hospitalName': hospital_name,
+                'paymentId': payment_id,
                 'status': 'generated',
                 'created_at': datetime.now()
             }

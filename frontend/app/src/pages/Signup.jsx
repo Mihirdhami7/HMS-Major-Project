@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import DatePicker from "react-datepicker";
@@ -15,12 +15,12 @@ export default function Signup() {
     "pediatrics",
     "General Medicine",
   ];
-  const [hospitals] = useState([
-    "Zydus",
-    "Iris",
-    "Agrawal Medical"
-  ]); // Default hospitals - replace with API call
-
+  const [hospitals, setHospitals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [otp, setOtp] = useState("");
+  const [errors, setErrors] = useState({});
+  const [message, setMessage] = useState("");
+  
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -35,27 +35,36 @@ export default function Signup() {
     doctorSpecialization: "",
     doctorCertificate: null,
     hospitalName: "",
+    companyName: "",           
+    companyStartingDate: "",   
+    companyLicense: null,      
   });
 
-    // Uncomment this to fetch hospitals from API
-  /*
+  // Fetch hospitals from backend
   useEffect(() => {
     const fetchHospitals = async () => {
       try {
+        setLoading(true);
+        // Replace with your actual API endpoint
         const response = await axios.get("http://127.0.0.1:8000/api/hospitals/");
-        if (response.status === 200) {
+        if (response.data && response.data.hospitals) {
           setHospitals(response.data.hospitals);
+        } else {
+          // Fallback to default hospitals if API doesn't return data
+          setHospitals(["Zydus", "Iris", "Agrawal Medical"]);
         }
       } catch (error) {
         console.error("Error fetching hospitals:", error);
+        // Fallback to default hospitals on error
+        setHospitals(["Zydus", "Iris", "Agrawal Medical"]);
+      } finally {
+        setLoading(false);
       }
     };
+
     fetchHospitals();
   }, []);
-  */
-  const [otp, setOtp] = useState("");
-  const [errors, setErrors] = useState({});
-  const [message, setMessage] = useState("");
+
 
   const handleDateChange = (date) => {
     setFormData({ ...formData, dateOfBirth: date });
@@ -72,77 +81,72 @@ export default function Signup() {
     setFormData({ ...formData, [e.target.name]: e.target.files[0] });
   };
 
-  // const handlePhotoChange = (e) => {
-  //   const file = e.target.files[0];
-  //   if (file) {
-  //     setFormData({ ...formData, photo: file });
-      
-  //     const reader = new FileReader();
-  //     reader.onloadend = () => {
-  //       setPhotoPreview(reader.result);
-  //     };
-  //     reader.readAsDataURL(file);
-  //   }
-  // };
-
   const validateForm = () => {
     const newErrors = {};
 
     // Name validation
-    if (!formData.name.trim()) newErrors.name = "Name is required";
-    else if (formData.name.length < 3) newErrors.name = "Name must be at least 3 characters";
+    if (!formData.name.trim()) {
+      newErrors.name = "Name is required";
+    } else if (formData.name.length < 3) {
+      newErrors.name = "Name must be at least 3 characters";
+    }
 
     // Email validation
     const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (!formData.email.trim()) newErrors.email = "Email is required";
-    else if (!emailPattern.test(formData.email)) newErrors.email = "Invalid email format";
+    if (!formData.email.trim()) {
+      newErrors.email = "Email is required";
+    } else if (!emailPattern.test(formData.email)) {
+      newErrors.email = "Invalid email format";
+    }
 
     // Password validation
     const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-    if (!formData.password) newErrors.password = "Password is required";
-    else if (!passwordPattern.test(formData.password))
+    if (!formData.password) {
+      newErrors.password = "Password is required";
+    } else if (!passwordPattern.test(formData.password)) {
       newErrors.password = "Password must be at least 8 characters, include uppercase, lowercase, number, and special character";
+    }
 
     // Confirm password validation
-    if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = "Passwords do not match";
+    if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = "Passwords do not match";
+    }
 
     // Contact number validation
     const phonePattern = /^[0-9]{10}$/;
-    if (!formData.contactNo.trim()) newErrors.contactNo = "Contact number is required";
-    else if (!phonePattern.test(formData.contactNo)) newErrors.contactNo = "Contact number must be exactly 10 digits";
+    if (!formData.contactNo.trim()) {
+      newErrors.contactNo = "Contact number is required";
+    } else if (!phonePattern.test(formData.contactNo)) {
+      newErrors.contactNo = "Contact number must be exactly 10 digits";
+    }
 
     // Date of Birth validation
     if (!formData.dateOfBirth) {
       newErrors.dateOfBirth = "Date of Birth is required";
     } else {
-      if(formData.userType === "Doctor") {
-        // Age validation (now applied to all users)
-        const today = new Date();
-        const birthDate = new Date(formData.dateOfBirth);
-        const age = today.getFullYear() - birthDate.getFullYear();
+      const today = new Date();
+      const birthDate = new Date(formData.dateOfBirth);
+      const age = today.getFullYear() - birthDate.getFullYear();
       
-        // Adjust age if birthday hasn't occurred yet this year
-        const monthDiff = today.getMonth() - birthDate.getMonth();
-        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-          const adjustedAge = age - 1;
-          
-          if (adjustedAge < 25) {
-            newErrors.dateOfBirth = "You must be at least 18 years old to register";
-          }
-        } else {
-          if (age < 25) {
-            newErrors.dateOfBirth = "You must be at least 18 years old to register";
-          }
-        }
+      // Adjust age if birthday hasn't occurred yet this year
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      const adjustedAge = (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()))
+        ? age - 1 : age;
+      
+      // Different age requirements based on user type
+      if (formData.userType === "Doctor" && adjustedAge < 25) {
+        newErrors.dateOfBirth = "Doctors must be at least 25 years old";
+      } else if (adjustedAge < 18) {
+        newErrors.dateOfBirth = "You must be at least 18 years old to register";
+      }
     }
-  }
-     // Hospital validation
-     if (!formData.hospitalName) {
+
+    // Hospital validation (only for Patients and Doctors)
+    if ((formData.userType === "Patient" || formData.userType === "Doctor") && !formData.hospitalName) {
       newErrors.hospitalName = "Hospital selection is required";
     }
 
-
-    // Doctor-specific fields validation
+    // Doctor-specific validation
     if (formData.userType === "Doctor") {
       if (!formData.doctorQualification.trim()) {
         newErrors.doctorQualification = "Qualification is required";
@@ -155,9 +159,24 @@ export default function Signup() {
       }
     }
 
+    // Supplier-specific validation
+    if (formData.userType === "Supplier") {
+      if (!formData.companyName.trim()) {
+        newErrors.companyName = "Company name is required";
+      }
+      if (!formData.companyStartingDate) {
+        newErrors.companyStartingDate = "Company starting date is required";
+      }
+      if (!formData.companyLicense) {
+        newErrors.companyLicense = "Company license upload is required";
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
+
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -248,8 +267,8 @@ export default function Signup() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="flex bg-white shadow-lg rounded-lg overflow-hidden w-3/4 max-h-[80vh] mt-16">
+    <div className="min-h-screen flex items-center justify-center bg-green-100">
+      <div className="flex bg-green-50 shadow-lg rounded-lg overflow-hidden w-3/4 max-h-[80vh] mt-16">
         <div className="w-1/2 bg-blue-500 flex items-center justify-center p-10">
           <img src="src/assets/images/account.png" alt="Sign Up Illustration" className="w-full h-auto" />
         </div>
@@ -266,26 +285,26 @@ export default function Signup() {
 
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
 
-            <input name="name" type="text" placeholder="Name" className="w-full p-2 border rounded" value={formData.name} onChange={handleChange} />
+            <input name="name" type="text" placeholder="Name" className=" bg-blue-50 w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" value={formData.name} onChange={handleChange} />
             {errors.name && <p className="text-red-500 text-sm">{errors.name}</p>}
 
-            <input name="email" type="email" placeholder="Email address" className="w-full p-2 border rounded" value={formData.email} onChange={handleChange} />
+            <input name="email" type="email" placeholder="Email address" className=" bg-blue-50 w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" value={formData.email} onChange={handleChange} />
             {errors.email && <p className="text-red-500 text-sm">{errors.email}</p>}
 
-            <input name="password" type="password" placeholder="Password" className="w-full p-2 border rounded" value={formData.password} onChange={handleChange} />
+            <input name="password" type="password" placeholder="Password" className=" bg-blue-50 w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" value={formData.password} onChange={handleChange} />
             {errors.password && <p className="text-red-500 text-sm">{errors.password}</p>}
 
-            <input name="confirmPassword" type="password" placeholder="Confirm Password" className="w-full p-2 border rounded" value={formData.confirmPassword} onChange={handleChange} />
+            <input name="confirmPassword" type="password" placeholder="Confirm Password" className=" bg-blue-50 w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" value={formData.confirmPassword} onChange={handleChange} />
             {errors.confirmPassword && <p className="text-red-500 text-sm">{errors.confirmPassword}</p>}
 
-            <input name="contactNo" type="tel" placeholder="Contact Number" className="w-full p-2 border rounded" value={formData.contactNo} onChange={handleChange} />
+            <input name="contactNo" type="tel" placeholder="Contact Number" className=" bg-blue-50 w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" value={formData.contactNo} onChange={handleChange} />
             {errors.contactNo && <p className="text-red-500 text-sm">{errors.contactNo}</p>}
 
             <label className="block text-gray-700">Date of Birth</label>
             <DatePicker
               selected={formData.dateOfBirth}
               onChange={handleDateChange}
-              className="w-full p-2 border rounded"
+              className=" bg-blue-50 w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               dateFormat="dd/MM/yyyy"  // Custom date format
               showYearDropdown
               scrollableYearDropdown
@@ -293,37 +312,48 @@ export default function Signup() {
             />
             {errors.dateOfBirth && <p className="text-red-500 text-sm">{errors.dateOfBirth}</p>}
 
-
-            {/* Hospital selection dropdown */}
             <div>
-              <label className="block text-gray-700">Select Hospital</label>
-              <select
-                name="hospitalName"
-                value={formData.hospitalName}
+              <label className="block text-gray-700">User Type</label>
+              <select 
+                name="userType" 
+                className=" bg-blue-50 w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                value={formData.userType} 
                 onChange={handleChange}
-                className="w-full p-2 border rounded"
               >
-                <option value="">Select a hospital</option>
-                {hospitals.map((hospital, index) => (
-                  <option key={index} value={hospital}>{hospital}</option>
-                ))}
+                <option value="Patient">Patient</option>
+                <option value="Doctor">Doctor</option>
+                <option value="Supplier">Supplier</option>
               </select>
-              {errors.hospitalName && <p className="text-red-500 text-sm">{errors.hospitalName}</p>}
             </div>
 
-            <select name="userType" className="w-full p-2 border rounded" value={formData.userType} onChange={handleChange}>
-              <option value="Patient">Patient</option>
-              <option value="Doctor">Doctor</option>
-              <option value="Admin">Supplier</option>
-            </select>
+            {/* Hospital selection (only for Patients and Doctors) */}
+            {(formData.userType === "Patient" || formData.userType === "Doctor") && (
+              <div>
+                <label className="block text-gray-700">Select Hospital</label>
+                <select
+                  name="hospitalName"
+                  value={formData.hospitalName}
+                  onChange={handleChange}
+                  className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={loading}
+                >
+                  <option value="">Select a hospital</option>
+                  {hospitals.map((hospital, index) => (
+                    <option key={index} value={hospital}>{hospital}</option>
+                  ))}
+                </select>
+                {errors.hospitalName && <p className="text-red-500 text-sm">{errors.hospitalName}</p>}
+              </div>
+            )}
 
             {formData.userType === "Doctor" && (
               <>
+                
                 <input 
                   name="doctorQualification" 
                   type="text" 
                   placeholder="Qualification" 
-                  className="w-full p-2 border rounded" 
+                  className=" bg-blue-50 w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" 
                   value={formData.doctorQualification} 
                   onChange={handleChange} 
                 />
@@ -331,9 +361,10 @@ export default function Signup() {
                   <p className="text-red-500 text-sm">{errors.doctorQualification}</p>
                 )}
 
+                
                 <select
                   name="doctorSpecialization"
-                  className="w-full p-2 border rounded"
+                  className=" bg-blue-50 w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={formData.doctorSpecialization}
                   onChange={handleChange}
                 >
@@ -354,7 +385,7 @@ export default function Signup() {
                     type="file" 
                     name="doctorCertificate" 
                     accept="application/pdf" 
-                    className="w-full p-2 border rounded" 
+                    className=" bg-blue-50 w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" 
                     onChange={handleFileChange} 
                   />
                   {errors.doctorCertificate && (
@@ -363,7 +394,50 @@ export default function Signup() {
                 </div>
               </>
             )}
+          {formData.userType === "Supplier" && (
+            <>
+              
+              <input 
+                name="companyName" 
+                type="text" 
+                placeholder="Company Name" 
+                className=" bg-blue-50 w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                value={formData.companyName} 
+                onChange={handleChange} 
+              />
+              {errors.companyName && (
+                <p className="text-red-500 text-sm">{errors.companyName}</p>
+              )}
 
+              <label className="block text-gray-700">Company Starting Date</label>
+              <DatePicker
+                selected={formData.companyStartingDate}
+                onChange={(date) => setFormData({ ...formData, companyStartingDate: date })}
+                className=" bg-blue-50 w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                dateFormat="dd/MM/yyyy"
+                showYearDropdown
+                scrollableYearDropdown
+                yearDropdownItemNumber={100}
+              />
+              {errors.companyStartingDate && (
+                <p className="text-red-500 text-sm">{errors.companyStartingDate}</p>
+              )}
+
+              <div>
+                <label className="block text-gray-700">Upload Company License (PDF)</label>
+                <input 
+                  type="file" 
+                  name="companyLicense" 
+                  accept="application/pdf" 
+                  className=" bg-blue-50 w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                  onChange={handleFileChange} 
+                />
+                {errors.companyLicense && (
+                  <p className="text-red-500 text-sm">{errors.companyLicense}</p>
+                )}
+              </div>
+            </>
+          )}
             <button type="submit" className="w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700">Sign Up</button>
             already have an account?{" "} <a href="/login" className="text-blue-600">Login</a>
           </form>

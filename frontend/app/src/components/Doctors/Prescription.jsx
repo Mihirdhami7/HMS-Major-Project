@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation} from "react-router-dom";
 import Slidebar from "../../pages/Slidebar";
 import { FiClipboard, FiPlus } from "react-icons/fi";
 import { MdDelete } from "react-icons/md";
@@ -9,7 +9,7 @@ import axios from 'axios';
 
 function Prescription() {
     const location = useLocation();
-    const navigate = useNavigate(); // Was missing the import and initialization
+    
     const [loading, setLoading] = useState(false);
     // const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
@@ -196,13 +196,6 @@ function Prescription() {
         "Continue"
     ];
 
-    const departments = {
-        "Orthopedic": ["Ibuprofen", "Diclofenac", "Naproxen", "Meloxicam", "Tramadol", "Celecoxib", "Aspirin", "Prednisone", "Methotrexate", "Etodolac"],
-        "Pediatrician": ["Paracetamol", "Amoxicillin", "Cefixime", "Azithromycin", "Loratadine", "Salbutamol", "Montelukast", "Ondansetron", "Domperidone", "Ranitidine"],
-        "Cardiology": ["Amlodipine", "Atenolol", "Clopidogrel", "Warfarin", "Enalapril", "Lisinopril", "Metoprolol", "Losartan", "Rosuvastatin", "Simvastatin"],
-        "Neurology": ["Gabapentin", "Pregabalin", "Carbamazepine", "Levetiracetam", "Topiramate", "Valproate", "Lamotrigine", "Ropinirole", "Donepezil", "Memantine"],
-        "Generic": ["Vitamin C", "Multivitamins", "Iron Supplements", "Calcium Tablets", "Probiotics", "Zinc Supplements", "Omega-3", "Melatonin", "Folic Acid", "Coenzyme Q10"]
-    };
 
     const commonSuggestionsList = {
         "Orthopedic": [
@@ -1095,29 +1088,6 @@ function Prescription() {
 
                     {/* Generate Report Button */}
                     <div className="flex justify-end mt-6 space-x-4">
-                        <button 
-                            onClick={savePrescription}
-                            className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-6 py-3 rounded-lg shadow-lg hover:from-purple-600 hover:to-indigo-600 flex items-center"
-                            disabled={loading}
-                        >
-                            {loading ? (
-                                <span className="flex items-center">
-                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Sending...
-                                </span>
-                            ) : (
-                                <>
-                                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
-                                    </svg>
-                                    Send Data
-                                </>
-                            )}
-                        </button>
-                        
                         <button 
                             onClick={generateReport}
                             className="bg-gradient-to-r from-blue-500 to-green-500 text-white px-6 py-3 rounded-lg shadow-lg hover:from-blue-600 hover:to-green-600 flex items-center"

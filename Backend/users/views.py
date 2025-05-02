@@ -38,7 +38,6 @@ try:
     departments_collection = db["departments"]
     hospitals_collection = db["hospitals"]
 
-    products_collection = db["products"]
     notifications_collection = db["notifications"]
     prescriptions_collection = db["prescriptions"]
     invoices_collection = db["invoices"]
@@ -46,6 +45,11 @@ try:
 
     temp_appointments_collection = db["temp_appointments"]
     appointments_collection = db["appointments"]
+    orders_collection = db["orders"]
+
+
+    products_collection = db["products"]
+    temp_products_collection = db["temp_products"]
 
     print("Successfully connected to MongoDB Atlas!")
 
