@@ -194,7 +194,7 @@ export default function Signup() {
         }
       });
 
-      const response = await axios.post("http://127.0.0.1:8000/api/register/", formDataToSend, {
+      const response = await axios.post("http://127.0.0.1:8000/api/accounts/register/", formDataToSend, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
@@ -217,7 +217,7 @@ export default function Signup() {
   const handleVerification = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post("http://127.0.0.1:8000/api/verify-email/", {
+      const response = await axios.post("http://127.0.0.1:8000/api/accounts/verify-email/", {
         email: formData.email,
         otp: otp
       });

@@ -62,7 +62,7 @@ export default function Login() {
         category: formData.category 
       });
       
-      const response = await fetch("http://127.0.0.1:8000/api/login/", {
+      const response = await fetch("http://127.0.0.1:8000/api/accounts/login/", {
         method: "POST",
         credentials: "include", // This ensures cookies are sent & received
         headers: {
@@ -230,7 +230,7 @@ export default function Login() {
         {/* Register Link */}
         <p className="mt-6 text-center text-gray-600">
           Dont have an account?{" "}
-          <a href="/register" className="text-blue-600 hover:text-blue-800 font-medium">
+          <a href="/accounts/register" className="text-blue-600 hover:text-blue-800 font-medium">
             Register
           </a>
         </p>

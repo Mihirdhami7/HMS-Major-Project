@@ -97,7 +97,7 @@ const DepartmentManagement = () => {
       if (!sessionTd) return; // Ensure session ID is available
 
 
-      const response = await axios.get(`http://localhost:8000/api/get_hospital_departments/${hospitalName}`, {
+      const response = await axios.get(`http://localhost:8000/api/hospitals/get_hospital_departments/${hospitalName}`, {
         headers: { 
           "Authorization": sessionStorage.getItem("session_Id") 
         }
@@ -132,7 +132,7 @@ const DepartmentManagement = () => {
       setLoading(true);
       const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
       if (!hospitalName) return;
-      const response = await axios.get(`http://localhost:8000/api/get_hospital_doctors/${departmentId}/${hospitalName}`, {
+      const response = await axios.get(`http://localhost:8000/api/hospitals/get_hospital_doctors/${departmentId}/${hospitalName}`, {
         headers: {
           "Authorization": sessionStorage.getItem("session_Id")
         }
@@ -257,7 +257,7 @@ const DepartmentManagement = () => {
 
     try {
       setLoading(true);
-      await axios.delete(`http://localhost:8000/api/delete_doctor/${doctorId}/`, {
+      await axios.delete(`http://localhost:8000/api/users/delete_doctor/${doctorId}/`, {
         headers: {
           "Authorization": sessionStorage.getItem("session_Id")
         }
@@ -350,7 +350,7 @@ const DepartmentManagement = () => {
       const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
       if (!hospitalName) return;
 
-      const response = await axios.get(`http://localhost:8000/api/get_pending_doctors/${hospitalName}`, {
+      const response = await axios.get(`http://localhost:8000/api/users/get_pending_doctors/${hospitalName}`, {
         headers: {
           "Authorization": sessionStorage.getItem("session_Id")
         }
@@ -399,7 +399,7 @@ const DepartmentManagement = () => {
       if (!doctor.email) return; // Ensure doctor email is available
       
 
-      const response = await axios.post(`http://localhost:8000/api/approve_doctor/`,
+      const response = await axios.post(`http://localhost:8000/api/users/approve_doctor/`,
         { 
           email: doctor.email,
           status: "approved",
@@ -441,7 +441,7 @@ const DepartmentManagement = () => {
     
       console.log("Rejecting doctor:", doctorEmail, "from hospital:", hospitalName);
       const response = await axios.post(
-        `http://localhost:8000/api/reject_doctor/`,
+        `http://localhost:8000/api/users/reject_doctor/`,
         { 
           email: doctorEmail,
           hospitalName: hospitalName

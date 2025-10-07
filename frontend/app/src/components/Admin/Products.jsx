@@ -38,7 +38,7 @@ const Products = () => {
       console.log("Hospital Name:", hospitalName);
    
       // Make an API call to fetch products for the specified hospital
-      const response = await axios.get(`http://127.0.0.1:8000/api/get_products/${hospitalName}/`, {
+      const response = await axios.get(`http://127.0.0.1:8000/api/orders/get_products/${hospitalName}/`, {
           headers: {
               Authorization: `Bearer ${sessionStorage.getItem("session_Id")}`
           }
@@ -74,7 +74,7 @@ const Products = () => {
         console.error("Hospital name is missing in session storage.");
         return;
       }
-      const response = await axios.get(`http://127.0.0.1:8000/api/get_stocks_requests_by_hospital/${hospitalName}/`,{
+      const response = await axios.get(`http://127.0.0.1:8000/api/orders/get_stocks_requests_by_hospital/${hospitalName}/`,{
           headers: {
             Authorization: `Bearer ${sessionStorage.getItem("session_Id")}`
           }
@@ -119,7 +119,7 @@ const Products = () => {
         return;
       }
       
-      await axios.post("http://127.0.0.1:8000/api/request_stock/", {
+      await axios.post("http://127.0.0.1:8000/api/orders/request_stock/", {
         product_name: selectedProduct.name,
         product_type: selectedProduct.type,
         supplier: selectedProduct.supplier,
@@ -160,7 +160,7 @@ const fetchNewProducts = async () => {
       return;
     }
     
-    const response = await axios.get(`http://127.0.0.1:8000/api/get_new_products/${hospitalName}/`, {
+    const response = await axios.get(`http://127.0.0.1:8000/api/orders/get_new_products/${hospitalName}/`, {
       headers: {
         Authorization: `Bearer ${sessionStorage.getItem("session_Id")}`
       }
@@ -181,7 +181,7 @@ const fetchNewProducts = async () => {
     try {
       const hospitalName = sessionStorage.getItem("hospitalName");
       
-      await axios.put(`http://127.0.0.1:8000/api/approve_new_product/${productId}/`, {
+      await axios.put(`http://127.0.0.1:8000/api/orders/approve_new_product/${productId}/`, {
         status,
         hospital_name: hospitalName
       }, {
@@ -272,7 +272,7 @@ const fetchNewProducts = async () => {
       }
   
       // Create payment order
-      const response = await axios.post("http://127.0.0.1:8000/api/create_payment_products/", {
+      const response = await axios.post("http://127.0.0.1:8000/api/payments/create_payment_products/", {
         amount: amount,
         companyName: order.supplier,
         hospitalName: hospitalName,
@@ -298,7 +298,7 @@ const fetchNewProducts = async () => {
         handler: async function (paymentResult) {
           // Verify payment
           const payment_id = paymentResult.razorpay_payment_id;
-          const verifyResponse = await axios.post("http://127.0.0.1:8000/api/verify_payment_products/", {
+          const verifyResponse = await axios.post("http://127.0.0.1:8000/api/payments/verify_payment_products/", {
             payment_id: payment_id,
             order_id: order_id,
             companyName: hospitalName,
@@ -316,7 +316,7 @@ const fetchNewProducts = async () => {
             console.log("Payment verification successful:", verifyResponse.data);
             
             // Update order status to fulfilled after successful payment
-            const updateResponse = await axios.post(`http://127.0.0.1:8000/api/complete_order/${order._id}/`, {
+            const updateResponse = await axios.post(`http://127.0.0.1:8000/api/orders/complete_order/${order._id}/`, {
               hospital_name: hospitalName,
               payment_id: payment_id,
             }, {

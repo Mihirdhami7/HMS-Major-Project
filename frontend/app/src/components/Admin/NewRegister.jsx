@@ -85,7 +85,7 @@ const NewRegister = () => {
     setSuccess("");
 
     try {
-      const response = await axios.post("http://localhost:8000/api/add_patient/", {
+      const response = await axios.post("http://localhost:8000/api/users/add_patient/", {
         ...formData,
         userType: "Patient"
       });
@@ -119,7 +119,7 @@ const NewRegister = () => {
       setError("");
       const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
       
-      const response = await axios.get("http://localhost:8000/api/get_pending_appointment/", {
+      const response = await axios.get("http://localhost:8000/api/appointments/get_pending_appointment/", {
         params: { hospitalName }
       });
       
@@ -171,7 +171,7 @@ const NewRegister = () => {
         }
       }
       
-      const response = await axios.post("http://localhost:8000/api/approve-appointment/", appointmentData);
+      const response = await axios.post("http://localhost:8000/api/appointments/approve-appointment/", appointmentData);
       
       if (response.data.status === "success") {
         setSuccess(`Appointment ${approvalAction}d successfully!`);
@@ -207,7 +207,7 @@ const NewRegister = () => {
       setError("");
       setSearchResults([]);
       
-      const response = await axios.post("http://localhost:8000/api/search_appointment/", {
+      const response = await axios.post("http://localhost:8000/api/appointments/search_appointment/", {
         email: formData.searchQuery,
         hospitalName: sessionStorage.getItem("hospitalName") || "Zydus"
       });
@@ -250,7 +250,7 @@ const NewRegister = () => {
       setLoading(true);
       setError("");
 
-      const response = await axios.post("http://localhost:8000/api/get-patient-by-email/", {
+      const response = await axios.post("http://localhost:8000/api/users/get-patient-by-email/", {
         email: newAppointmentData.patientEmail
       });
 
@@ -282,7 +282,7 @@ const NewRegister = () => {
     try {
       setLoading(true);
       setError("");
-      const response = await axios.post("http://localhost:8000/api/create-appointment/", {
+      const response = await axios.post("http://localhost:8000/api/appointments/create-appointment/", {
         patientEmail: newAppointmentData.patientEmail,
         department: newAppointmentData.department,
         appointmentDate: newAppointmentData.appointmentDate,

@@ -37,7 +37,7 @@ const Givemedicine = () => {
     const fetchPrescriptions = async () => {
         try {
             setLoading(true);
-            const response = await axios.post('http://localhost:8000/api/get_prescriptions/', {
+            const response = await axios.post('http://localhost:8000/api/appointments/get_prescriptions/', {
                 hospitalName: hospitalName
             });
             setPrescriptions(response.data.prescriptions);
@@ -51,7 +51,7 @@ const Givemedicine = () => {
 
     const fetchAvailableMedicines = async (medicineList) => {
         try {
-            const response = await axios.post('http://localhost:8000/api/get-hospital-medicines/', {
+            const response = await axios.post('http://localhost:8000/api/appointments/get-hospital-medicines/', {
                 hospitalName: hospitalName,
                 medicineNames: medicineList.map(med => med.name)
             });
@@ -137,7 +137,7 @@ const Givemedicine = () => {
                 patientEmail: patientEmail,
                 hospitalName: hospitalName,
             });
-            const response = await axios.post("http://127.0.0.1:8000/api/create_payment/", {
+            const response = await axios.post("http://127.0.0.1:8000/api/payments/create_payment/", {
                 amount: calculateTotal() + 50, // Total amount in rupees
                 patientEmail: patientEmail,
                 hospitalName: hospitalName,
@@ -156,7 +156,7 @@ const Givemedicine = () => {
                 handler: async function (paymentResult) {
                     // Verify payment and generate invoice
                     const payment_id = paymentResult.razorpay_payment_id;
-                    const verifyResponse = await axios.post("http://127.0.0.1:8000/api/verify_payment/", {
+                    const verifyResponse = await axios.post("http://127.0.0.1:8000/api/payments/verify_payment/", {
                         payment_id: payment_id,
                         order_id: order_id,
                         patientEmail: patientEmail,
@@ -205,7 +205,7 @@ const Givemedicine = () => {
 
             };
 
-            const response = await axios.post("http://127.0.0.1:8000/api/generate_invoice/", invoiceData);
+            const response = await axios.post("http://127.0.0.1:8000/api/appointments/generate_invoice/", invoiceData);
     
             if (response.data.status === "success") {
                 alert("Invoice generated successfully!");

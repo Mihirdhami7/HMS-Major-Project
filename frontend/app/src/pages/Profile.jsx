@@ -40,7 +40,7 @@ function Profile() {  // Changed name to match what's imported in routes
                 console.log(`Fetching ${userType} profile for: ${emailToUse}`);
 
                 const response = await axios.get(
-                    `http://127.0.0.1:8000/api/profile/${userType}/${emailToUse}/`,
+                    `http://127.0.0.1:8000/api/accounts/profile/${userType}/${emailToUse}/`,
                     {
                         headers: {
                             

@@ -42,7 +42,7 @@ function DoctorAppointments() {
         return;
       }
       
-      const response = await axios.post("http://localhost:8000/api/get_doctor_appointments/", {
+      const response = await axios.post("http://localhost:8000/api/appointments/get_doctor_appointments/", {
         email: email,
         hospitalName: hospitalName
       });

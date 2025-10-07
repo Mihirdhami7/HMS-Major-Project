@@ -48,7 +48,7 @@ function Appointment() {
       if (!sessionTd) return; // Ensure session ID is available
       
       
-      const response = await fetch(`http://localhost:8000/api/get_hospital_departments/${hospitalName}`, {
+      const response = await fetch(`http://localhost:8000/api/hospitals/get_hospital_departments/${hospitalName}`, {
         headers: {
           "Authorization": sessionTd,
         },
@@ -83,7 +83,7 @@ function Appointment() {
       setLoading(true);
       const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
       if (!hospitalName) return;
-      const response = await axios.get(`http://localhost:8000/api/get_hospital_doctors/${departmentId}/${hospitalName}`, {
+      const response = await axios.get(`http://localhost:8000/api/hospitals/get_hospital_doctors/${departmentId}/${hospitalName}`, {
         headers: {
           "Authorization": sessionStorage.getItem("session_Id")
         }
@@ -164,7 +164,7 @@ function Appointment() {
       try {
         setBookingLoading(true);
         // Create payment order
-        const response = await axios.post("http://127.0.0.1:8000/api/create_payment/", {
+        const response = await axios.post("http://127.0.0.1:8000/api/payments/create_payment/", {
           amount: 100, // Payment fee in rupees
           patientEmail: userEmail,
           hospitalName: hospitalName,
@@ -183,7 +183,7 @@ function Appointment() {
         handler: async function (paymentResult) {
           // Verify payment and book appointment
           const payment_id = paymentResult.razorpay_payment_id;
-          const verifyResponse = await axios.post("http://127.0.0.1:8000/api/verify_payment/", {
+          const verifyResponse = await axios.post("http://127.0.0.1:8000/api/payments/verify_payment/", {
             payment_id: payment_id,
             order_id: order_id,
             patientEmail: userEmail,
@@ -247,7 +247,7 @@ function Appointment() {
       paymentId: payment_id, // Added payment ID
     };
     try {
-      const response = await axios.post("http://127.0.0.1:8000/api/book_appointment/", appointmentData);
+      const response = await axios.post("http://127.0.0.1:8000/api/appointments/book_appointment/", appointmentData);
       
       if (response.data.status === "success") {
         setShowModal(false);

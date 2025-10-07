@@ -15,7 +15,7 @@ const ProtectedRoute = () => {
       }
 
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/check_session/", {
+        const response = await fetch("http://127.0.0.1:8000/api/accounts/check_session/", {
           method: "GET",
           credentials: "include",
           headers: {

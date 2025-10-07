@@ -33,7 +33,7 @@ function DoctorSection() {
         return;
       }
       setLoading(true);
-      const response = await axios.post("http://localhost:8000/api/get_doctor_by_email/", {
+      const response = await axios.post("http://localhost:8000/api/users/get_doctor_by_email/", {
         email: email,
         hospitalName: hospitalName
       });

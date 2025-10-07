@@ -21,7 +21,16 @@ from django.urls import path, include
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path('api/', include('users.urls')),
+    # path("api/", include("api.urls")),
+    # path("api/core/", include("apps.core.urls")),
+    path("api/users/", include("apps.users.urls")),
+    path("api/appointments/", include("apps.appointments.urls")),
+    path("api/accounts/", include("apps.accounts.urls")),  # prefer "accounts" over "auth"
+    path("api/hospitals/", include("apps.hospitals.urls")),
+    path("api/orders/", include("apps.orders.urls")),
+    path("api/payments/", include("apps.payments.urls")),
+    # path("api/reports/", include("apps.reports.urls")),
+    # path("api/notifications/", include("apps.notifications.urls")),
 ]
 
 # Serve media files in development

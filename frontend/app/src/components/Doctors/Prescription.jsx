@@ -52,7 +52,7 @@ function Prescription() {
             setLoading(true);
             setError(null);
             
-            const response = await axios.post("http://localhost:8000/api/get-patient-by-email/", {
+            const response = await axios.post("http://localhost:8000/api/users/get-patient-by-email/", {
                 email: patientEmail  // Using email parameter instead of patientId
             });
             
@@ -117,7 +117,7 @@ function Prescription() {
     const fetchAvailableMedicines = async () => {
         try {
             setLoading(true);
-            const response = await axios.post("http://localhost:8000/api/get-hospital-medicines/", {
+            const response = await axios.post("http://localhost:8000/api/appointments/get-hospital-medicines/", {
                 hospitalName: hospitalName,
                 // department: appointmentData?.department
             });
@@ -320,7 +320,7 @@ function Prescription() {
             
             // Send the data to the backend
             const response = await axios.post(
-                "http://localhost:8000/api/save-prescription/", 
+                "http://localhost:8000/api/appointments/save-prescription/", 
                 prescriptionData
 
             );

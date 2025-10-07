@@ -48,7 +48,7 @@ const SupplierPortal = () => {
   const fetchCompanyName = async (email) => {
     try {
       setLoading(true);
-      const response = await axios.get(`http://127.0.0.1:8000/api/get_company_name/${email}/`);
+      const response = await axios.get(`http://127.0.0.1:8000/api/accounts/get_company_name/${email}/`);
       
       if (response.data.status === "success") {
         const companyName = response.data.companyName || " Supplier";
@@ -71,7 +71,7 @@ const SupplierPortal = () => {
       setLoading(true);
       const companyName = sessionStorage.getItem("companyName");
       if (!companyName) return;
-      const response = await axios.get(`http://127.0.0.1:8000/api/get_supplier_products/${companyName}/`);
+      const response = await axios.get(`http://127.0.0.1:8000/api/orders/get_supplier_products/${companyName}/`);
       
       if (response.data.status === "success") {
         setProducts(response.data.products || []);
@@ -115,7 +115,7 @@ const SupplierPortal = () => {
         "Hospital Name": newProduct.hospital_name || "General"
       };
       
-      const response = await axios.post("http://127.0.0.1:8000/api/add_product/", productData);
+      const response = await axios.post("http://127.0.0.1:8000/api/orders/add_product/", productData);
       
       if (response.data.status === "success") {
         alert("Product added successfully and waiting for admin approval");
@@ -145,7 +145,7 @@ const SupplierPortal = () => {
     const companyName = sessionStorage.getItem("companyName");
     if (!companyName) return;
     try {
-      const response = await axios.get(`http://127.0.0.1:8000/api/get_stock_request_by_supplier/${companyName}/`);
+      const response = await axios.get(`http://127.0.0.1:8000/api/orders/get_stock_request_by_supplier/${companyName}/`);
       
       if (response.data.status === "success") {
         setStockRequests(response.data.requests || []);
@@ -214,9 +214,9 @@ const SupplierPortal = () => {
         alert("Invalid price format");
         return;
       }
-      
-      const response = await axios.post("http://127.0.0.1:8000/api/fulfill_request/", fulfillData);
-      
+
+      const response = await axios.post("http://127.0.0.1:8000/api/orders/fulfill_request/", fulfillData);
+
       if (response.data.status === "success") {
         alert("Request fulfilled successfully");
         setShowFulfillRequestModal(false);

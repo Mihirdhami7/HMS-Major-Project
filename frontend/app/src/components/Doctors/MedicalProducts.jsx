@@ -29,7 +29,7 @@ const MedicalProducts = () => {
       }
       
       // Make an API call to fetch products for the specified hospital
-      const response = await axios.get(`http://127.0.0.1:8000/api/get_products/${hospitalName}/`, {
+      const response = await axios.get(`http://127.0.0.1:8000/api/orders/get_products/${hospitalName}/`, {
           headers: {
               Authorization: `Bearer ${sessionStorage.getItem("session_Id")}`
           }
