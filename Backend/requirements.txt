@@ -6,3 +6,5 @@ pymongo
 dnspython
 bcrypt
 razorpay
+PyJWT
+Pillow>=10.0.0

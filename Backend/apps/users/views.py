@@ -649,3 +649,50 @@ def get_patient_by_email(request):
         "status": "error",
         "message": "Method not allowed"
     }, status=405)
+
+@csrf_exempt
+def get_department_doctors(request, departmentId, hospital_name):
+    if request.method == "GET":
+        try:
+            department = departments_collection.find_one({"_id": ObjectId(departmentId)})
+            if not department:
+                return JsonResponse({"status": "error", "message": "Department not found"}, status=404)
+            
+            departments_name = department.get("Department")
+
+            doctors = list(doctors_collection.find({"Department": departments_name, "Hospital": hospital_name}))
+            # Convert ObjectId to string for JSON serialization
+            for doc in doctors:
+                doc["_id"] = str(doc["_id"])
+                doc["name"] = doc["name"]
+                doc["email"] = doc["email"]
+                doc["specialization"] = doc["doctorSpecialization"]
+                doc["qualification"] = doc["doctorQualification"]
+                doc["contact"] = doc["contectNo"]
+                doc["rating"] = doc["rating"]
+                # doc["dateOfBirth"] = doc["dateOfBirth"]
+                # doc["adress"] = doc["Address"]
+                # doc["time_slot"] = doc["Time Slot"]
+                # doc["Description"] = doc["Description"]
+
+            
+            return JsonResponse({"status": "success", "doctors": doctors})
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+    
+    return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
+
+@csrf_exempt
+def get_department_patients(request, department_name):
+    if request.method == "GET":
+        try:
+            patients = list(users_collection.find({"Department": department_name}))
+            # Convert ObjectId to string for JSON serialization
+            for patient in patients:
+                patient["_id"] = str(patient["_id"])
+            
+            return JsonResponse({"status": "success", "patients": patients})
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+    
+    return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)

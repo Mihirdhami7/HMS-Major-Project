@@ -1,25 +1,32 @@
 from django.urls import path
 # Appointment related views
 from .views import (
-    get_appointments, book_appointment, approve_appointment, 
-    get_pending_appointments, search_appointment, create_appointment, 
-    get_doctor_appointments, save_prescription, get_hospital_medicines, get_prescriptions,
-    generate_invoice
-)
+    BookAppointmentAPIView,
+    ApproveAppointmentAPIView,
+    GetMyAppointmentsAPIView,
+    GetPendingAppointmentsAPIView,
+    GetAllAppointmentsAPIView,
+    GetHospitalMedicinesAPIView,
+    CreatePrescriptionAPIView,
+    GetAllPrescriptionsAPIView,
+    GetMyPrescriptionsAPIView,
+    GetPendingPrescriptionsAPIView,
+    #CreateINVOICEAPIView,
+    )
 
 urlpatterns = [
-    path('get_appointment/<str:user_id>/', get_appointments, name='get_appointment'),
-  
-    path('book_appointment/', book_appointment, name='book_appointment'),
-  
-    path('approve-appointment/', approve_appointment, name='approve_appointment'),
-    path('search_appointment/', search_appointment, name='search_appointment'),     
-    path('create-appointment/', create_appointment, name='create_appointment'),
-    path('get_doctor_appointments/', get_doctor_appointments, name='get_doctor_appointments'),
-    path('get_pending_appointment/', get_pending_appointments, name='get_pending_appointment'),
-    path('get-hospital-medicines/', get_hospital_medicines, name='get_hospital_medicines'),
-    path('save-prescription/', save_prescription, name='save_prescription'),
-    path('get_prescriptions/', get_prescriptions,  name='get_prescriptions'),
+    path('book/', BookAppointmentAPIView.as_view(), name='book_appointment'),
+    path('approve/', ApproveAppointmentAPIView.as_view(), name='approve_appointment'),
+    path('my/', GetMyAppointmentsAPIView.as_view(), name='get_doctor_appointments'),
+    path('pending/', GetPendingAppointmentsAPIView.as_view(), name='get_pending_appointments'),
+    path('all/', GetAllAppointmentsAPIView.as_view() , name='get_all_appointments'),     
+    path('save-prescription/', CreatePrescriptionAPIView.as_view(), name='save_prescription'),
+    path('prescriptions/pending/', GetPendingPrescriptionsAPIView.as_view(),  name='get_pending_prescriptions'),
+    path('prescriptions/my/', GetMyPrescriptionsAPIView.as_view(),  name='get_my_prescriptions'),
+    path('prescriptions/all/', GetAllPrescriptionsAPIView.as_view(),  name='get_all_prescriptions'),
+    
+    path('get-hospital-medicines/', GetHospitalMedicinesAPIView.as_view(), name='get_hospital_medicines'),
 
-    path('generate_invoice/', generate_invoice, name='generate_invoice'),
+
+    # path('generate_invoice/', GenerateInvoiceAPIView.as_view(), name='generate_invoice'),
 ]
