@@ -16,7 +16,7 @@ from .views import (
 
 urlpatterns = [
     path('book/', BookAppointmentAPIView.as_view(), name='book_appointment'),
-    path('approve/', ApproveAppointmentAPIView.as_view(), name='approve_appointment'),
+    path('approve/<str:appointment_id>/', ApproveAppointmentAPIView.as_view(), name='approve_appointment'),
     path('my/', GetMyAppointmentsAPIView.as_view(), name='get_doctor_appointments'),
     path('pending/', GetPendingAppointmentsAPIView.as_view(), name='get_pending_appointments'),
     path('all/', GetAllAppointmentsAPIView.as_view() , name='get_all_appointments'),     
@@ -25,7 +25,8 @@ urlpatterns = [
     path('prescriptions/my/', GetMyPrescriptionsAPIView.as_view(),  name='get_my_prescriptions'),
     path('prescriptions/all/', GetAllPrescriptionsAPIView.as_view(),  name='get_all_prescriptions'),
     
-    path('get-hospital-medicines/', GetHospitalMedicinesAPIView.as_view(), name='get_hospital_medicines'),
+    path('get-hospital-medicines/<str:hospital_name>/', GetHospitalMedicinesAPIView.as_view(), name='get_hospital_medicines'),
+    path('get-hospital-medicines/', GetHospitalMedicinesAPIView.as_view(), name='get_hospital_medicines_self'),
 
 
     # path('generate_invoice/', GenerateInvoiceAPIView.as_view(), name='generate_invoice'),

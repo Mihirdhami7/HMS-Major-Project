@@ -8,7 +8,7 @@ import bcrypt
 
 class UserDocument:
     COMMON_FIELDS = [
-        "name", "email", "password", "hpassword", "gender",
+        "name", "email", "hpassword", "gender",
         "userType", "contactNo", "dateOfBirth", "is_active",
         "created_at", "updated_at", "photo"
     ]
@@ -59,7 +59,6 @@ class UserDocument:
         base = {
             "email": email,
             "name": name,
-            "password": password,  # Plain password (for reference only, not stored)
             "hpassword": hashed_password,  # bcrypt hashed password
             "contactNo": contactNo,
             "userType": userType,  # Patient, Doctor, Admin, Supplier
@@ -84,7 +83,7 @@ class UserDocument:
         Patient document: keep only common base fields + patient-specific fields.
         """
         allowed = [
-            "email", "name", "password", "hpassword", "contactNo",
+            "email", "name", "hpassword", "contactNo",
             "userType", "gender", "dateOfBirth", "photo",
             "is_active", "created_at", "updated_at"
         ]
@@ -110,7 +109,7 @@ class UserDocument:
         Doctor document: base fields + doctor-specific metadata and certificate saved as URL.
         """
         allowed = [
-            "email", "name", "password", "hpassword", "contactNo",
+            "email", "name", "hpassword", "contactNo",
             "userType", "gender", "dateOfBirth", "photo",
             "is_active", "created_at", "updated_at"
         ]
@@ -141,7 +140,7 @@ class UserDocument:
         hospitalNames can be a list of hospital names the supplier works with.
         """
         allowed = [
-            "email", "name", "password", "hpassword", "contactNo",
+            "email", "name", "hpassword", "contactNo",
             "userType", "gender", "dateOfBirth", "photo",
             "is_active", "created_at", "updated_at"
         ]
@@ -157,49 +156,19 @@ class UserDocument:
         return sup
     
     @staticmethod
-    def create_admin(base_data: dict) -> dict:
+    def create_admin(base_data: dict, *, hospitalName: Optional[str] = None) -> dict:
         """
         Admin (or super) document: no extra fields beyond common base.
         """
         allowed = [
-            "email", "name", "password", "hpassword", "contactNo",
+            "email", "name", "hpassword", "contactNo",
             "userType", "gender", "dateOfBirth", "photo",
             "is_active", "created_at", "updated_at"
         ]
-        return {k: base_data.get(k) for k in allowed if base_data.get(k) is not None}
-    
-class StaffDocument:
-    
-    """
-    Staff document structure in staff_collection
-    Only for approved doctors/staff members
-    """
-    
-    @staticmethod
-    def create_staff(
-        email: str,
-        user_id: str,
-        name: str,
-        userType: str,
-        hospitalName: str,
-        departments: list = None,
-        **kwargs
-    ) -> dict:
-        """Create staff record for approved doctor"""
-        return {
-            "email": email,
-            "user_id": user_id,  # Reference to users_collection
-            "name": name,
-            "userType": userType,  # Doctor, Nurse, etc.
-            "Hospital": hospitalName,
-            "departments": departments or [],
-            "approved": True,
-            "approved_at": datetime.utcnow(),
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-            **kwargs
-        }
-    
+        admin = {k: base_data.get(k) for k in allowed if base_data.get(k) is not None}
+        admin["hospitalName"] = hospitalName or base_data.get("hospitalName")
+        return admin
+
 class OTPDocument:
     """OTP document structure"""
     

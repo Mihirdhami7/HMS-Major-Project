@@ -11,8 +11,8 @@ urlpatterns = [
     path("verify-email/", VerifyEmailAPIView.as_view(), name="verify_email"),
     path("login/", LoginAPIView.as_view(), name="login"),
     path('logout/', LogoutAPIView.as_view(), name='logout'),
-    path('profile/<str:userType>/<str:email>/', GetUserProfileAPIView.as_view(), name='get_user_profile'),
-    path('profile/<str:userType>/<str:email>/update/', UpdateUserProfileAPIView.as_view(), name='update_user_profile'),
+    path('profile/me/', GetUserProfileAPIView.as_view(), name='get_user_profile'),
+    path('profile/me/update/', UpdateUserProfileAPIView.as_view(), name='update_user_profile'),
     
     path('get_company_name/<str:email>/', GetCompanyNameAPIView.as_view(), name='get_company_name'),
 ]

@@ -1,40 +1,28 @@
 from django.urls import path
 
-# Doctor related views
+# Import new DRF class-based views
 from .views import (
-    get_doctors_by_hospital, get_doctor_details, get_doctor_by_email,
-    update_doctor, delete_doctor, add_doctor,
-    get_pending_doctors, approve_doctor, reject_doctor
-)
-
-# Patient related views
-from .views import (
-    get_patient, add_patient, search_patient, 
-    update_patient, delete_patient, get_patient_by_email
+    DoctorListAPIView, DoctorDetailAPIView, DoctorRoleAPIView, DoctorPendingListAPIView, 
+    DoctorSearchAPIView, DoctorApproveAPIView, DoctorRejectAPIView, DoctorByDepartmentAPIView,
+    PatientListAPIView, PatientDetailAPIView, PatientSearchAPIView, PatientByDepartmentAPIView
 )
 
 urlpatterns = [
-    # Doctor related routes - fixed to include doctor_id parameter
-    path('doctor_by_hospital/<str:hospital_id>/', get_doctors_by_hospital, name='doctor_by_hospital'),
-    path('get_doctor_details/', get_doctor_details, name='get_doctor_details'),
-    path("add_doctor/", add_doctor, name="add_doctor"),
-    path('update_doctor/<str:doctor_id>/', update_doctor, name='update_doctor'),
-    path('get_doctor_by_email/', get_doctor_by_email, name='get_doctor_by_email'),
-    path('delete_doctor/<str:doctorId>/', delete_doctor, name='delete_doctor'),
+    path('doctors/search/', DoctorSearchAPIView.as_view(), name='doctor-search'),       # GET ?email=&hospital=
+    path('doctors/approve/', DoctorApproveAPIView.as_view(), name='doctor-approve'),    # POST approve pending doctor
+    path('doctors/reject/', DoctorRejectAPIView.as_view(), name='doctor-reject'),       # POST reject pending doctor
 
-    # Patient views - fixed to include patient_id parameter
-    path('get_patient/<str:patient_id>/', get_patient, name='get_patient'),
-    path('add_patient/', add_patient, name='add_patient'),
-    path('search_patient/', search_patient, name='search_patient'),
-    path('update_patient/<str:patient_id>/', update_patient, name='update_patient'),
-    
-    path('delete_patient/<str:patient_id>/', delete_patient, name='delete_patient'),
-    path('get-patient-by-email/', get_patient_by_email, name='get_patient_by_email'),
+    path('doctors/<str:hospital_name>/pending/', DoctorPendingListAPIView.as_view(), name='doctor-pending'),
+    path('doctors/<str:hospital_name>/department/<str:department_name>/', DoctorByDepartmentAPIView.as_view(), name='doctor-by-department'),
+    path('doctors/<str:hospital_name>/', DoctorListAPIView.as_view(), name='doctor-list-create'),   # GET list / POST create
 
-    
-    # Doctor approval viewxs
-    path('get_pending_doctors/<str:hospital_name>/', get_pending_doctors, name='get_pending_doctors'),
-    path('approve_doctor/', approve_doctor, name='approve_doctor'),
-    path('reject_doctor/', reject_doctor, name='reject_doctor'),
+    path('doctors/<str:doctor_id>/role/', DoctorRoleAPIView.as_view(), name='doctor-role'),      # PUT assign roles
+    path('doctors/<str:doctor_id>/', DoctorDetailAPIView.as_view(), name='doctor-detail'),       # GET / PUT / DELETE
 
+    path('patients/search/', PatientSearchAPIView.as_view(), name='patient-search'),    # GET ?email=&hospital=
+
+    path('patients/<str:hospital_name>/department/<str:department_name>/', PatientByDepartmentAPIView.as_view(), name='patient-by-department'),
+    path('patients/<str:hospital_name>/', PatientListAPIView.as_view(), name='patient-list-create'), # GET list / POST create
+
+    path('patients/<str:patient_id>/', PatientDetailAPIView.as_view(), name='patient-detail'),   # GET / PUT / DELETE
 ]

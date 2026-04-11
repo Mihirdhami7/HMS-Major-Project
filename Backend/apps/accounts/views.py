@@ -13,8 +13,10 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.throttling import AnonRateThrottle
 
 from backend.db import (
+    client,
     users_collection, staff_collection, otp_collection, sessions_collection,
     generate_otp, clear_expired_otps
 )
@@ -22,7 +24,7 @@ from backend import settings
 from .serializers import (
     RegisterSerializer, VerifyEmailSerializer, LoginSerializer, LogoutSerializer, UserProfileSerializer
 )
-from .permissions import IsSameUser
+from .permissions import IsSameUser, IsSuperAdminOrIsSameHospitalAdmin
 from .models import UserDocument, OTPDocument
 from .authentication import JWTAuthentication
 
@@ -33,6 +35,7 @@ class RegisterUserAPIView(generics.CreateAPIView):
     POST /api/accounts/register/
     """
     permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
     serializer_class = RegisterSerializer
     parser_classes = [MultiPartParser, FormParser]
             
@@ -85,7 +88,7 @@ class RegisterUserAPIView(generics.CreateAPIView):
                     base_data=base_user,
                     companyName=data.get("companyName"),
                     companyStartingDate=data.get("companyStartingDate"),
-                    license=request.FILES.get('companyLicense')
+                    license_file=request.FILES.get('companyLicense')
                 )
             elif userType == "Patient":
                 user_document = UserDocument.create_patient(
@@ -103,25 +106,33 @@ class RegisterUserAPIView(generics.CreateAPIView):
                     "message": "Invalid user type"
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Insert user into database
-            users_collection.insert_one(user_document)
-            
-            # Verify insertion
-            result = users_collection.find_one({"email": email})
-            if not result:
-                raise exceptions.APIException("Failed to create user")
-
-            # Generate and send OTP
             otp_code = generate_otp()
             otp_document = OTPDocument.create(email=email, otp=otp_code, expiry_minutes=2)
-            otp_collection.insert_one(otp_document)
+            inserted_user_id = None
+
+            # Use Mongo transaction when available; fallback to normal writes otherwise.
+            try:
+                with client.start_session() as mongo_session:
+                    with mongo_session.start_transaction():
+                        user_insert = users_collection.insert_one(user_document, session=mongo_session)
+                        otp_collection.insert_one(otp_document, session=mongo_session)
+                        inserted_user_id = user_insert.inserted_id
+            except Exception:
+                user_insert = users_collection.insert_one(user_document)
+                otp_collection.insert_one(otp_document)
+                inserted_user_id = user_insert.inserted_id
+
+            # Verify insertion
+            result = users_collection.find_one({"_id": inserted_user_id})
+            if not result:
+                raise exceptions.APIException("Failed to create user")
 
             try:
                 self._send_otp_email(email, otp_code, data.get("name"))
             except Exception as e:
                 # Rollback user creation if email fails
-                users_collection.delete_one({"email": email})
-                otp_collection.delete_one({"email": email})
+                users_collection.delete_one({"_id": inserted_user_id})
+                otp_collection.delete_many({"email": email})
                 return Response({
                     "status": "error",
                     "message": f"Failed to send verification email: {str(e)}"
@@ -129,6 +140,7 @@ class RegisterUserAPIView(generics.CreateAPIView):
 
             # Prepare response (remove sensitive data)
             result.pop("hpassword", None)
+            result.pop("password", None)
             result["_id"] = str(result["_id"])
             
             # Use serializer's to_representation to filter fields
@@ -183,6 +195,7 @@ class VerifyEmailAPIView(generics.GenericAPIView):
     """
     serializer_class = VerifyEmailSerializer
     permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
     
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -253,13 +266,13 @@ class VerifyEmailAPIView(generics.GenericAPIView):
 
 
 
-
 class LoginAPIView(generics.CreateAPIView):
     """
     User login endpoint
     POST /api/accounts/login/
     """
     permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
     serializer_class = LoginSerializer
     
     def create(self, request, *args, **kwargs):
@@ -285,7 +298,7 @@ class LoginAPIView(generics.CreateAPIView):
                 category = "superAdmin"  # For token payload
             else:
                 if category == "Doctor":
-                    staff_user = staff_collection.find_one({"email": email, "userType": "Doctor", "Hospital": hospital_name})
+                    staff_user = staff_collection.find_one({"email": email, "userType": "Doctor", "hospitalName": hospital_name})
                     if staff_user:
                         user = users_collection.find_one({"email": email})
                     else:
@@ -369,15 +382,15 @@ class LogoutAPIView(generics.CreateAPIView):
 class GetUserProfileAPIView(generics.RetrieveAPIView):
     """
     Get user profile
-    GET /api/accounts/profile/<userType>/<email>/
+    GET /api/accounts/profile/me/
     """
     permission_classes = [IsAuthenticated , IsSameUser]
     serializer_class = UserProfileSerializer
     authentication_classes = [JWTAuthentication]
 
     def get_object(self):
-        userType = self.kwargs.get("userType")
-        email = self.kwargs.get("email")
+        userType = getattr(self.request.user, 'userType', None)
+        email = getattr(self.request.user, 'email', None)
         
         # # Get authenticated user from JWT token
         # auth_user_email = getattr(self.request.user, 'email', None)
@@ -398,6 +411,7 @@ class GetUserProfileAPIView(generics.RetrieveAPIView):
         # Convert ObjectId to string and remove sensitive data
         user_doc["_id"] = str(user_doc["_id"])
         user_doc.pop("hpassword", None)
+        user_doc.pop("password", None)
         
         return user_doc
     
@@ -438,7 +452,7 @@ class GetUserProfileAPIView(generics.RetrieveAPIView):
 class UpdateUserProfileAPIView(generics.UpdateAPIView):
     """
     Update user profile
-    PUT/PATCH /api/accounts/profile/<userType>/<email>/update/
+    PUT/PATCH /api/accounts/profile/me/update/
     """
     serializer_class = UserProfileSerializer
     parser_classes = [MultiPartParser, FormParser]
@@ -446,8 +460,8 @@ class UpdateUserProfileAPIView(generics.UpdateAPIView):
     authentication_classes = [JWTAuthentication]
 
     def get_object(self):
-        userType = self.kwargs.get("userType")
-        email = self.kwargs.get("email")
+        userType = getattr(self.request.user, 'userType', None)
+        email = getattr(self.request.user, 'email', None)
         
         # # Get authenticated user email from JWT token
         # auth_user_email = getattr(self.request.user, 'email', None)
@@ -491,8 +505,8 @@ class UpdateUserProfileAPIView(generics.UpdateAPIView):
             self.perform_update(serializer)
             
             # Fetch updated user from database
-            email = self.kwargs.get("email")
-            userType = self.kwargs.get("userType")
+            email = getattr(request.user, 'email', None)
+            userType = getattr(request.user, 'userType', None)
             
             updated_user = users_collection.find_one({
                 "email": email,
@@ -505,6 +519,7 @@ class UpdateUserProfileAPIView(generics.UpdateAPIView):
             # Remove sensitive data
             updated_user["_id"] = str(updated_user["_id"])
             updated_user.pop("hpassword", None)
+            updated_user.pop("password", None)
             
             # Return all updated data
             return Response({
@@ -527,8 +542,8 @@ class UpdateUserProfileAPIView(generics.UpdateAPIView):
 
     def perform_update(self, serializer):
         """Perform the actual database update"""
-        email = self.kwargs.get("email")
-        userType = self.kwargs.get("userType")
+        email = getattr(self.request.user, 'email', None)
+        userType = getattr(self.request.user, 'userType', None)
         validated_data = serializer.validated_data
         
         # Build update dictionary (exclude read-only fields)
@@ -619,404 +634,16 @@ class GetCompanyNameAPIView(APIView):
     Get supplier company name
     GET /api/accounts/get_company_name/<email>/
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated, IsSuperAdminOrIsSameHospitalAdmin]
     
     def get(self, request, email):
         """Get company name for supplier"""
-        user = users_collection.find_one({"email": email, "userType": "Supplier"})
-        if not user:
+        supplier = users_collection.find_one({"email": email, "userType": "Supplier"})
+        if not supplier:
             return Response({"status": "error", "message": "Supplier not found"}, status=status.HTTP_404_NOT_FOUND)
-        return Response({"status": "success", "companyName": user.get("companyName")}, status=status.HTTP_200_OK)
 
+        # Enforce object-level permission for the fetched supplier record.
+        self.check_object_permissions(request, supplier)
 
+        return Response({"status": "success", "companyName": supplier.get("companyName")}, status=status.HTTP_200_OK)
 
-
-# from django.http import JsonResponse
-# from django.views.decorators.csrf import csrf_exempt
-# from django.core.files.storage import default_storage
-# from django.core.files.base import ContentFile
-# from django.core.mail import EmailMultiAlternatives
-# from django.template.loader import render_to_string
-# from django.utils.html import strip_tags
-# import bcrypt
-# import json
-# import random
-# import string
-# import hashlib
-# from datetime import datetime, timedelta
-# import backend.settings as settings
-
-# # Import from views.py where collections are defined
-# from backend.db import (
-#     users_collection, temp_users_collection, otp_collection, sessions_collection, doctors_collection,
-#     generate_otp, generate_session_id, clear_expired_sessions,
-
-# )
-
-
-# @csrf_exempt
-# def verify_email(request):
-#     if request.method == "POST":
-#         try:
-#             data = json.loads(request.body)
-#             email = data.get("email")
-#             otp = data.get("otp")
-
-#             print(f"opt for EasyTreat system: {otp}")
-
-#             otp_record = otp_collection.find_one({
-#                 "email": email,
-#                 "otp": otp,
-#                 "verified": False
-#             })
-
-#             if not otp_record:
-#                 return JsonResponse({"status": "error", "message": "Invalid OTP"}, status=400)
-
-#             # Check if OTP has expired
-#             current_time = datetime.utcnow()
-#             if current_time > otp_record["expires_at"]:
-#                 otp_collection.delete_one({"_id": otp_record["_id"]})
-#                 return JsonResponse({
-#                     "status": "error", 
-#                     "message": "OTP has expired. Please request a new one"
-#                 }, status=400)
-
-#             # Get user data from temp collection
-#             temp_user = temp_users_collection.find_one({"email": email})
-#             if not temp_user:
-#                 return JsonResponse({"status": "error", "message": "User data not found"}, status=400)
-
-#             try:
-#                 if '_id' in temp_user:
-#                     del temp_user['_id']
-
-#                 password = temp_user.get("password")
-#                 if password:
-#                     hashed_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
-#                     temp_user["hpassword"] = hashed_password.decode("utf-8")
-                
-#                 result = users_collection.insert_one(temp_user)
-                
-#                 if not result.inserted_id:
-#                     raise Exception("Failed to insert user")
-
-#                 # Clean up temp data
-#                 otp_collection.delete_one({"_id": otp_record["_id"]})
-#                 temp_users_collection.delete_one({"email": email})
-
-#                 return JsonResponse({
-#                     "status": "success",
-#                     "message": "Email verified successfully"
-#                 }, status=200)
-
-#             except Exception as e:
-#                 print(f"Error storing user: {str(e)}")
-#                 return JsonResponse({
-#                     "status": "error",
-#                     "message": f"Error storing user: {str(e)}"
-#                 }, status=500)
-
-#         except Exception as e:
-#             print(f"Verification error: {str(e)}")
-#             return JsonResponse({"status": "error", "message": str(e)}, status=500)
-
-#     return JsonResponse({"status": "error", "message": "Invalid request method"}, status=405)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# @csrf_exempt
-# def login_view(request):
-#     if request.method == "POST":
-#         try:
-#             clear_expired_sessions()  # Remove expired sessions before login
-
-#             data = json.loads(request.body)
-#             email = data.get("email", "").strip().lower()
-#             password = data.get("password", "")
-#             category = data.get("category", "")
-#             hospital_name = data.get("hospitalName", "")
-
-#             if not email or not password:
-#                 return JsonResponse({"status": "error", "message": "Email and password are required"}, status=400)
-
-#             if not hospital_name and email != "21it402@bvmengineering.ac.in" and category != "Supplier":  # Super admin doesn't need hospital
-#                 return JsonResponse({"status": "error", "message": "Hospital selection is required"}, status=400)
-            
-#             # User lookup
-#             user = None
-
-#            # Check if it's a super admin
-#             if email == "21it402@bvmengineering.ac.in":
-#                 user = users_collection.find_one({"email": email})
-#             else:
-#                 # For regular user lookup based on category
-#                 if category == "Doctor":
-#                     # Doctors are stored in doctors_collection
-#                     user_query = {
-#                         "email": email,
-#                         "userType": category,
-#                         "Hospital": hospital_name
-#                     }
-#                     user = doctors_collection.find_one(user_query)
-#                 elif category == "Supplier":
-#                     # Suppliers don't need hospital name in query
-#                     user_query = {
-#                         "email": email,
-#                         "userType": category
-#                     }
-#                     user = users_collection.find_one(user_query)
-#                 else:
-#                     # For other user types (Patient, Admin)
-#                     user_query = {
-#                         "email": email,
-#                         "userType": category,
-#                         "hospitalName": hospital_name
-#                     }
-#                     user = users_collection.find_one(user_query)
-
-#             if not user:
-#                 return JsonResponse({"status": "error", "message": "user not found"}, status=401)
-
-#             # Password verification (bcrypt)
-#             stored_hashed_password = user.get("hpassword", "").encode("utf-8")
-#             if not stored_hashed_password or not bcrypt.checkpw(password.encode("utf-8"), stored_hashed_password):
-#                 return JsonResponse({"status": "error", "message": "Invalid credentials password is diff"}, status=401)
-
-#             # Generate a new session ID
-#             session_id = generate_session_id(email)
-#             expires_at = datetime.now() + timedelta(hours=4)
-
-#             # Store session data in MongoDB
-#             session_data = {
-#                 "session_id": session_id,
-#                 "email": email,
-#                 "userType": user.get("userType"),
-#                 "hospitalName": user.get("hospitalName"),
-#                 "expires_at": expires_at
-#             }
-#             sessions_collection.insert_one(session_data)
-
-#             return JsonResponse({
-#                 "status": "success",
-#                 "message": "Login successful",
-#                 "userData": {
-#                     "userType": user.get("userType"),
-#                     "email": email,
-#                     "hospitalName": user.get("hospitalName"),
-#                     "name": user.get("name"),
-#                     "companyName": user.get("companyName"),
-#                 },
-#                 "session_Id": session_id
-#             }, status=200)
-
-#         except Exception as e:
-#             print(f"Login error: {str(e)}")
-#             return JsonResponse({"status": "error", "message": f"Login failed: {str(e)}"}, status=500)
-
-#     return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
-
-# @csrf_exempt
-# def check_session(request):
-#     session_id = request.headers.get("Authorization") or request.COOKIES.get("session_id")
-
-#     if not session_id:
-#         return JsonResponse({"status": "error", "message": "No session ID provided"}, status=401)
-
-#     # Remove expired sessions first
-#     clear_expired_sessions()
-#     now = datetime.now()
-
-#     # Check session in MongoDB
-#     session_data = sessions_collection.find_one({"session_id": session_id})
-
-#     if not session_data:
-#         return JsonResponse({"status": "error", "message": "Session not found"}, status=401)
-
-#     if session_data["expires_at"] < now:
-#         sessions_collection.delete_one({"session_id": session_id})  # Remove expired session
-#         return JsonResponse({"status": "error", "message": "Session expired"}, status=401)
-
-#     return JsonResponse({
-#         "status": "success",
-#         "message": "Session is valid",
-#         "email": session_data.get("email"),
-#         "userType": session_data.get("userType"),
-#         "hospitalName": session_data.get("hospitalName"),
-#     }, status=200)
-
-# @csrf_exempt
-# def logout_view(request):
-#     if request.method == "POST":
-#         try:
-#             data = json.loads(request.body)
-#             session_id = data.get("session_id")
-
-#             if not session_id:
-#                 return JsonResponse({"status": "error", "message": "Session ID required"}, status=400)
-
-#             # Remove session from MongoDB
-#             result = sessions_collection.delete_one({"session_id": session_id})
-
-#             if result.deleted_count == 0:
-#                 return JsonResponse({"status": "error", "message": "Session not found"}, status=404)
-
-#             return JsonResponse({"status": "success", "message": "Logged out successfully"}, status=200)
-
-#         except Exception as e:
-#             print(f"Logout error: {str(e)}")
-#             return JsonResponse({"status": "error", "message": f"Logout failed: {str(e)}"}, status=500)
-
-#     return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# # logic for user profile and update views
-
-# # user profile all backend code
-# @csrf_exempt
-# def get_user_profile(request, userType, email):
-#     if request.method == "GET":
-#         try:
-#             print(f"Fetching profile for {userType}: {email}")
-            
-#             # Verify session instead of token
-#             auth_header = request.headers.get('Authorization')
-#             if not auth_header or not auth_header.startswith('Bearer '):
-#                 return JsonResponse({"status": "error", "message": "No session ID provided"}, status=401)
-            
-#             session_id = auth_header.split(' ')[1]
-            
-#             # Get session data from MongoDB
-#             session_data = sessions_collection.find_one({"session_id": session_id})
-            
-#             if not session_data:
-#                 return JsonResponse({"status": "error", "message": "Session not found"}, status=401)
-                
-#             # Check if session is expired
-#             if session_data["expires_at"] < datetime.now():
-#                 sessions_collection.delete_one({"session_id": session_id})  # Clean up expired session
-#                 return JsonResponse({"status": "error", "message": "Session expired"}, status=401)
-
-#             # Find user in MongoDB
-#             user = users_collection.find_one({
-#                 "email": email,
-#                 "userType": userType.capitalize()  # Match user type
-#             })
-            
-#             if not user:
-#                 return JsonResponse({
-#                     "status": "error", 
-#                     "message": f"User not found with email: {email} and type: {userType}"
-#                 }, status=404)
-            
-#             # Convert ObjectId to string
-#             user["_id"] = str(user["_id"])
-            
-#             # Remove sensitive information
-#             if "hpassword" in user:
-#                 del user["hpassword"]
-            
-#             return JsonResponse(user, status=200, safe=False)
-            
-#         except Exception as e:
-#             print(f"Error in get_user_profile: {str(e)}")
-#             return JsonResponse({"status": "error", "message": str(e)}, status=500)
-
-#     return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
-
-
-
-# @csrf_exempt
-# def update_profile(request, userType, email):
-#     if request.method == "POST":
-#         try:
-#             # Verify session
-#             auth_header = request.headers.get('Authorization')
-#             if not auth_header or not auth_header.startswith('Bearer '):
-#                 return JsonResponse({"status": "error", "message": "No session ID provided"}, status=401)
-
-#             # Parse request data
-#             data = request.POST.dict() if request.content_type.startswith('multipart') else json.loads(request.body)
-#             update_data = {key: value for key, value in data.items() if key != "email"}
-
-#             # Handle profile photo upload
-#             if request.FILES and 'photo' in request.FILES:
-#                 photo = request.FILES['photo']
-#                 photo_name = default_storage.save(
-#                     f"profile_photos/{email}/{photo.name}",
-#                     ContentFile(photo.read())
-#                 )
-#                 update_data["photo"] = default_storage.url(photo_name)
-
-#             # Handle doctor certificate upload (if applicable)
-#             if userType.lower() == "doctor" and request.FILES and 'doctorCertificate' in request.FILES:
-#                 certificate = request.FILES['doctorCertificate']
-#                 cert_name = default_storage.save(
-#                     f"doctor_certificates/{email}/{certificate.name}",
-#                     ContentFile(certificate.read())
-#                 )
-#                 update_data["doctorCertificate"] = default_storage.url(cert_name)
-
-#             # Update the appropriate collection
-#             if userType.lower() == "doctor":
-#                 result = doctors_collection.update_one(
-#                     {"email": email, "userType": "Doctor"},
-#                     {"$set": update_data}
-#                 )
-#             else:
-#                 result = users_collection.update_one(
-#                     {"email": email, "userType": userType.capitalize()},
-#                     {"$set": update_data}
-#                 )
-
-#             if result.matched_count == 0:
-#                 return JsonResponse({"status": "error", "message": "User not found"}, status=404)
-
-#             return JsonResponse({"status": "success", "message": "Profile updated successfully"}, status=200)
-
-#         except Exception as e:
-#             print(f"Error in update_profile: {str(e)}")
-#             return JsonResponse({"status": "error", "message": str(e)}, status=500)
-
-#     return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
-
-
-# @csrf_exempt
-# def get_company_name(request,email):
-#     if request.method == "GET":
-#         try:
-#             user = users_collection.find_one({"email": email, "userType": "Supplier"})
-#             if not user:
-#                 return JsonResponse({"status": "error", "message": "Supplier not found"}, status=404)
-            
-#             companyName = user.get("companyName")
-#             return JsonResponse({"status": "success", "companyName": companyName}, status=200)
-#         except Exception as e:
-#             return JsonResponse({"status": "error", "message": str(e)}, status=500)
-
-#     return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)

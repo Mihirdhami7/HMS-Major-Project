@@ -12,13 +12,13 @@ from .views import (
 urlpatterns = [
     # Hospital URLs
     path('', HospitalListCreateView.as_view(), name='hospital_list_create'),
-    path('<str:hospital_id>/', HospitalUpdateView.as_view(), name='hospital_update'),
-    path('<str:hospital_id>/delete/', HospitalDestroyView.as_view(), name='hospital_destroy'),
+    path('<str:hospital_id>/update/', HospitalUpdateView.as_view(), name='hospital_update'),
+    path('<str:hospital_id>/', HospitalDestroyView.as_view(), name='hospital_destroy'),
 
     # Department URLs
     path('<str:hospital_id>/departments/', DepartmentListCreateView.as_view(), name='department_list_create'),
-    path('<str:hospital_id>/departments/<str:department_id>/', DepartmentUpdateView.as_view(), name='department_update'),
-    path('<str:hospital_id>/departments/<str:department_id>/delete/', DepartmentDestroyView.as_view(), name='department_destroy'),
+    path('<str:hospital_id>/departments/<str:department_id>/update/', DepartmentUpdateView.as_view(), name='department_update'),
+    path('<str:hospital_id>/departments/<str:department_id>/', DepartmentDestroyView.as_view(), name='department_destroy'),
 
     # # Hospital views - fixed to include hospital_id parameter
     # path('get_hospital/', get_hospitals, name='get_hospital'),

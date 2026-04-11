@@ -5,7 +5,7 @@ Using DRF serializers for validation
 from rest_framework import serializers
 from bson.objectid import ObjectId
 from datetime import datetime
-from backend.db import hospitals_collection, departments_collection, users_collection, doctors_collection
+from backend.db import hospitals_collection, departments_collection, users_collection, staff_collection
 from .models import HospitalDocument, DepartmentDocument
 
 class HospitalSerializer(serializers.Serializer):
@@ -121,12 +121,12 @@ class HospitalListSerializer(serializers.Serializer):
 class DepartmentSerializer(serializers.Serializer):
     """Full Department Serializer for Create/Update operations"""
     id = serializers.CharField(read_only=True, source="_id")
-    name = serializers.CharField(required=True, max_length=200, source="Department")
-    description = serializers.CharField(required=False, allow_blank=True, default="", source="Description")
+    name = serializers.CharField(required=True, max_length=200)
+    description = serializers.CharField(required=False, allow_blank=True, default="")
     hospitalName = serializers.CharField(required=True, max_length=200)
-    head = serializers.CharField(required=False, allow_blank=True, default="", source="Head of Department")
+    headOfDepartment = serializers.CharField(required=False, allow_blank=True, default="")
     roles = serializers.ListField(child=serializers.CharField(), required=False, default=list)
-    createdAt = serializers.DateTimeField(read_only=True, source="Created Date")
+    createdAt = serializers.DateTimeField(read_only=True)
     updatedAt = serializers.DateTimeField(read_only=True)
 
     def validate_hospitalName(self, value):
@@ -144,13 +144,13 @@ class DepartmentSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         """Check if department already exists in the hospital"""
-        department_name = attrs.get("Department")
+        department_name = attrs.get("name")
         hospital_name = attrs.get("hospitalName")
         instance_id = self.instance.get("_id") if self.instance else None
-        
+
         query = {
-            "Department": department_name,
-            "hospitalName": hospital_name
+            "hospitalName": hospital_name,
+            "name": department_name,
         }
         if instance_id:
             query["_id"] = {"$ne": ObjectId(instance_id)}
@@ -164,10 +164,10 @@ class DepartmentSerializer(serializers.Serializer):
     def create(self, validated_data):
         """Create department using DepartmentDocument helper"""
         department_data = DepartmentDocument.create(
-            name=validated_data["Department"],
+            name=validated_data["name"],
             hospitalName=validated_data["hospitalName"],
-            description=validated_data.get("Description", ""),
-            head=validated_data.get("Head of Department", ""),
+            description=validated_data.get("description", ""),
+            head=validated_data.get("headOfDepartment", ""),
             roles=validated_data.get("roles", [])
         )
         result = departments_collection.insert_one(department_data)
@@ -177,9 +177,9 @@ class DepartmentSerializer(serializers.Serializer):
     def update(self, instance, validated_data):
         """Update department using DepartmentDocument helper"""
         update_data = DepartmentDocument.update(
-            name=validated_data.get("Department"),
-            description=validated_data.get("Description"),
-            head=validated_data.get("Head of Department"),
+            name=validated_data.get("name"),
+            description=validated_data.get("description"),
+            head=validated_data.get("headOfDepartment"),
             roles=validated_data.get("roles")
         )
         
@@ -198,24 +198,28 @@ class DepartmentSerializer(serializers.Serializer):
         rep = super().to_representation(instance)
         if "_id" in instance:
             rep["id"] = str(instance["_id"])
-        rep["name"] = instance.get("Department", "")
-        rep["description"] = instance.get("Description", "")
-        rep["head"] = instance.get("Head of Department", "")
-        rep["createdAt"] = instance.get("Created Date")
+        rep["name"] = instance.get("name", "")
+        rep["description"] = instance.get("description", "")
+        rep["headOfDepartment"] = instance.get("headOfDepartment", "")
+        rep["createdAt"] = instance.get("createdAt")
         return rep
 
 
 class DepartmentListSerializer(serializers.Serializer):
     """Minimal Department Serializer for List operations"""
     id = serializers.CharField(read_only=True, source="_id")
-    name = serializers.CharField(source="Department")
-    description = serializers.CharField(source="Description")
-    head = serializers.CharField(source="Head of Department")
+    name = serializers.CharField(required=False)
+    description = serializers.CharField(required=False)
+    headOfDepartment = serializers.CharField(required=False)
     hospitalName = serializers.CharField()
-    createdAt = serializers.DateTimeField(source="Created Date")
+    createdAt = serializers.DateTimeField(required=False)
     
     def to_representation(self, instance):
-        rep = super().to_representation(instance)
-        if "_id" in instance:
-            rep["id"] = str(instance["_id"])
-        return rep
+        return {
+            "id": str(instance.get("_id", "")),
+            "name": instance.get("name", ""),
+            "description": instance.get("description", ""),
+            "headOfDepartment": instance.get("headOfDepartment", ""),
+            "hospitalName": instance.get("hospitalName", ""),
+            "createdAt": instance.get("createdAt"),
+        }

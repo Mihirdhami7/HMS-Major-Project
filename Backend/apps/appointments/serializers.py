@@ -32,7 +32,6 @@ class BookAppointmentSerializer(serializers.Serializer):
 
 class ApproveAppointmentSerializer(serializers.Serializer):
     """Serializer for approving/rejecting appointments"""
-    appointmentId = serializers.CharField(required=True)
     action = serializers.ChoiceField(choices=["approve", "reject"], required=True)
     confirmedDate = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     confirmedTime = serializers.CharField(required=False, allow_blank=True, allow_null=True)
@@ -80,6 +79,17 @@ class ApproveAppointmentSerializer(serializers.Serializer):
 
 class AppointmentSerializer(serializers.Serializer):
     """Serializer for appointment response - NO ObjectId conversion"""
+    
+    class AppointmentPersonSerializer(serializers.Serializer):
+        patientId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+        doctorId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+        name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+        email = serializers.EmailField(required=False, allow_null=True)
+        gender = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+        dateOfBirth = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+        contactNo = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+        specialization = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    
     _id = serializers.CharField(read_only=True)
     hospitalName = serializers.CharField()
     department = serializers.CharField()
@@ -88,8 +98,8 @@ class AppointmentSerializer(serializers.Serializer):
     acceptedDate = serializers.CharField(allow_null=True, required=False)
     acceptedTime = serializers.CharField(allow_null=True, required=False)
     
-    patient = serializers.DictField()
-    doctor = serializers.DictField()
+    patient = AppointmentPersonSerializer()
+    doctor = AppointmentPersonSerializer()
     
     symptoms = serializers.CharField(allow_blank=True)
     payments = serializers.ListField(required=False)

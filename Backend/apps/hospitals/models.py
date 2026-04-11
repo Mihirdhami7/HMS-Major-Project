@@ -66,12 +66,12 @@ class DepartmentDocument:
     ) -> Dict[str, Any]:
         now = datetime.utcnow()
         return {
-            "Department": name,
-            "Description": description or "",
+            "name": name,
+            "description": description or "",
             "hospitalName": hospitalName,
-            "Head of Department": head or "",
+            "headOfDepartment": head or "",
             "roles": roles or [],
-            "Created Date": now,
+            "createdAt": now,
             "updatedAt": now,
         }
 
@@ -85,11 +85,11 @@ class DepartmentDocument:
         now = datetime.utcnow()
         data: Dict[str, Any] = {"updatedAt": now}
         if name is not None:
-            data["Department"] = name
+            data["name"] = name
         if description is not None:
-            data["Description"] = description
+            data["description"] = description
         if head is not None:
-            data["Head of Department"] = head
+            data["headOfDepartment"] = head
         if roles is not None:
             data["roles"] = roles
         return data

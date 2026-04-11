@@ -9,14 +9,36 @@ class IsSameUser(BasePermission):
         user = getattr(request, "user", None)
         if not (user and getattr(user, "is_authenticated", False)):
             return False
-        # Accept multiple possible kwarg names
-        email_from_url = (
-            view.kwargs.get("email")
-            or view.kwargs.get("emailToUse")
-            or view.kwargs.get("email_to")
-            or view.kwargs.get("emailTo")
-        )
-        return email_from_url == getattr(user, "email", None)
+        user_email = str(getattr(user, "email", "") or "").strip().lower()
+        if not user_email:
+            return False
+
+        email_keys = ("email", "emailToUse", "email_to", "emailTo", "userEmail")
+
+        # 1) URL kwargs
+        kwargs = getattr(view, "kwargs", {}) or {}
+        for key in email_keys:
+            value = kwargs.get(key)
+            if value:
+                return str(value).strip().lower() == user_email
+
+        if hasattr(request, "data"):
+            for key in email_keys:
+                value = request.data.get(key)
+                if value:
+                    return str(value).strip().lower() == user_email
+
+        query_params = getattr(request, "query_params", {})
+        for key in email_keys:
+            value = query_params.get(key)
+            if value:
+                return str(value).strip().lower() == user_email
+
+        path = str(getattr(request, "path", "") or "").lower()
+        if "/me/" in path or path.endswith("/me"):
+            return True
+
+        return False
 
 
 class IsPatient(BasePermission):
@@ -71,8 +93,8 @@ class IsDoctorOrAdmin(BasePermission):
         if not (user and getattr(user, "is_authenticated", False)):
             return False
         
-        user_type = getattr(user, "userType", None)
-        return user_type in ["Doctor", "Admin"]
+        user_type = str(getattr(user, "userType", "") or "").strip().lower()
+        return user_type in ["doctor", "admin", "superadmin"]
 
 class IsPatientOrDoctor(BasePermission):
     """Allow access to Patient or Doctor users"""
@@ -90,8 +112,8 @@ class IsSuperAdmin(BasePermission):
         user = getattr(request, "user", None)
         if not (user and getattr(user, "is_authenticated", False)):
             return False
-        user_type = getattr(user, "userType", None)
-        return user_type == "SuperAdmin"
+        user_type = str(getattr(user, "userType", "") or "").strip().lower()
+        return user_type == "superadmin"
     
 class IsSuperAdminOrIsSameHospitalAdmin(BasePermission):
     """Allow access to Super Admin or Admin users"""
@@ -101,22 +123,26 @@ class IsSuperAdminOrIsSameHospitalAdmin(BasePermission):
         if not (user and getattr(user, "is_authenticated", False)):
             return False
     
-        
-        user_type = getattr(user, "userType", None)
-        return user_type in ["SuperAdmin", "Admin"]
+        user_type = str(getattr(user, "userType", "") or "").strip().lower()
+        return user_type in ["superadmin", "admin"]
     
     def has_object_permission(self, request, view, obj):
         user = getattr(request, "user", None)
-        user_type = getattr(user, "userType", None)
-        user_email = getattr(user, "email", None)
+        user_type = str(getattr(user, "userType", "") or "").strip().lower()
+        user_email = str(getattr(user, "email", "") or "").strip().lower()
+        user_hospital = str(getattr(user, "hospitalName", "") or "").strip()
         
-        if user_type == "SuperAdmin":
+        if user_type == "superadmin":
             return True
-        elif user_type == "Admin":
-            # Handle both dict and object types
+        elif user_type == "admin":
             if isinstance(obj, dict):
-                hospital_admin_email = obj.get("adminEmail")
+                hospital_admin_email = str(obj.get("adminEmail", "") or "").strip().lower()
+                target_hospital = str(obj.get("hospitalName", "") or "").strip()
             else:
-                hospital_admin_email = getattr(obj, "adminEmail", None)
-            return user_email == hospital_admin_email
+                hospital_admin_email = str(getattr(obj, "adminEmail", "") or "").strip().lower()
+                target_hospital = str(getattr(obj, "hospitalName", "") or "").strip()
+
+            if hospital_admin_email:
+                return user_email == hospital_admin_email
+            return bool(user_hospital and target_hospital and user_hospital == target_hospital)
         return False 

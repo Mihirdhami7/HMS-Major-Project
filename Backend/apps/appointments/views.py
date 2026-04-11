@@ -1,5 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson import ObjectId
+from bson.errors import InvalidId
 
 from rest_framework import generics, status, exceptions
 from rest_framework.views import APIView
@@ -24,24 +25,15 @@ from backend.db import (
     products_collection
 )
 
-# from django.http import JsonResponse
-# from django.views.decorators.csrf import csrf_exempt
-# from django.core.mail import EmailMultiAlternatives
-# import json
-# from datetime import datetime
-# from bson.objectid import ObjectId
-# import backend.settings as settings
 
-# # Import MongoDB collections from views.py
-# from backend.db import (
-#     users_collection,
-#     appointments_collection,
-#     temp_appointments_collection,
-#     notifications_collection,
-#     prescriptions_collection,
-#     products_collection,
-#     invoices_collection
-# )
+def _parse_object_id(value, field_name):
+    try:
+        return ObjectId(value)
+    except (TypeError, ValueError, InvalidId):
+        raise exceptions.ValidationError({
+            field_name: [f"A valid {field_name} is required."]
+        })
+
 class BookAppointmentAPIView(generics.CreateAPIView):
     """
     Book a new appointment
@@ -51,6 +43,7 @@ class BookAppointmentAPIView(generics.CreateAPIView):
     """
      
     authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, IsPatientOrAdmin]
     serializer_class = BookAppointmentSerializer
     
     def create(self, request, *args, **kwargs):
@@ -69,7 +62,8 @@ class BookAppointmentAPIView(generics.CreateAPIView):
         try:
             # Verify patient exists
             patient = users_collection.find_one({
-                "email": data['patientEmail']
+                "email": data['patientEmail'],
+                "userType": "Patient"
             })
             
             if not patient:
@@ -303,7 +297,7 @@ class ApproveAppointmentAPIView(generics.UpdateAPIView):
     authentication_classes = [JWTAuthentication]
     serializer_class = ApproveAppointmentSerializer
     
-    def update(self, request, *args, **kwargs):
+    def update(self, request, appointment_id, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         
         if not serializer.is_valid():
@@ -316,10 +310,12 @@ class ApproveAppointmentAPIView(generics.UpdateAPIView):
         user_email = getattr(request.user, 'email', None)
         user_type = getattr(request.user, 'userType', None)
         
+        appointment_oid = _parse_object_id(appointment_id, "appointmentId")
+
         try:
             # Fetch appointment
             appointment = appointments_collection.find_one({
-                "_id": ObjectId(data['appointmentId'])
+                "_id": appointment_oid
             })
             
             if not appointment:
@@ -389,7 +385,7 @@ class ApproveAppointmentAPIView(generics.UpdateAPIView):
                     }, status=status.HTTP_400_BAD_REQUEST)
                 
                 # apply approval update
-                appointments_collection.update_one({"_id": ObjectId(data["appointmentId"])}, {"$set": update_data})
+                appointments_collection.update_one({"_id": appointment_oid}, {"$set": update_data})
 
                 # Send notification depending on final status
                 final_status = update_data.get('status')
@@ -399,7 +395,7 @@ class ApproveAppointmentAPIView(generics.UpdateAPIView):
                         title="Appointment Approved",
                         message=f"Your appointment with Dr. {appointment['doctor']['name']} has been approved for {update_data.get('acceptedDate')} at {update_data.get('acceptedTime')}",
                         notification_type="appointment",
-                        reference_id=data['appointmentId']
+                        reference_id=appointment_id
                     )
                     notifications_collection.insert_one(notif)
                 else:  # rejected due to >7 days
@@ -408,7 +404,7 @@ class ApproveAppointmentAPIView(generics.UpdateAPIView):
                         title="Appointment Rejected",
                         message=f"Your appointment with Dr. {appointment['doctor']['name']} has been rejected. Reason: {update_data.get('rejectionReason')}",
                         notification_type="appointment",
-                        reference_id=data['appointmentId']
+                        reference_id=appointment_id
                     )
                     notifications_collection.insert_one(notif)
                 
@@ -418,7 +414,7 @@ class ApproveAppointmentAPIView(generics.UpdateAPIView):
 
                 # Update appointment
                 appointments_collection.update_one(
-                    {"_id": ObjectId(data['appointmentId'])},
+                    {"_id": appointment_oid},
                     {"$set": update_data}
                 )
 
@@ -428,7 +424,7 @@ class ApproveAppointmentAPIView(generics.UpdateAPIView):
                     title="Appointment Rejected",
                     message=f"Your appointment with Dr. {appointment['doctor']['name']} has been rejected. Reason: {reason}",
                     notification_type="appointment",
-                    reference_id=data['appointmentId']
+                    reference_id=appointment_id
                 )
                 notifications_collection.insert_one(notif)
 
@@ -436,7 +432,7 @@ class ApproveAppointmentAPIView(generics.UpdateAPIView):
             
             # Fetch updated appointment
             updated_appointment = appointments_collection.find_one({
-                "_id": ObjectId(data['appointmentId'])
+                "_id": appointment_oid
             })
             updated_appointment['_id'] = str(updated_appointment['_id'])
             
@@ -527,8 +523,6 @@ class GetPendingAppointmentsAPIView(generics.ListAPIView):
     """
     Get all pending appointments for a hospital
     GET /api/appointments/pending/
-    
-    Accessible by: Admin only
     """
     permission_classes = [IsAuthenticated, IsDoctorOrAdmin]
     authentication_classes = [JWTAuthentication]
@@ -536,6 +530,8 @@ class GetPendingAppointmentsAPIView(generics.ListAPIView):
     
     def list(self, request, *args, **kwargs):
         hospital_name = getattr(request.user, 'hospitalName', None)
+        user_type = str(getattr(request.user, 'userType', '') or '').strip().lower()
+        user_email = str(getattr(request.user, 'email', '') or '').strip().lower()
         
         if not hospital_name:
             return Response({
@@ -544,11 +540,16 @@ class GetPendingAppointmentsAPIView(generics.ListAPIView):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Fetch only pending appointments for this hospital
-            appointments = list(appointments_collection.find({
+            # Doctor and Admin both see pending appointments for their own hospital only.
+            query = {
                 "hospitalName": hospital_name,
-                "status": "pending"
-            }).sort("appointmentDate", 1))  # Sort by date ascending (oldest first)
+                "status": "pending",
+            }
+            if user_type == "doctor":
+                query["doctor.email"] = user_email
+
+            # Fetch pending appointments with hospital-wise scope.
+            appointments = list(appointments_collection.find(query).sort("appointmentDate", 1))
             
             # Convert ObjectId to string
             for apt in appointments:
@@ -557,6 +558,7 @@ class GetPendingAppointmentsAPIView(generics.ListAPIView):
             return Response({
                 "status": "success",
                 "hospitalName": hospital_name,
+                "scope": "doctor" if user_type == "doctor" else "hospital",
                 "count": len(appointments),
                 "appointments": [AppointmentSerializer(apt).data for apt in appointments]
             }, status=status.HTTP_200_OK)
@@ -619,7 +621,15 @@ class GetAllAppointmentsAPIView(generics.ListAPIView):
             # Filter by date if provided
             date_filter = request.query_params.get('date')
             if date_filter:
-                query['appointmentDate'] = date_filter
+                try:
+                    start_dt = datetime.strptime(date_filter, "%Y-%m-%d")
+                except ValueError:
+                    return Response({
+                        "status": "error",
+                        "message": "Invalid date format. Use YYYY-MM-DD"
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                end_dt = start_dt + timedelta(days=1)
+                query['createdAt'] = {"$gte": start_dt, "$lt": end_dt}
             
             # Filter by doctor if provided
             doctor_filter = request.query_params.get('doctor')
@@ -672,7 +682,23 @@ class GetHospitalMedicinesAPIView(generics.ListAPIView):
     authentication_classes = [JWTAuthentication]
     
     def list(self, request, *args, **kwargs):
-        hospital_name = self.kwargs.get('hospital_name')
+        hospital_name = self.kwargs.get('hospital_name') or getattr(request.user, 'hospitalName', None)
+        user_type = str(getattr(request.user, 'userType', '') or '').strip().lower()
+        user_hospital = str(getattr(request.user, 'hospitalName', '') or '').strip()
+
+        if not hospital_name:
+            return Response({
+                "status": "error",
+                "message": "Hospital name is required"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        hospital_name = str(hospital_name).strip()
+
+        if user_type != "superadmin" and user_hospital != hospital_name:
+            return Response({
+                "status": "error",
+                "message": "Access denied for this hospital"
+            }, status=status.HTTP_403_FORBIDDEN)
         
         try:
             medicines = list(products_collection.find({
@@ -813,11 +839,13 @@ class CreatePrescriptionAPIView(generics.CreateAPIView):
         
         data = serializer.validated_data
         user_email = getattr(request.user, 'email', None)
-        
+
+        appointment_oid = _parse_object_id(data['appointmentId'], "appointmentId")
+
         try:
             # Verify appointment exists and belongs to this doctor
             appointment = appointments_collection.find_one({
-                "_id": ObjectId(data['appointmentId'])
+                "_id": appointment_oid
             })
             
             if not appointment:
@@ -879,7 +907,7 @@ class CreatePrescriptionAPIView(generics.CreateAPIView):
             
             # Mark appointment as completed
             appointments_collection.update_one(
-                {"_id": ObjectId(data['appointmentId'])},
+                {"_id": appointment_oid},
                 {"$set": AppointmentDocument.complete()}
             )
             
@@ -1105,7 +1133,15 @@ class GetAllPrescriptionsAPIView(generics.ListAPIView):
             # Filter by date if provided
             date_filter = request.query_params.get('date')
             if date_filter:
-                query['createdAt'] = {"$regex": date_filter}
+                try:
+                    start_dt = datetime.strptime(date_filter, "%Y-%m-%d")
+                except ValueError:
+                    return Response({
+                        "status": "error",
+                        "message": "Invalid date format. Use YYYY-MM-DD"
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                end_dt = start_dt + timedelta(days=1)
+                query['createdAt'] = {"$gte": start_dt, "$lt": end_dt}
             
             # Fetch all prescriptions
             prescriptions = list(prescriptions_collection.find(query).sort("createdAt", -1))
@@ -1185,156 +1221,3 @@ class GetMyPrescriptionsAPIView(generics.ListAPIView):
                 "status": "error",
                 "message": str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-# @csrf_exempt
-# def get_prescriptions(request):
-#     if request.method == 'POST':
-#         try:
-#             data = json.loads(request.body)
-#             hospital_name = data.get('hospitalName')
-            
-#             if not hospital_name:
-#                 return JsonResponse({'error': 'Hospital name is required'}, status=400)
-            
-#             # Query prescriptions for the hospital
-#             prescriptions = list(prescriptions_collection.find({'hospitalName': hospital_name, 'status': {'$ne': 'completed'}}))
-            
-#             # Process prescriptions
-#             for prescription in prescriptions:
-#                 prescription['_id'] = str(prescription['_id'])
-#                 prescription['patientEmail'] = prescription.get('patientEmail', 'N/A')
-#                 prescription['doctorEmail'] = prescription.get('doctorEmail', 'N/A')
-#                 prescription['department'] = prescription.get('department', 'N/A')
-#                 prescription['hospitalName'] = prescription.get('hospitalName', 'N/A')
-#                 prescription['medicines'] = prescription.get('medicines', [])
-#                 prescription['suggestions'] = prescription.get('suggestions', 'N/A')
-#                 prescription['reportType'] = prescription.get('reportType', 'N/A')
-#                 prescription['reportValues'] = prescription.get('reportValues', 'N/A')
-#                 prescription['created_at'] = prescription.get('created_at', 'N/A')
-
-#                 prescription['appointmentId'] = str(prescription.get('appointmentId', 'N/A'))  # Convert ObjectId to string
-#                 prescription['patientName'] = prescription.get('patientName', 'N/A')
-#                 prescription['patientAge'] = prescription.get('patientAge', 'N/A')
-#                 prescription['patientGender'] = prescription.get('patientGender', 'N/A')
-#                 prescription['patientPhone'] = prescription.get('patientPhone', 'N/A')
-#                 prescription['patientAddress'] = prescription.get('patientAddress', 'N/A')
-
-#                 prescription['vitals'] = prescription.get('vitals', {})  # Ensure vitals is a dict
-
-            
-#             return JsonResponse({
-#                 'status': 'success',
-#                 'prescriptions': prescriptions
-#             })
-            
-#         except Exception as e:
-#             return JsonResponse({'error': str(e)}, status=500)
-    
-#     return JsonResponse({'error': 'Method not allowed'}, status=405)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# @csrf_exempt
-# def generate_invoice(request):
-#     if request.method == 'POST':
-#         try:
-#             data = json.loads(request.body)
-            
-#             # Extract data
-#             prescription_id = data.get('prescriptionId')
-#             patient_name = data.get('patientName')
-#             patient_email = data.get('patientEmail')
-#             medicines = data.get('medicines', [])
-#             total_amount = data.get('totalAmount')
-#             hospital_name = data.get('hospitalName')
-#             payment_id = data.get('paymentId')
-            
-#             # Create invoice document
-#             invoice = {
-#                 'prescriptionId': prescription_id,
-#                 'patientName': patient_name,
-#                 'patientEmail': patient_email,
-#                 'medicines': medicines,
-#                 'totalAmount': total_amount,
-#                 'hospitalName': hospital_name,
-#                 'paymentId': payment_id,
-#                 'status': 'generated',
-#                 'created_at': datetime.now()
-#             }
-            
-#             # Save invoice to database
-#             result = invoices_collection.insert_one(invoice)
-
-#             prescriptions_collection.update_one(
-#                 {'_id': ObjectId(prescription_id)},
-#                 {'$set': {'status': 'completed'}}
-#             )
-            
-            
-#             # Update stock quantities
-#             for medicine in medicines:
-#                 products_collection.update_one(
-#                     {'_id': ObjectId(medicine['_id'])},
-#                     {'$inc': {'Stock': -medicine['quantity']}}
-#                 )
-            
-#             # Send email notification
-#             try:
-#                 message = f"""
-#                 <html>
-#                     <body>
-#                         <h2>Invoice Generated</h2>
-#                         <p>Dear {patient_name},</p>
-#                         <p>Your medicine invoice has been generated:</p>
-#                         <ul>
-#                             <li>Total Amount: ₹{total_amount}</li>
-#                             <li>Hospital: {hospital_name}</li>
-#                         </ul>
-#                         <p>Please collect your medicines from the pharmacy.</p>
-#                         <p>Best regards,</p>
-#                         <p>HMS Healthcare Team</p>
-#                     </body>
-#                 </html>
-#                 """
-                
-#                 email_message = EmailMultiAlternatives(
-#                     subject="HMS - Medicine Invoice Generated",
-#                     body=message,
-#                     from_email=f'HMS Team <{settings.EMAIL_HOST_USER}>',
-#                     to=[patient_email]
-#                 )
-#                 email_message.content_subtype = "html"
-#                 email_message.send(fail_silently=True)
-#             except Exception as e:
-#                 print(f"Email notification error: {e}")
-            
-#             return JsonResponse({
-#                 'status': 'success',
-#                 'invoice_id': str(result.inserted_id),
-#                 'message': 'Invoice generated successfully'
-#             })
-            
-#         except Exception as e:
-#             print(f"Error generating invoice: {e}")
-#             return JsonResponse({
-#                 'status': 'error',
-#                 'message': str(e)
-#             }, status=500)
-    
-#     return JsonResponse({
-#         'status': 'error',
-#         'message': 'Method not allowed'
-#     }, status=405)

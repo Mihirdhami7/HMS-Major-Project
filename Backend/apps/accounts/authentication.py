@@ -27,6 +27,16 @@ class JWTAuthentication(authentication.BaseAuthentication):
         except Exception:
             raise exceptions.AuthenticationFailed("Invalid token")
 
+        # Validate token session to support logout/invalidation.
+        session_doc = sessions_collection.find_one({"token": token})
+        if not session_doc:
+            raise exceptions.AuthenticationFailed("Session expired or logged out")
+
+        expires_at = session_doc.get("expires_at")
+        if expires_at and expires_at <= datetime.utcnow():
+            sessions_collection.delete_one({"token": token})
+            raise exceptions.AuthenticationFailed("Session expired")
+
         user = SimpleNamespace(
             email=payload.get("email"),
             userType=payload.get("userType"),

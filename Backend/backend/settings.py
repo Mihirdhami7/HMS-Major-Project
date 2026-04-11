@@ -28,12 +28,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "1fy%j02cvs&0$)-ny@3pj6l$+p)%cl6_ogu0h8-z=!&sy*v_ju"
+SECRET_KEY = os.getenv("SECRET_KEY", "1fy%j02cvs&0$)-ny@3pj6l$+p)%cl6_ogu0h8-z=!&sy*v_ju")
+
+# RAZORPAY_KEY_ID = "rzp_test_Rxv4DGlM4J7iQg"
+# RAZORPAY_KEY_SECRET = "vqw55uSU5sdK0I3KMTCs2gJy"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "True").lower() in ("1", "true", "yes", "on")
 
-ALLOWED_HOSTS = ["*"]  # Allow all hosts in development
+_allowed_hosts = os.getenv("ALLOWED_HOSTS", "*")
+ALLOWED_HOSTS = [host.strip() for host in _allowed_hosts.split(",") if host.strip()]
 
 
 # Application definition
@@ -193,6 +197,15 @@ OTP_SETTINGS = {
     'LENGTH': 6,  # 6 digit OTP
 }
 
+REST_FRAMEWORK = {
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': os.getenv('DRF_ANON_THROTTLE_RATE', '30/minute'),
+    },
+}
+
 # Media files (Uploaded files)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
@@ -210,7 +223,3 @@ MONGO_DATABASE = os.getenv('MONGO_DATABASE')
 MONGO_URI = f"mongodb+srv://{MONGO_USERNAME}:{MONGO_PASSWORD}@cluster0.sqzac.mongodb.net/{MONGO_DATABASE}?retryWrites=true&w=majority"
 
 
-#razor pay
-# settings.py
-RAZORPAY_KEY_ID = "rzp_test_vcajFSq04fkAk"
-RAZORPAY_SECRET_KEY = "1z3ak928OOoeZehAR6rcgTxO"
