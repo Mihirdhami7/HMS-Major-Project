@@ -16,10 +16,6 @@ from apps.accounts.serializers import UserProfileSerializer
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
-# DOCTOR VIEWS
-# ============================================================================
-
 class DoctorListAPIView(APIView):
     """
     GET  /api/users/doctors/<hospital_name>/ - List doctors by hospital
@@ -439,10 +435,6 @@ class DoctorSearchAPIView(APIView):
             logger.error("DoctorSearchAPIView.get: %s", e, exc_info=True)
             return Response({"status": "error", "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-# ============================================================================
-# PATIENT VIEWS
-# ============================================================================
 
 class PatientListAPIView(APIView):
     """
