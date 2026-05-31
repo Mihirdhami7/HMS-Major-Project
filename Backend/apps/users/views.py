@@ -20,20 +20,37 @@ class DoctorListAPIView(APIView):
     """
     GET  /api/users/doctors/<hospital_name>/ - List doctors by hospital
     POST /api/users/doctors/<hospital_name>/ - Create doctor
+    
+    GET Behavior:
+    - Patients/Unauthenticated: See only APPROVED doctors
+    - Admin/SuperAdmin: See ALL doctors (approved and unapproved)
     """
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsSuperAdminOrIsSameHospitalAdmin]
+    permission_classes = []  # Allow public access for viewing approved doctors
 
     def get(self, request, hospital_name):
         """Get doctors list by hospital."""
-        user_type = str(getattr(request.user, "userType", "") or "").strip().lower()
-        user_hospital = str(getattr(request.user, "hospitalName", "") or "").strip()
-        if user_type != "superadmin" and user_hospital != str(hospital_name or "").strip():
-            return Response({"status": "error", "message": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
         try:
+            # Get user info (may be None for unauthenticated requests)
+            user_type = str(getattr(request.user, "userType", "") or "").strip().lower()
+            user_hospital = str(getattr(request.user, "hospitalName", "") or "").strip()
+            is_authenticated = getattr(request.user, "is_authenticated", False)
+            is_admin_or_superadmin = is_authenticated and user_type in ["admin", "superadmin"]
+            
+            # For non-admin users: validate hospital if they have hospital affiliation
+            if not is_admin_or_superadmin and is_authenticated and user_hospital:
+                if user_hospital != str(hospital_name or "").strip():
+                    return Response({"status": "error", "message": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
+            
             if not hospitals_collection.find_one({"name": hospital_name}):
                 return Response({"status": "error", "message": f"Hospital '{hospital_name}' not found"}, status=status.HTTP_404_NOT_FOUND)
+            
             query = {"role": "Doctor", "hospitalName": hospital_name}
+            
+            # Only show approved doctors to patients/unauthenticated users
+            if not is_admin_or_superadmin:
+                query["isApproved"] = True
+            
             doctors = list(staff_collection.find(query, {"password": 0, "otp": 0}))
             for doctor in doctors:
                 doctor["_id"] = str(doctor["_id"])
@@ -363,17 +380,26 @@ class DoctorRejectAPIView(APIView):
 class DoctorByDepartmentAPIView(APIView):
     """
     GET /api/users/doctors/<hospital_name>/department/<department_name>/ - List doctors in department
+    - Patients/Unauthenticated: See only APPROVED doctors
+    - Admin/SuperAdmin: See ALL doctors (approved and unapproved)
     """
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsDoctorOrAdmin]
+    permission_classes = []  # Allow public access
 
     def get(self, request, hospital_name, department_name):
         """Get doctors by hospital and department."""
-        user_type = str(getattr(request.user, "userType", "") or "").strip().lower()
-        user_hospital = str(getattr(request.user, "hospitalName", "") or "").strip()
-        if user_type != "superadmin" and user_hospital != str(hospital_name or "").strip():
-            return Response({"status": "error", "message": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
         try:
+            # Get user info (may be None for unauthenticated requests)
+            user_type = str(getattr(request.user, "userType", "") or "").strip().lower()
+            user_hospital = str(getattr(request.user, "hospitalName", "") or "").strip()
+            is_authenticated = getattr(request.user, "is_authenticated", False)
+            is_admin_or_superadmin = is_authenticated and user_type in ["admin", "superadmin"]
+            
+            # For non-admin users: validate hospital if they have hospital affiliation
+            if not is_admin_or_superadmin and is_authenticated and user_hospital:
+                if user_hospital != str(hospital_name or "").strip():
+                    return Response({"status": "error", "message": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
+            
             if not hospitals_collection.find_one({"name": hospital_name}):
                 return Response({"status": "error", "message": f"Hospital '{hospital_name}' not found"}, status=status.HTTP_404_NOT_FOUND)
             if not departments_collection.find_one({
@@ -381,7 +407,14 @@ class DoctorByDepartmentAPIView(APIView):
                 "name": department_name,
             }):
                 return Response({"status": "error", "message": f"Department '{department_name}' not found in hospital '{hospital_name}'"}, status=status.HTTP_404_NOT_FOUND)
+            
+            # Build query based on user type
             query = {"department": department_name, "role": "Doctor", "hospitalName": hospital_name}
+            
+            # Only show approved doctors to patients/unauthenticated users
+            if not is_admin_or_superadmin:
+                query["isApproved"] = True
+            
             doctors = list(staff_collection.find(query, {"password": 0, "otp": 0}))
             for doctor in doctors:
                 doctor["_id"] = str(doctor["_id"])
