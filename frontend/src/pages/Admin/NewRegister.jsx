@@ -1,87 +1,82 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import Slidebar from "../../components/Sidebar";
-import { getHospitalAppointments, approveAppointment, rejectAppointment, createPatient, getUserProfile, getPatientByEmail } from "../../services/userService";
-import { getToken } from "../../services/authService";
+import { useAuth } from "../../context/AuthContext";
+import { useDepartments } from "../../hooks/useHospitals";
+import { pickList } from "../../services/apiClient";
+import { createPatient, searchPatient, listDoctorsByDepartment } from "../../services/userService";
+import {
+  getPendingAppointments,
+  getAllAppointments,
+  approveAppointment,
+  bookAppointment,
+} from "../../services/appointmentsService";
+
+const todayISO = () => new Date().toISOString().split("T")[0];
+const nowHHMM = () => new Date().toLocaleTimeString("en-US", { hour12: false }).slice(0, 5);
+
+const emptyPatientForm = {
+  name: "",
+  email: "",
+  contactNo: "",
+  gender: "Male",
+  dateOfBirth: "",
+};
+
+const emptyAppointment = () => ({
+  patientEmail: "",
+  patientInfo: null,
+  department: "",
+  doctorEmail: "",
+  symptoms: "",
+  appointmentDate: todayISO(),
+  appointmentTime: nowHHMM(),
+});
+
+const STATUS_STYLES = {
+  approved: "bg-green-100 text-green-800",
+  completed: "bg-blue-100 text-blue-800",
+  rejected: "bg-red-100 text-red-800",
+  pending: "bg-yellow-100 text-yellow-800",
+};
 
 const NewRegister = () => {
   const navigate = useNavigate();
+  const { token, user } = useAuth();
+  const hospitalName = user?.hospitalName || "";
   const [activeTab, setActiveTab] = useState("newRegister");
-  const [hospitalName, setHospitalName] = useState("Zydus");
-  
+  const { departments, loading: departmentsLoading } = useDepartments(token, { hospitalName });
+
   // Patient Registration State
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    contactNo: "",
-    gender: "Male",
-    dateOfBirth: "",
-    address: "",
-  });
-  
+  const [formData, setFormData] = useState(emptyPatientForm);
+
   // Appointment Management State
   const [pendingAppointments, setPendingAppointments] = useState([]);
   const [isLoadingPending, setIsLoadingPending] = useState(false);
   const [selectedPendingAppointment, setSelectedPendingAppointment] = useState(null);
   const [acceptPatientTime, setAcceptPatientTime] = useState(true);
   const [adminTimeSlot, setAdminTimeSlot] = useState("");
-  
+
   // Appointment Search State
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [acceptPatientDate, setAcceptPatientDate] = useState(true);
   const [adminDateSlot, setAdminDateSlot] = useState("");
-  
+
   const [approvalAction, setApprovalAction] = useState("approve");
 
   // New Appointment Dialog State
   const [showNewAppointmentDialog, setShowNewAppointmentDialog] = useState(false);
-  const [newAppointmentData, setNewAppointmentData] = useState({
-    patientEmail: "",
-    patientInfo: null,
-    department: "",
-    appointmentDate: new Date().toISOString().split('T')[0],
-    appointmentTime: new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5)
-  });
-  
+  const [newAppointmentData, setNewAppointmentData] = useState(emptyAppointment);
+  const [departmentDoctors, setDepartmentDoctors] = useState([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(false);
+
   // General State
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
-
-  // Departments List
-  const departments = [
-    "Cardiology",
-    "Neurology",
-    "Orthopedics",
-    "Pediatrics",
-    "General Medicine",
-  ];
-
-  // Fetch hospital name and pending appointments on component mount
-  useEffect(() => {
-    const initData = async () => {
-      const token = getToken();
-      if (!token) {
-        navigate("/login");
-        return;
-      }
-
-      // Get user profile to get hospital name
-      const userResult = await getUserProfile(token);
-      if (userResult.success) {
-        const hName = userResult.data.hospitalName || "Zydus";
-        setHospitalName(hName);
-        fetchPendingAppointments(hName, token);
-      } else if (userResult.status === 401) {
-        navigate("/login");
-      }
-    };
-
-    initData();
-  }, [navigate]);
 
   // Navigation Handler
   const handleNavigation = (path) => {
@@ -89,7 +84,7 @@ const NewRegister = () => {
   };
 
   // ==== 1. PATIENT REGISTRATION FUNCTIONS ====
-  
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -100,253 +95,209 @@ const NewRegister = () => {
 
   const handlePatientSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError("");
     setSuccess("");
-
-    try {
-      const token = getToken();
-      if (!token) {
-        navigate("/login");
-        return;
-      }
-
-      const result = await createPatient(formData, token);
-      
-      if (result.success) {
-        setSuccess("Patient registered successfully!");
-        // Reset form
-        setFormData({
-          name: "",
-          email: "",
-          contactNo: "",
-          gender: "Male",
-          dateOfBirth: "",
-          address: "",
-        });
-      } else {
-        setError(result.error || "Registration failed");
-      }
-    } catch (err) {
-      setError("Something went wrong with registration");
-    } finally {
-      setLoading(false);
+    if (!hospitalName) {
+      setError("No hospital is linked to this admin account.");
+      return;
+    }
+    setLoading(true);
+    const result = await createPatient(token, hospitalName, {
+      name: formData.name,
+      email: formData.email,
+      contactNo: formData.contactNo,
+      gender: formData.gender,
+      dateOfBirth: formData.dateOfBirth,
+    });
+    setLoading(false);
+    if (result.success) {
+      setSuccess(result.message || "Patient registered successfully!");
+      setFormData(emptyPatientForm);
+    } else {
+      setError(result.message);
     }
   };
 
   // ==== 2. PENDING APPOINTMENTS FUNCTIONS ====
-  
-  const fetchPendingAppointments = async (hName, token) => {
-    try {
-      setIsLoadingPending(true);
-      setError("");
-      
-      const result = await getHospitalAppointments(hName, token);
-      
-      if (result.success) {
-        setPendingAppointments(Array.isArray(result.data) ? result.data : []);
-        console.log("Pending appointments:", result.data);
-      } else {
-        console.log("Failed to fetch pending appointments:", result.error);
-        setError("Failed to fetch pending appointments");
-      }
-    } catch (err) {
-      console.error("Error fetching pending appointments:", err);
-    } finally {
-      setIsLoadingPending(false);
+
+  const fetchPendingAppointments = useCallback(async () => {
+    if (!token) return;
+    setIsLoadingPending(true);
+    const result = await getPendingAppointments(token);
+    if (result.success) {
+      setPendingAppointments(pickList(result, "appointments"));
+    } else {
+      setPendingAppointments([]);
+      setError(result.message);
     }
+    setIsLoadingPending(false);
+  }, [token]);
+
+  useEffect(() => {
+    fetchPendingAppointments();
+  }, [fetchPendingAppointments]);
+
+  const resetReview = () => {
+    setSelectedPendingAppointment(null);
+    setAdminTimeSlot("");
+    setAdminDateSlot("");
+    setAcceptPatientTime(true);
+    setAcceptPatientDate(true);
+    setApprovalAction("approve");
   };
 
   const handleApproveAppointment = async () => {
-    if (!selectedPendingAppointment || !selectedPendingAppointment._id) {
+    const appt = selectedPendingAppointment;
+    if (!appt?._id) {
       setError("No appointment selected for approval/rejection");
       return;
     }
-    try {
-      setLoading(true);
-      setError("");
-      
-      const token = getToken();
-      if (!token) {
-        navigate("/login");
-        return;
-      }
 
-      let result;
-      if (approvalAction === "approve") {
-        result = await approveAppointment(selectedPendingAppointment._id, token);
-      } else {
-        result = await rejectAppointment(selectedPendingAppointment._id, token);
+    let payload;
+    if (approvalAction === "approve") {
+      payload = { action: "approve" };
+      // Backend needs BOTH confirmedDate and confirmedTime when rescheduling
+      if (!acceptPatientDate || !acceptPatientTime) {
+        payload.confirmedDate = acceptPatientDate ? appt.appointmentDate : adminDateSlot;
+        payload.confirmedTime = acceptPatientTime ? appt.requestedTime : adminTimeSlot;
       }
-      
-      if (result.success) {
-        setSuccess(`Appointment ${approvalAction}d successfully!`);
-        setSelectedPendingAppointment(null);
-        setAdminTimeSlot("");
-        setAdminDateSlot("");
-        setAcceptPatientTime(true);
-        setAcceptPatientDate(true);
-        setApprovalAction("approve");
-        
-        // Refresh the pending appointments list
-        fetchPendingAppointments(hospitalName, token);
-      } else {
-        setError(result.error || `Failed to ${approvalAction} appointment`);
-      }
-    } catch (err) {
-      setError(`Failed to ${approvalAction} appointment`);
-    } finally {
-      setLoading(false);
+    } else {
+      payload = { action: "reject" };
+    }
+
+    setLoading(true);
+    setError("");
+    const result = await approveAppointment(token, appt._id, payload);
+    setLoading(false);
+
+    if (result.success) {
+      setSuccess(result.message || `Appointment ${approvalAction}d successfully!`);
+      resetReview();
+      fetchPendingAppointments();
+    } else {
+      setError(result.message);
     }
   };
 
   const searchAppointment = async () => {
-    if (!formData.searchQuery) {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
       setError("Please enter an appointment ID or patient email to search");
       return;
     }
-    
-    try {
-      setIsSearching(true);
-      setError("");
-      setSearchResults([]);
-      
-      // For now, search through pending appointments
-      const matching = pendingAppointments.filter(apt => 
-        apt.patientEmail?.includes(formData.searchQuery) || 
-        apt._id?.includes(formData.searchQuery)
-      );
-      
-      if (matching.length > 0) {
-        setSearchResults(matching);
-      } else {
-        setError("No appointments found");
-      }
-    } catch (err) {
-      setError("Failed to search appointments");
-      setSelectedAppointment(null);
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
+    setIsSearching(true);
+    setError("");
+    setSearchResults([]);
+    const result = await getAllAppointments(token);
+    setIsSearching(false);
+    if (!result.success) {
+      setError(result.message);
+      return;
+    }
+    const matching = pickList(result, "appointments").filter(apt =>
+      apt.patient?.email?.toLowerCase().includes(query) ||
+      apt._id?.toLowerCase().includes(query)
+    );
+    if (matching.length > 0) {
+      setSearchResults(matching);
+    } else {
+      setError("No appointments found");
     }
   };
-  
+
   const handleNewAppointment = () => {
     setShowNewAppointmentDialog(true);
-    setNewAppointmentData({
-      patientEmail: "",
-      patientInfo: null,
-      department: "",
-      appointmentDate: new Date().toISOString().split('T')[0],
-      appointmentTime: new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5)
-    });
+    setNewAppointmentData(emptyAppointment());
+    setDepartmentDoctors([]);
   };
+
+  // Load doctors for the department chosen in the new appointment dialog
+  const selectedNewDepartment = newAppointmentData.department;
+  useEffect(() => {
+    if (!showNewAppointmentDialog || !selectedNewDepartment || !hospitalName) {
+      setDepartmentDoctors([]);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      setDoctorsLoading(true);
+      const result = await listDoctorsByDepartment(token, hospitalName, selectedNewDepartment);
+      if (cancelled) return;
+      if (result.success) {
+        setDepartmentDoctors(pickList(result, "doctors"));
+      } else {
+        setDepartmentDoctors([]);
+        setError(result.message);
+      }
+      setDoctorsLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showNewAppointmentDialog, selectedNewDepartment, hospitalName, token]);
 
   const fetchPatientInfo = async () => {
     if (!newAppointmentData.patientEmail) {
       setError("Please enter patient email");
       return;
     }
-    
-    try {
-      setLoading(true);
-      setError("");
-      const token = getToken();
-      if (!token) {
-        navigate("/login");
-        return;
-      }
-
-      const result = await getPatientByEmail(newAppointmentData.patientEmail, token);
-
-      if (result.success) {
-        setNewAppointmentData(prev => ({
-          ...prev,
-          patientInfo: result.data
-        }));
-        setSuccess("Patient found!");
-      } else {
-        setError(result.error || "Patient not found with this email");
-        setNewAppointmentData(prev => ({
-          ...prev,
-          patientInfo: null
-        }));
-      }
-    } catch (err) {
-      setError("Patient not found with this email");
-      setNewAppointmentData(prev => ({
-        ...prev,
-        patientInfo: null
-      }));
-    } finally {
-      setLoading(false);
+    setLoading(true);
+    setError("");
+    const result = await searchPatient(token, newAppointmentData.patientEmail.trim(), hospitalName);
+    setLoading(false);
+    const patient = result.data?.patient || null;
+    if (result.success && patient) {
+      setNewAppointmentData(prev => ({ ...prev, patientInfo: patient }));
+      setSuccess("Patient found!");
+    } else {
+      setError(result.success ? "Patient not found with this email" : result.message);
+      setNewAppointmentData(prev => ({ ...prev, patientInfo: null }));
     }
   };
 
   const handleNewAppointmentSubmit = async () => {
-    if (!newAppointmentData.patientInfo || !newAppointmentData.department || 
-        !newAppointmentData.appointmentDate || !newAppointmentData.appointmentTime ) {
-      setError("All fields are required");
+    const d = newAppointmentData;
+    if (!d.patientInfo || !d.department || !d.doctorEmail || !d.appointmentDate || !d.appointmentTime) {
+      setError("Patient, department, doctor, date and time are required");
       return;
     }
-    
-    try {
-      setLoading(true);
-      setError("");
-      const token = getToken();
-      if (!token) {
-        navigate("/login");
-        return;
-      }
-
-      const response = await axios.post("http://localhost:8000/api/appointments/create-appointment/", {
-        patientEmail: newAppointmentData.patientEmail,
-        department: newAppointmentData.department,
-        appointmentDate: newAppointmentData.appointmentDate,
-        appointmentTime: newAppointmentData.appointmentTime,
-        doctorEmail: newAppointmentData.patientInfo.doctorEmail,
-        symptoms: newAppointmentData.patientInfo.symptoms,
-        hospitalName: hospitalName
-      }, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      if (response.data.status === "success") {
-        setSuccess("Appointment created successfully!");
-        // Close the dialog and reset form
-        setTimeout(() => {
-          setShowNewAppointmentDialog(false);
-        setNewAppointmentData({
-          patientEmail: "",
-          department: "",
-          doctorEmail: "",
-          symptoms: "",
-          appointmentDate: new Date().toISOString().split('T')[0],
-          appointmentTime: ""
-        });
+    if (!hospitalName) {
+      setError("No hospital is linked to this admin account.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const result = await bookAppointment(token, {
+      patientEmail: d.patientInfo.email || d.patientEmail,
+      doctorEmail: d.doctorEmail,
+      department: d.department,
+      hospitalName,
+      appointmentDate: d.appointmentDate,
+      appointmentTime: d.appointmentTime,
+      symptoms: d.symptoms || "",
+    });
+    setLoading(false);
+    if (result.success) {
+      setSuccess(result.message || "Appointment created successfully!");
+      setTimeout(() => {
+        setShowNewAppointmentDialog(false);
+        setNewAppointmentData(emptyAppointment());
         setSuccess("");
       }, 1500);
     } else {
-        setError(response.data.message || "Failed to create appointment");
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to create appointment");
-    } finally {
-      setLoading(false);
+      setError(result.message);
     }
   };
-  
+
   return (
     <div className="flex h-screen bg-gray-100">
-      <Slidebar 
-        activeTab={activeTab} 
+      <Slidebar
+        activeTab={activeTab}
         setActiveTab={(tab) => {
           setActiveTab(tab);
           handleNavigation(`/admin/${tab}`);
-        }} 
-        userType="admin" 
+        }}
+        userType="admin"
       />
 
       <div className="flex-1 p-8 overflow-auto mt-16">
@@ -419,19 +370,6 @@ const NewRegister = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block mb-1">Address</label>
-                <textarea
-                  name="address"
-                  value={formData.address}
-                  onChange={handleChange}
-                  className="w-full p-2 border rounded"
-                  rows="3"
-                ></textarea>
-              </div>
-
-  
-
               {error && <div className="p-3 bg-red-100 text-red-700 rounded">{error}</div>}
               {success && <div className="p-3 bg-green-100 text-green-700 rounded">{success}</div>}
 
@@ -470,11 +408,11 @@ const NewRegister = () => {
                       <tbody className="bg-white divide-y divide-gray-200">
                         {pendingAppointments.map((appt) => (
                           <tr key={appt._id}>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{appt.patientName}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{appt.doctorName}</td>  
+                            <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{appt.patient?.name || appt.patient?.email}</td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{appt.doctor?.name}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{appt.department}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                              {new Date(appt.appointmentDate).toLocaleDateString()} 
+                              {appt.appointmentDate} {appt.requestedTime}
                             </td>
                             <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
                               <button
@@ -492,9 +430,9 @@ const NewRegister = () => {
                 ) : (
                   <div className="text-center py-4 text-gray-500">No pending appointments waiting for approval</div>
                 )}
-                
+
                 <button
-                  onClick={fetchPendingAppointments}
+                  onClick={() => fetchPendingAppointments()}
                   className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
                 >
                   {isLoadingPending ? "Loading..." : "Refresh Pending List"}
@@ -512,8 +450,8 @@ const NewRegister = () => {
                     type="text"
                     name="searchQuery"
                     placeholder="Enter appointment ID or patient email"
-                    value={formData.searchQuery}
-                    onChange={handleChange}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full p-2 border rounded"
                   />
                 </div>
@@ -550,17 +488,13 @@ const NewRegister = () => {
                         <tbody className="bg-white divide-y divide-gray-200">
                           {searchResults.map((appt, index) => (
                             <tr key={appt._id || index}>
-                              <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{appt.doctorName}</td>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{appt.doctor?.name}</td>
                               <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                                {new Date(appt.appointmentDate).toLocaleDateString()}
+                                {appt.acceptedDate || appt.appointmentDate}
                               </td>
                               <td className="px-4 py-2 whitespace-nowrap text-sm">
-                                <span className={`px-2 py-1 rounded text-xs font-medium 
-                                  ${appt.status === "approve" ? "bg-green-100 text-green-800" : 
-                                    appt.status === "reject" ? "bg-red-100 text-red-800" : 
-                                    "bg-yellow-100 text-yellow-800"}`}>
-                                  {appt.status === "approve" ? "Approved" : 
-                                  appt.status === "reject" ? "Rejected" : "Pending"}
+                                <span className={`px-2 py-1 rounded text-xs font-medium capitalize ${STATUS_STYLES[appt.status] || STATUS_STYLES.pending}`}>
+                                  {appt.status}
                                 </span>
                               </td>
                               <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
@@ -580,30 +514,30 @@ const NewRegister = () => {
                 )}
 
                 {/* Appointment Details Modal */}
-                ``{selectedAppointment && (
+                {selectedAppointment && (
                   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
                     <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg">
                       <h3 className="text-2xl font-bold text-blue-600 mb-6 text-center">Appointment Details</h3>
                       <div className="space-y-4">
                         <div className="flex justify-between">
                           <span className="font-medium text-gray-700">Doctor Name:</span>
-                          <span className="text-gray-900">{selectedAppointment.doctorName}</span>
+                          <span className="text-gray-900">{selectedAppointment.doctor?.name}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="font-medium text-gray-700">Appointment Date:</span>
                           <span className="text-gray-900">
-                            {new Date(selectedAppointment.appointmentDate).toLocaleDateString()}
+                            {selectedAppointment.acceptedDate || selectedAppointment.appointmentDate}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="font-medium text-gray-700">Appointment Time:</span>
                           <span className="text-gray-900">
-                            {selectedAppointment.confirmedTime ? selectedAppointment.confirmedTime: "N/A"}
+                            {selectedAppointment.acceptedTime || selectedAppointment.requestedTime || "N/A"}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="font-medium text-gray-700">Patient Email:</span>
-                          <span className="text-gray-900">{selectedAppointment.patientEmail}</span>
+                          <span className="text-gray-900">{selectedAppointment.patient?.email}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="font-medium text-gray-700">Symptoms:</span>
@@ -620,7 +554,7 @@ const NewRegister = () => {
                       </div>
                     </div>
                   </div>
-                )}``
+                )}
 
                 {/* Selected Appointment Details */}
                 {/* Pending Appointment Review Modal */}
@@ -633,7 +567,7 @@ const NewRegister = () => {
                       </svg>
                       Review Appointment Request
                     </h3>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {/* Left Column: Appointment Details */}
                       <div className="p-4 bg-gradient-to-br from-green-50 to-blue-50 rounded-lg shadow-sm border border-blue-100">
@@ -643,33 +577,33 @@ const NewRegister = () => {
                           </svg>
                           Appointment Information
                         </h4>
-                        
+
                         <div className="space-y-3">
                           <div className="flex flex-col">
                             <span className="font-medium text-gray-700">Patient Name:</span>
-                            <span className="text-gray-800 font-semibold">{selectedPendingAppointment.patientName}</span>
+                            <span className="text-gray-800 font-semibold">{selectedPendingAppointment.patient?.name}</span>
                           </div>
-                          
+
                           <div className="flex flex-col">
                             <span className="font-medium text-gray-700">Patient Email:</span>
-                            <span className="text-gray-800">{selectedPendingAppointment.patientEmail}</span>
+                            <span className="text-gray-800">{selectedPendingAppointment.patient?.email}</span>
                           </div>
-                          
+
                           <div className="flex flex-col mt-4">
                             <span className="font-medium text-gray-700">Doctor Name:</span>
-                            <span className="text-gray-800 font-semibold">{selectedPendingAppointment.doctorName}</span>
+                            <span className="text-gray-800 font-semibold">{selectedPendingAppointment.doctor?.name}</span>
                           </div>
-                          
+
                           <div className="flex flex-col">
                             <span className="font-medium text-gray-700">Doctor Email:</span>
-                            <span className="text-gray-800">{selectedPendingAppointment.doctorEmail}</span>
+                            <span className="text-gray-800">{selectedPendingAppointment.doctor?.email}</span>
                           </div>
-                          
+
                           <div className="flex flex-col mt-4">
                             <span className="font-medium text-gray-700">Department:</span>
                             <span className="text-gray-800">{selectedPendingAppointment.department}</span>
                           </div>
-                          
+
                           {selectedPendingAppointment.symptoms && (
                             <div className="flex flex-col mt-4">
                               <span className="font-medium text-gray-700">Symptoms:</span>
@@ -678,7 +612,7 @@ const NewRegister = () => {
                           )}
                         </div>
                       </div>
-                      
+
                       {/* Right Column: Modify Appointment */}
                       <div className="p-4 bg-gradient-to-br from-blue-50 to-green-50 rounded-lg shadow-sm border border-green-100">
                         <h4 className="font-semibold text-lg mb-3 text-blue-700 flex items-center">
@@ -687,7 +621,7 @@ const NewRegister = () => {
                           </svg>
                           Schedule Appointment
                         </h4>
-                        
+
                         <div className="space-y-4">
                           {/* Date Section */}
                           <div className="mb-4">
@@ -697,7 +631,7 @@ const NewRegister = () => {
                               </svg>
                               Appointment Date
                             </h5>
-                            
+
                             <div className="flex items-center mb-2">
                               <input
                                 type="radio"
@@ -713,7 +647,7 @@ const NewRegister = () => {
                                 </span>
                               </label>
                             </div>
-                            
+
                             <div className="flex items-center mb-2">
                               <input
                                 type="radio"
@@ -724,7 +658,7 @@ const NewRegister = () => {
                               />
                               <label htmlFor="provideDate">Provide different date</label>
                             </div>
-                            
+
                             {!acceptPatientDate && (
                               <div className="mt-2">
                                 <label className="block mb-1 text-sm">Select New Date</label>
@@ -739,7 +673,7 @@ const NewRegister = () => {
                               </div>
                             )}
                           </div>
-                          
+
                           {/* Time Section */}
                           <div className="mb-4">
                             <h5 className="font-medium mb-2 text-gray-700 flex items-center">
@@ -748,7 +682,7 @@ const NewRegister = () => {
                               </svg>
                               Appointment Time
                             </h5>
-                            
+
                             <div className="flex items-center mb-2">
                               <input
                                 type="radio"
@@ -764,7 +698,7 @@ const NewRegister = () => {
                                 </span>
                               </label>
                             </div>
-                            
+
                             <div className="flex items-center mb-2">
                               <input
                                 type="radio"
@@ -775,7 +709,7 @@ const NewRegister = () => {
                               />
                               <label htmlFor="provideTime">Provide different time slot</label>
                             </div>
-                            
+
                             {!acceptPatientTime && (
                               <div className="mt-2">
                                 <label className="block mb-1 text-sm">Select New Time</label>
@@ -789,18 +723,18 @@ const NewRegister = () => {
                               </div>
                             )}
                           </div>
-                          
+
                           {/* Action Options (approve/reject) */}
                           <div className="mb-4 mt-6 pt-4 border-t border-gray-200">
                             <h5 className="font-medium mb-3 text-gray-700">Appointment Action</h5>
-                            
+
                             <div className="grid grid-cols-2 gap-3">
                               <button
                                 type="button"
                                 onClick={() => setApprovalAction("approve")}
                                 className={`py-2 px-3 rounded-md flex items-center justify-center transition-all ${
-                                  approvalAction === "approve" 
-                                    ? "bg-green-100 text-green-700 border-2 border-green-300" 
+                                  approvalAction === "approve"
+                                    ? "bg-green-100 text-green-700 border-2 border-green-300"
                                     : "bg-gray-100 text-gray-600 border border-gray-200 hover:bg-green-50"
                                 }`}
                               >
@@ -809,13 +743,13 @@ const NewRegister = () => {
                                 </svg>
                                 Approve
                               </button>
-                              
+
                               <button
                                 type="button"
                                 onClick={() => setApprovalAction("reject")}
                                 className={`py-2 px-3 rounded-md flex items-center justify-center transition-all ${
-                                  approvalAction === "reject" 
-                                    ? "bg-red-100 text-red-700 border-2 border-red-300" 
+                                  approvalAction === "reject"
+                                    ? "bg-red-100 text-red-700 border-2 border-red-300"
                                     : "bg-gray-100 text-gray-600 border border-gray-200 hover:bg-red-50"
                                 }`}
                               >
@@ -829,7 +763,7 @@ const NewRegister = () => {
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* Error/Success Messages */}
                     {error && (
                       <div className="mt-4 p-3 bg-red-100 text-red-700 rounded">
@@ -841,27 +775,20 @@ const NewRegister = () => {
                         {success}
                       </div>
                     )}
-                    
+
                     {/* Dialog Actions */}
                     <div className="flex justify-end gap-4 mt-6">
                       <button
-                        onClick={() => {
-                          setSelectedPendingAppointment(null);
-                          setAdminTimeSlot("");
-                          setAdminDateSlot("");
-                          setAcceptPatientTime(true);
-                          setAcceptPatientDate(true);
-                          setApprovalAction("approve");
-                        }}
+                        onClick={resetReview}
                         className="px-5 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors border border-gray-300"
                       >
                         Cancel
                       </button>
-                      
+
                       <button
                         onClick={() => handleApproveAppointment()}
-                        disabled={loading || 
-                          (approvalAction === "approve" && !acceptPatientTime && !adminTimeSlot) || 
+                        disabled={loading ||
+                          (approvalAction === "approve" && !acceptPatientTime && !adminTimeSlot) ||
                           (approvalAction === "approve" && !acceptPatientDate && !adminDateSlot)}
                         className={`px-5 py-2 rounded-md transition-colors ${
                           approvalAction === "approve"
@@ -887,7 +814,7 @@ const NewRegister = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl">
             <h3 className="text-xl font-bold text-blue-600 mb-4">Schedule New Appointment</h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Left Column: Patient Information */}
               <div className="space-y-4">
@@ -920,20 +847,20 @@ const NewRegister = () => {
                     <h4 className="font-semibold mb-2 text-blue-800">Patient Information</h4>
                     <div className="space-y-1">
                       <p>
-                        <span className="font-medium">Name:</span> 
+                        <span className="font-medium">Name:</span>
                         <span className="ml-1">{newAppointmentData.patientInfo.name}</span>
                       </p>
                       <p>
-                        <span className="font-medium">Email:</span> 
+                        <span className="font-medium">Email:</span>
                         <span className="ml-1">{newAppointmentData.patientInfo.email}</span>
                       </p>
                       <p>
-                        <span className="font-medium">Contact:</span> 
+                        <span className="font-medium">Contact:</span>
                         <span className="ml-1">{newAppointmentData.patientInfo.contactNo || "Not provided"}</span>
                       </p>
                       {newAppointmentData.patientInfo.gender && (
                         <p>
-                          <span className="font-medium">Gender:</span> 
+                          <span className="font-medium">Gender:</span>
                           <span className="ml-1">{newAppointmentData.patientInfo.gender}</span>
                         </p>
                       )}
@@ -944,7 +871,7 @@ const NewRegister = () => {
                     Patient information will appear here
                   </div>
                 )}
-                
+
                 {/* Department Selection */}
                 <div>
                   <label className="block mb-1 font-medium">Department</label>
@@ -952,33 +879,47 @@ const NewRegister = () => {
                     value={newAppointmentData.department}
                     onChange={(e) => setNewAppointmentData(prev => ({
                       ...prev,
-                      department: e.target.value
+                      department: e.target.value,
+                      doctorEmail: ""
                     }))}
                     className="w-full p-2 border rounded"
+                    disabled={departmentsLoading}
                   >
-                    <option value="">Select Department</option>
+                    <option value="">{departmentsLoading ? "Loading departments..." : departments.length ? "Select Department" : "No departments available"}</option>
                     {departments.map(dept => (
-                      <option key={dept} value={dept}>{dept}</option>
+                      <option key={dept.id} value={dept.name}>{dept.name}</option>
                     ))}
                   </select>
                 </div>
-                
-                {/* Optional doctor email */}
+
+                {/* Doctor selection (required by backend) */}
                 <div>
-                  <label className="block mb-1 font-medium">Doctor Email (Optional)</label>
-                  <input
-                    type="email"
-                    value={newAppointmentData.doctorEmail || ""}
+                  <label className="block mb-1 font-medium">Doctor</label>
+                  <select
+                    value={newAppointmentData.doctorEmail}
                     onChange={(e) => setNewAppointmentData(prev => ({
                       ...prev,
                       doctorEmail: e.target.value
                     }))}
                     className="w-full p-2 border rounded"
-                    placeholder="Enter doctor's email if known"
-                  />
+                    disabled={!newAppointmentData.department || doctorsLoading}
+                  >
+                    <option value="">
+                      {!newAppointmentData.department
+                        ? "Select a department first"
+                        : doctorsLoading
+                          ? "Loading doctors..."
+                          : departmentDoctors.length ? "Select Doctor" : "No doctors in this department"}
+                    </option>
+                    {departmentDoctors.map(doc => (
+                      <option key={doc._id || doc.email} value={doc.email}>
+                        {doc.name}{doc.specialization ? ` (${doc.specialization})` : ""}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
-              
+
               {/* Right Column: Appointment Details */}
               <div className="space-y-4">
                 {/* Date and Time Selection */}
@@ -995,7 +936,7 @@ const NewRegister = () => {
                     min={new Date().toISOString().split('T')[0]}
                   />
                 </div>
-                
+
                 <div>
                   <label className="block mb-1 font-medium">Appointment Time</label>
                   <input
@@ -1008,7 +949,7 @@ const NewRegister = () => {
                     className="w-full p-2 border rounded"
                   />
                 </div>
-                
+
                 {/* Symptoms/Notes */}
                 <div>
                   <label className="block mb-1 font-medium">Symptoms/Notes (Optional)</label>
@@ -1025,7 +966,7 @@ const NewRegister = () => {
                 </div>
               </div>
             </div>
-            
+
             {/* Error/Success Messages */}
             {error && <div className="mt-4 p-3 bg-red-100 text-red-700 rounded">{error}</div>}
             {success && <div className="mt-4 p-3 bg-green-100 text-green-700 rounded">{success}</div>}
@@ -1040,7 +981,7 @@ const NewRegister = () => {
               </button>
               <button
                 onClick={handleNewAppointmentSubmit}
-                disabled={loading || !newAppointmentData.patientInfo || !newAppointmentData.department}
+                disabled={loading || !newAppointmentData.patientInfo || !newAppointmentData.department || !newAppointmentData.doctorEmail}
                 className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-300"
               >
                 {loading ? "Creating..." : "Create Appointment"}

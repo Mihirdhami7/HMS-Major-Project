@@ -1,58 +1,39 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { loginUser } from "../../services/authService";
+import { useHospitals } from "../../hooks/useHospitals";
+import { LOGIN_ROLES, homeForRole, roleNeedsHospital } from "../../constants/roles";
+
+const inputClass =
+  "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
+  // Real hospital list from the backend. While the backend requires a login for this
+  // list, `available` is false and the user types the hospital name instead.
+  const { hospitals, available: hospitalsAvailable, loading: hospitalsLoading } = useHospitals();
 
   const [formData, setFormData] = useState({
     email: "",
     password: "",
     category: "Patient",
-    hospitalName: "Zydus"
+    hospitalName: "",
   });
-  const [hospitals] = useState([
-    "Zydus",
-    "Iris",
-    "Agrawal Medical"
-  ]); // Default hospitals - replace with API call
-
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-
-    // Uncomment this to fetch hospitals from API
-  /*
-  useEffect(() => {
-    const fetchHospitals = async () => {
-      try {
-        const response = await fetch("http://127.0.0.1:8000/api/hospitals/");
-        if (response.ok) {
-          const data = await response.json();
-          setHospitals(data.hospitals);
-        }
-      } catch (error) {
-        console.error("Error fetching hospitals:", error);
-      }
-    };
-    
-    fetchHospitals();
-  }, []);
-  */
+  const needsHospital = roleNeedsHospital(formData.category);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
-    
-    // Auto-hide hospital field when category is Supplier
-    if (name === "category" && value === "Supplier") {
-      setFormData(prev => ({ ...prev, hospitalName: "" }));
-    } else if (name === "category" && value !== "Supplier" && formData.hospitalName === "") {
-      // Reset to default hospital if changing from Supplier to other roles
-      setFormData(prev => ({ ...prev, hospitalName: "Zydus" }));
-    }
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+      ...(name === "category" && !roleNeedsHospital(value) ? { hospitalName: "" } : {}),
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -60,59 +41,33 @@ export default function Login() {
     setLoading(true);
     setError(null);
 
-    try {
-      // Prepare login data - convert category to userType
-      const loginData = {
-        email: formData.email.toLowerCase(),
-        password: formData.password,
-        category: formData.category,
-      };
+    const loginData = {
+      email: formData.email.trim().toLowerCase(),
+      password: formData.password,
+      category: formData.category,
+    };
+    if (needsHospital) loginData.hospitalName = formData.hospitalName.trim();
 
-      // Add hospitalName if not Supplier
-      if (formData.category !== "Supplier") {
-        loginData.hospitalName = formData.hospitalName;
-      }
+    const result = await loginUser(loginData);
+    setLoading(false);
 
-      console.log("Attempting login with:", loginData);
-
-      // Call login service
-      const result = await loginUser(loginData);
-
-      if (result.success) {
-        console.log("Login successful:", result.user);
-
-        // Store in auth context
-        login(result.token, result.user);
-
-        // Redirect based on user type
-        const userType = result.user.userType.toLowerCase();
-        console.log("Redirecting to:", userType);
-
-        switch (userType) {
-          case "patient":
-            navigate("/patient", { replace: true });
-            break;
-          case "doctor":
-            navigate("/doctor", { replace: true });
-            break;
-          case "admin":
-            navigate("/admin", { replace: true });
-            break;
-          case "supplier":
-            navigate("/supplier", { replace: true });
-            break;
-          default:
-            navigate("/", { replace: true });
-        }
-      } else {
-        setError(result.message || "Login failed");
-      }
-    } catch (err) {
-      console.error("Login error:", err);
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
+    if (!result.success) {
+      setError(result.message || "Login failed");
+      return;
     }
+
+    // Backend: { status, message, userData: { userType, email, hospitalName, name }, access }
+    const { access, userData } = result.data || {};
+    if (!access || !userData?.userType) {
+      setError("Unexpected response from server. Please try again.");
+      return;
+    }
+    login(access, userData);
+
+    // Return to the page the user originally requested if it belongs to their role.
+    const home = homeForRole(userData.userType);
+    const from = location.state?.from;
+    navigate(from && from.startsWith(home) ? from : home, { replace: true });
   };
 
   return (
@@ -127,7 +82,7 @@ export default function Login() {
             <p className="text-red-700">{error}</p>
           </div>
         )}
-        
+
         <form className="mt-6 space-y-6" onSubmit={handleSubmit}>
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
@@ -135,69 +90,71 @@ export default function Login() {
               id="email"
               type="email"
               name="email"
+              autoComplete="email"
               placeholder="Enter your email"
               value={formData.email}
               onChange={handleChange}
               required
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className={inputClass}
             />
           </div>
-          
+
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <input
               id="password"
               type="password"
               name="password"
+              autoComplete="current-password"
               placeholder="Enter your password"
               value={formData.password}
               onChange={handleChange}
               required
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className={inputClass}
             />
           </div>
 
-          {/* Category Dropdown */}
           <div>
             <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">User Type</label>
-            <select
-              id="category"
-              name="category"
-              value={formData.category}
-              onChange={handleChange}
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="Patient">Patient</option>
-              <option value="Doctor">Doctor</option>
-              <option value="Admin">Admin</option>
-              <option value="Supplier">Supplier</option>
-            </select>
-          </div>
-
-        {/* Hospital Dropdown - conditionally rendered */}
-        {formData.category !== "Supplier" && (
-          <div>
-            <label htmlFor="hospitalName" className="block text-sm font-medium text-gray-700 mb-1">Hospital</label>
-            <select
-              id="hospitalName"
-              name="hospitalName"
-              value={formData.hospitalName}
-              onChange={handleChange}
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              required={formData.category !== "Supplier"}
-            >
-              <option value="">Select Hospital</option>
-              {hospitals.map((hospital, index) => (
-                <option key={index} value={hospital}>
-                  {hospital}
-                </option>
+            <select id="category" name="category" value={formData.category} onChange={handleChange} className={inputClass}>
+              {LOGIN_ROLES.map((role) => (
+                <option key={role} value={role}>{role}</option>
               ))}
             </select>
           </div>
-        )}
 
-          
-          {/* Login Button */}
+          {needsHospital && (
+            <div>
+              <label htmlFor="hospitalName" className="block text-sm font-medium text-gray-700 mb-1">Hospital</label>
+              {hospitalsAvailable && hospitals.length > 0 ? (
+                <select
+                  id="hospitalName"
+                  name="hospitalName"
+                  value={formData.hospitalName}
+                  onChange={handleChange}
+                  className={inputClass}
+                  required
+                >
+                  <option value="">Select Hospital</option>
+                  {hospitals.map((h) => (
+                    <option key={h.id} value={h.name}>{h.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id="hospitalName"
+                  name="hospitalName"
+                  type="text"
+                  placeholder={hospitalsLoading ? "Loading hospitals..." : "Enter your hospital name"}
+                  value={formData.hospitalName}
+                  onChange={handleChange}
+                  className={inputClass}
+                  required
+                />
+              )}
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={loading}
@@ -207,13 +164,11 @@ export default function Login() {
           </button>
         </form>
 
-
-        {/* Register Link */}
         <p className="mt-6 text-center text-gray-600">
-          Dont have an account?{" "}
-          <a href="/accounts/register" className="text-blue-600 hover:text-blue-800 font-medium">
+          Don&apos;t have an account?{" "}
+          <Link to="/register" className="text-blue-600 hover:text-blue-800 font-medium">
             Register
-          </a>
+          </Link>
         </p>
       </div>
     </div>

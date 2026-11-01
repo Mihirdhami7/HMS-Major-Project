@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { Users, Activity, UserCheck, Scissors } from "lucide-react"
+import PropTypes from "prop-types"
 
 const stats = [
   { icon: Users,     value: 23,   suffix: "+", label: "Pediatric Specialities" },
@@ -36,6 +37,15 @@ function StatCard({ stat, active }) {
       <p className="text-sm text-gray-500 mt-1">{stat.label}</p>
     </div>
   )
+}
+
+StatCard.propTypes = {
+  stat: PropTypes.shape({
+    value: PropTypes.number,
+    suffix: PropTypes.string,
+    label: PropTypes.string,
+  }).isRequired,
+  active: PropTypes.bool,
 }
 
 export default function Insights() {

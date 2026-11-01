@@ -1,197 +1,162 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
 import { Package, AlertCircle, Truck, Search, Check, X, ShoppingCart, RefreshCw } from 'lucide-react';
 import Slidebar from '../../components/Sidebar';
-import axios from 'axios';
-import { getHospitalProducts, getHospitalStockRequests, getUserProfile } from '../../services/userService';
-import { getToken } from '../../services/authService';
+import { useAuth } from '../../context/AuthContext';
+import { pickList } from '../../services/apiClient';
+import {
+  listProducts,
+  listOrders,
+  createOrder,
+  listUnapprovedProducts,
+  approveProduct,
+  completeOrder as completeOrderApi,
+} from '../../services/orderService';
+import { createRazorpayOrder, verifyRazorpayPayment } from '../../services/paymentService';
+
+const RAZORPAY_SRC = "https://checkout.razorpay.com/v1/checkout.js";
+
+// Load the Razorpay checkout script once, only when a payment is started.
+const loadRazorpay = () =>
+  new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const existing = document.querySelector(`script[src="${RAZORPAY_SRC}"]`);
+    if (existing) {
+      existing.addEventListener("load", () => resolve(true));
+      existing.addEventListener("error", () => resolve(false));
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = RAZORPAY_SRC;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+
+const getId = (doc) => doc?._id || doc?.id;
 
 const Products = () => {
-  const navigate = useNavigate();
+  const { token, user } = useAuth();
+  const hospitalName = user?.hospitalName || "";
   const [products, setProducts] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("All Types");
   const [selectedStatus, setSelectedStatus] = useState("All Status");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [stockRequests, setStockRequests] = useState([]);
   const [newProducts, setNewProducts] = useState([]);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [requestQuantity, setRequestQuantity] = useState(50);
   const [showNewProductsModal, setShowNewProductsModal] = useState(false);
-  const [hospitalName, setHospitalName] = useState("");
-
   const [requestLoading, setRequestLoading] = useState(false);
+  const [payingOrderId, setPayingOrderId] = useState(null);
 
-  useEffect(() => {
-    const initData = async () => {
-      const token = getToken();
-      if (!token) {
-        navigate("/login");
-        return;
-      }
-
-      // Fetch user profile to get hospital name
-      const userResult = await getUserProfile(token);
-      if (userResult.success) {
-        const hName = userResult.data.hospitalName || "Zydus";
-        setHospitalName(hName);
-        
-        // Fetch products and stock requests
-        fetchProducts(hName, token);
-        fetchStockRequests(hName, token);
-        fetchNewProducts(hName, token);
-      } else if (userResult.status === 401) {
-        navigate("/login");
-      }
-    };
-
-    initData();
-  }, [navigate]);
-
-  const fetchProducts = async (hName, token) => {
-    setLoading(true);
-    const result = await getHospitalProducts(hName, token);
+  const fetchProducts = useCallback(async () => {
+    if (!token || !hospitalName) return;
+    const result = await listProducts(token, hospitalName);
     if (result.success) {
-      // Process products to add status based on stock level
-      const processedProducts = result.data.map(product => ({
-        name: product["Product Name"],
-        type: product["Product Type"],
-        supplier: product["Supplier Company"],
-        price: product["Price (Per Unit/Strip)"],
-        stock: product["Stock"],
-        status: (product["Stock"] || 0) <= 40 ? "Low Stock" : "In Stock",
+      const processedProducts = pickList(result, "products").map((product) => ({
+        id: getId(product),
+        name: product.product_name,
+        type: product.product_type,
+        supplier: product.supplier_company,
+        price: product.price_per_strip,
+        stock: product.stock ?? 0,
+        department: product.department,
+        status: product.status || ((product.stock || 0) < 40 ? "Low Stock" : "In Stock"),
       }));
       setProducts(processedProducts);
-      console.log("Fetched products:", processedProducts);
     } else {
-      console.error("Error fetching products:", result.error);
+      setError(result.message);
     }
-    setLoading(false);
-  };
+  }, [token, hospitalName]);
 
-  const fetchStockRequests = async (hName, token) => {
-    const result = await getHospitalStockRequests(hName, token);
+  const fetchStockRequests = useCallback(async () => {
+    if (!token) return;
+    const result = await listOrders(token);
     if (result.success) {
-      setStockRequests(result.data || []);
-      const pendingRequests = (result.data || []).filter(req => req.status === "requested");
-      console.log("Pending Requests:", pendingRequests);
+      setStockRequests(pickList(result, "orders"));
     } else {
-      console.error("Error fetching stock requests:", result.error);
+      setError(result.message);
     }
-  };
+  }, [token]);
 
-  const handleRequestStock = async (product) => {
+  const fetchNewProducts = useCallback(async () => {
+    if (!token || !hospitalName) return;
+    const result = await listUnapprovedProducts(token, hospitalName);
+    if (result.success) {
+      setNewProducts(pickList(result, "products"));
+    } else {
+      setError(result.message);
+    }
+  }, [token, hospitalName]);
+
+  const loadAll = useCallback(async () => {
+    if (!hospitalName) {
+      setError("Hospital information is missing from your account. Please log in again.");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    await Promise.all([fetchProducts(), fetchStockRequests(), fetchNewProducts()]);
+    setLoading(false);
+  }, [hospitalName, fetchProducts, fetchStockRequests, fetchNewProducts]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  const handleRequestStock = (product) => {
     setSelectedProduct(product);
     setShowRequestModal(true);
   };
 
   const submitStockRequest = async () => {
-    try {
-      setRequestLoading(true);
-      const token = getToken();
-      
-      if (!selectedProduct) {
-        console.error("No product selected");
-        return;
-      }
-      if (!hospitalName) {
-        console.error("Hospital name is missing");
-        return;
-      }
-      if (requestQuantity <= 0) {
-        alert("Please enter a valid quantity.");
-        return;
-      }
-      if(!selectedProduct.price || selectedProduct.price <= 0) {
-        alert("Price is not available for this product.");
-        return;
-      }
-      
-      await axios.post("http://127.0.0.1:8000/api/orders/request_stock/", {
-        product_name: selectedProduct.name,
-        product_type: selectedProduct.type,
-        supplier: selectedProduct.supplier,
-        hospital_name: hospitalName,
-        quantity: requestQuantity,
-        price_per_strip: parseFloat(selectedProduct.price) || 0
-        
-      }, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      console.log("Stock request sent successfully");
-      alert("Stock request sent successfully!");
-
+    if (!selectedProduct) return;
+    if (requestQuantity <= 0) {
+      alert("Please enter a valid quantity.");
+      return;
+    }
+    if (!selectedProduct.price || selectedProduct.price <= 0) {
+      alert("Price is not available for this product.");
+      return;
+    }
+    setRequestLoading(true);
+    const result = await createOrder(token, {
+      product_id: selectedProduct.id,
+      product_name: selectedProduct.name,
+      product_type: selectedProduct.type,
+      supplier_company: selectedProduct.supplier,
+      hospitalName,
+      department: selectedProduct.department || "",
+      quantity: requestQuantity,
+      price_per_strip: parseFloat(selectedProduct.price),
+    });
+    setRequestLoading(false);
+    if (result.success) {
+      alert(result.message || "Stock request sent successfully!");
       setShowRequestModal(false);
       setSelectedProduct(null);
-      setRequestQuantity(0);
-      
-      // Refresh stock requests
-      fetchStockRequests(hospitalName, token);
-    } catch (error) {
-      console.error("Error requesting stock:", error);
-      alert("Failed to send stock request. Please try again.");
-    }
-    finally {
-      setRequestLoading(false);
+      setRequestQuantity(50);
+      fetchStockRequests();
+    } else {
+      alert(result.message);
     }
   };
-    // Add this function to fetch new products from temp_products collection
-const fetchNewProducts = async (hName, token) => {
-  try {
-    const response = await axios.get(`http://127.0.0.1:8000/api/orders/get_new_products/${hName}/`, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-    
-    if (response.data.status === "success") {
-      setNewProducts(response.data.products || []);
-      console.log("Fetched new products:", response.data.products);
-    } else {
-      console.error("Error in API response:", response.data.message);
-    }
-  } catch (error) {
-    console.error("Error fetching new products:", error);
-  }
-};
 
   const handleApproveProduct = async (productId, status) => {
-    try {
-      const token = getToken();
-      
-      await axios.put(`http://127.0.0.1:8000/api/orders/approve_new_product/${productId}/`, {
-        status,
-        hospital_name: hospitalName
-      }, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      
-      // Update product status locally
-      setNewProducts(newProducts.map(product => 
-        product._id === productId ? { ...product, status } : product
-      ));
-      
-      // If approved, refresh products
-      if (status === "approved") {
-        const token = getToken();
-        fetchProducts(hospitalName, token);
-      }
-      
-      // Add notification
-      const product = newProducts.find(p => p._id === productId);
-      console.log(`Product ${product.name} has been ${status}`);
-    } catch (error) {
-      console.error("Error updating product status:", error);
-      alert("Failed to update product status. Please try again.");
+    const result = await approveProduct(token, productId, { status });
+    if (!result.success) {
+      alert(result.message);
+      return;
     }
+    // Approved products move to the inventory; rejected ones are deleted by the backend.
+    setNewProducts((prev) => prev.filter((product) => getId(product) !== productId));
+    if (status === "approved") fetchProducts();
   };
-
 
   // Filter products based on search and selected filters
   const filteredProducts = products.filter((product) => {
@@ -206,162 +171,108 @@ const fetchNewProducts = async (hName, token) => {
     );
   });
 
+  const productTypes = [...new Set(products.map((p) => p.type).filter(Boolean))];
+
   // Calculate counts from actual data
   const totalProducts = products.length;
-  const lowStockItems = products.filter(product => product.status === 'Low Stock').length;
-  const pendingRequestsCount = stockRequests.filter(req => req.status === "requested").length || 0;
-  const newProductsCount = newProducts.filter(prod => prod.status === "pending").length || 0;
+  const lowStockItems = products.filter(product => product.status !== 'In Stock').length;
+  const pendingRequestsCount = stockRequests.filter(req => req.status === "requested").length;
+  const newProductsCount = newProducts.length;
 
-  useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => {
-        console.log("Razorpay SDK loaded successfully.");
-    };
-    script.onerror = () => {
-        console.error("Failed to load Razorpay SDK.");
-    };
-    document.body.appendChild(script);
-}, []);
+  const finishOrder = async (order, paymentId) => {
+    const result = await completeOrderApi(token, getId(order), {
+      hospitalName,
+      payment_id: paymentId,
+    });
+    if (result.success) {
+      alert("Payment successful! Order has been completed.");
+      await Promise.all([fetchStockRequests(), fetchProducts()]);
+    } else {
+      setNotice(`Payment went through but the order could not be marked completed: ${result.message}`);
+    }
+  };
 
   const completeOrder = async (order) => {
-    if (!order || !order._id) {
+    const orderId = getId(order);
+    if (!orderId) {
       alert("Invalid order information");
       return;
     }
-  
+    const quantity = order.quantity_fulfilled || order.quantity_ordered;
+    const amount = (quantity * order.price_per_strip) || Number(order.total_price);
+    if (!amount || amount <= 0) {
+      alert("Invalid amount for payment.");
+      return;
+    }
+
+    setNotice("");
+    setPayingOrderId(orderId);
+    const paymentId = `PAY-${orderId}-${Date.now()}`;
+    const paymentData = {
+      payment_id: paymentId,
+      order_id: orderId,
+      source: "SUPPLIER",
+      category: "SUPPLIER_PURCHASE",
+      amount: Number(amount.toFixed(2)),
+      currency: "INR",
+      quantity,
+      hospital_name: hospitalName,
+      company_name: order.supplier_company,
+      product_name: order.product_name,
+      // Orders do not store the supplier's user id; the company name identifies the supplier.
+      supplier_id: order.supplier_company,
+      supplier_name: order.supplier_company,
+      purchase_order_id: orderId,
+    };
+
     try {
-      const hospitalName = sessionStorage.getItem("hospitalName");
-      if (!hospitalName) {
-        console.error("Hospital name is missing in session storage.");
+      const created = await createRazorpayOrder(token, paymentData);
+      if (!created.success) {
+        setNotice(`Payment could not be started: ${created.message}`);
         return;
       }
-      if (!order.supplier) {
-        alert("Supplier information is missing in the order.");
+      const loaded = await loadRazorpay();
+      if (!loaded || !window.Razorpay) {
+        setNotice("Could not load the Razorpay checkout. Check your internet connection.");
         return;
       }
-      if (!order.product_name) {
-        alert("Product name is missing in the order.");
-        return;
-      }
-
-
-  
-      // Calculate the total amount to be paid
-      const amount = order.total_price || (order.quantity_fulfilled * order.price_per_strip);
-      if (amount <= 0) {
-        alert("Invalid amount for payment.");
-        return;
-      }
-  
-      // Create payment order
-      const response = await axios.post("http://127.0.0.1:8000/api/payments/create_payment_products/", {
-        amount: amount,
-        companyName: order.supplier,
-        hospitalName: hospitalName,
-        product_name: order.product_name,
-        quantity: order.quantity_fulfilled,
-        order_id: order._id // Pass the existing order ID to link the payment
-      }, {
-        headers: {
-          Authorization: `Bearer ${sessionStorage.getItem("session_Id")}`
-        }
-      });
-  
-      const { order_id, key } = response.data;
-  
-      // Open Razorpay payment modal
-      const options = {
-        key: key,
-        amount: amount * 100, // Amount in paise
-        currency: "INR",
+      const { razorpay_key_id, razorpay_order } = created.data || {};
+      const razorpay = new window.Razorpay({
+        key: razorpay_key_id,
+        amount: razorpay_order?.amount,
+        currency: razorpay_order?.currency || "INR",
         name: "HMS Healthcare",
-        description: "Supplier payment for product order",
-        order_id: order_id,
-        handler: async function (paymentResult) {
-          // Verify payment
-          const payment_id = paymentResult.razorpay_payment_id;
-          const verifyResponse = await axios.post("http://127.0.0.1:8000/api/payments/verify_payment_products/", {
-            payment_id: payment_id,
-            order_id: order_id,
-            companyName: hospitalName,
-            hospitalName: hospitalName,
-            product_name: order.product_name,
-            quantity: order.quantity_fulfilled,
-            amount: amount, 
-          }, {
-            headers: {
-              Authorization: `Bearer ${sessionStorage.getItem("session_Id")}`
-            }
+        description: `Supplier payment for ${order.product_name}`,
+        order_id: razorpay_order?.id,
+        handler: async (paymentResult) => {
+          const verified = await verifyRazorpayPayment(token, {
+            ...paymentData,
+            razorpay_order_id: paymentResult.razorpay_order_id,
+            razorpay_payment_id: paymentResult.razorpay_payment_id,
+            razorpay_signature: paymentResult.razorpay_signature,
           });
-  
-          if (verifyResponse.data.status === "success") {
-            console.log("Payment verification successful:", verifyResponse.data);
-            
-            // Update order status to fulfilled after successful payment
-            const updateResponse = await axios.post(`http://127.0.0.1:8000/api/orders/complete_order/${order._id}/`, {
-              hospital_name: hospitalName,
-              payment_id: payment_id,
-            }, {
-              headers: {
-                Authorization: `Bearer ${sessionStorage.getItem("session_Id")}`
-              }
-            });
-            
-            if (updateResponse.data.status === "success") {
-              alert("Payment successful! Order has been completed.");
-              
-              // Update the local state to reflect the change
-              setStockRequests(stockRequests.map(req => 
-                req._id === order._id 
-                  ? { ...req, status: "completed", updated_at: new Date() } 
-                  : req
-              ));
-              
-              // Refresh products to update stock
-              await fetchProducts();
-            } else {
-              alert(updateResponse.data.message || "Failed to update order status. Please contact support.");
-            }
-          } else {
-            alert("Payment verification failed. Please try again.");
+          if (!verified.success) {
+            setNotice(`Payment verification failed: ${verified.message}`);
+            return;
           }
+          await finishOrder(order, paymentId);
         },
-        prefill: {
-          email: sessionStorage.getItem("email"),
-        },
-        theme: {
-          color: "#3399cc",
-        },
-      };
-  
-      const razorpay = new window.Razorpay(options);
+        prefill: { email: user?.email, name: user?.name },
+        theme: { color: "#3399cc" },
+      });
       razorpay.open();
-    } catch (error) {
-      console.error("Error processing payment:", error);
-      alert("An error occurred while processing the payment. Please try again.");
-    }
-  };
-
-
-  const handleRefresh = async () => {
-    setLoading(true);
-    try {
-      await fetchProducts();
-      await fetchStockRequests();
-      await fetchNewProducts();
-      console.log("Data refreshed successfully");
-    } catch (error) {
-      console.error("Error refreshing data:", error);
     } finally {
-      setLoading(false);
+      setPayingOrderId(null);
     }
   };
 
+  const handleRefresh = () => {
+    loadAll();
+  };
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-green-50 to-blue-50">
-      <Slidebar activeTab="department" userType="admin" />
+      <Slidebar activeTab="product" />
       
      
       
@@ -382,6 +293,16 @@ const fetchNewProducts = async (hName, token) => {
               Refresh Data
             </button>
           </div>
+
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">{error}</div>
+          )}
+          {notice && (
+            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg flex justify-between items-start">
+              <span>{notice}</span>
+              <button onClick={() => setNotice("")} className="ml-4 text-yellow-700 hover:text-yellow-900"><X size={16} /></button>
+            </div>
+          )}
             
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
@@ -435,7 +356,7 @@ const fetchNewProducts = async (hName, token) => {
                   { (
                     <button 
                       onClick={() => {
-                        fetchNewProducts(); // Fetch new products when the button is clicked
+                        fetchNewProducts();
                         setShowNewProductsModal(true);
                       }} 
                       className="px-3 py-1 bg-gradient-to-r from-teal-500 to-blue-500 text-white rounded-md text-xs hover:from-teal-600 hover:to-blue-600 transition-colors"
@@ -469,8 +390,9 @@ const fetchNewProducts = async (hName, token) => {
                     onChange={(e) => setSelectedType(e.target.value)}
                   >
                     <option>All Types</option>
-                    <option>Medicine</option>
-                    <option>Equipment</option>
+                    {productTypes.map((type) => (
+                      <option key={type}>{type}</option>
+                    ))}
                   </select>
                   <select
                     className="border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
@@ -480,6 +402,7 @@ const fetchNewProducts = async (hName, token) => {
                     <option>All Status</option>
                     <option>In Stock</option>
                     <option>Low Stock</option>
+                    <option>Out of Stock</option>
                   </select>
                 </div>
               </div>
@@ -488,7 +411,7 @@ const fetchNewProducts = async (hName, token) => {
               <div className="overflow-x-auto max-h-96 overflow-y-auto">
                 {loading ? (
                   <div className="flex justify-center items-center py-8">
-                    <div className="px-4 py-2 flex items-center bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-lg hover:from-blue-600 hover:to-green-600 transition-all"></div>
+                    <RefreshCw size={24} className="animate-spin text-teal-600" />
                   </div>
                 ) : (
                   <table className="min-w-full bg-white">
@@ -602,26 +525,26 @@ const fetchNewProducts = async (hName, token) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {stockRequests && stockRequests.filter(req => req.status === "requested" || !req.status).length > 0 ? (
+                    {stockRequests.filter(req => req.status === "requested" || !req.status).length > 0 ? (
                       stockRequests
                       .filter(req => req.status === "requested" || !req.status)
                       .map((request) => (
-                        <tr key={request._id || Math.random().toString(36).substr(2, 9)} 
+                        <tr key={getId(request)} 
                             className="hover:bg-green-50 transition-colors">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {request.product_name}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {request.supplier}
+                            {request.supplier_company}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {request.quantity}
+                            {request.quantity_ordered}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {request.price_per_strip}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            { new Date(request.created_at || new Date()).toLocaleString()}
+                            {request.order_date || request.created_at ? new Date(request.order_date || request.created_at).toLocaleString() : '-'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
@@ -632,7 +555,7 @@ const fetchNewProducts = async (hName, token) => {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="5" className="px-6 py-4 text-center text-gray-500">
+                        <td colSpan="6" className="px-6 py-4 text-center text-gray-500">
                           No stock requests found
                         </td>
                       </tr>
@@ -678,29 +601,31 @@ const fetchNewProducts = async (hName, token) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {stockRequests && stockRequests.filter(req => req.status === "processing" || req.status === "fulfilled").length > 0 ? (
+                    {stockRequests.filter(req => req.status === "processing" || req.status === "completed").length > 0 ? (
                       stockRequests
                         .filter(req => req.status === "processing" || req.status === "completed")
                         .map((order) => (
-                          <tr key={order._id || Math.random().toString(36).substr(2, 9)} 
+                          <tr key={getId(order)} 
                               className="hover:bg-green-50 transition-colors">
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                               {order.product_name}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {order.supplier}
+                              {order.supplier_company}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {order.quantity}
+                              {order.quantity_ordered}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {order.quantity_fulfilled || '-'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              ₹{order.total_price?.toFixed(2) || '-'}
+                              {order.quantity_fulfilled && order.price_per_strip
+                                ? `₹${(order.quantity_fulfilled * order.price_per_strip).toFixed(2)}`
+                                : '-'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              { new Date(order.updated_at || new Date()).toLocaleString()}
+                              {order.updated_at ? new Date(order.updated_at).toLocaleString() : '-'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
@@ -713,12 +638,13 @@ const fetchNewProducts = async (hName, token) => {
                               {order.status === 'processing' && (
                                 <button
                                   onClick={() => completeOrder(order)}
-                                  className="px-3 py-1 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-lg hover:from-green-600 hover:to-teal-600 text-xs transition-colors"
+                                  disabled={payingOrderId === getId(order)}
+                                  className="px-3 py-1 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-lg hover:from-green-600 hover:to-teal-600 text-xs transition-colors disabled:opacity-50"
                                 >
-                                  Complete Order
+                                  {payingOrderId === getId(order) ? 'Starting payment...' : 'Pay & Complete'}
                                 </button>
                               )}
-                              {order.status === 'fulfilled' && (
+                              {order.status === 'completed' && (
                                 <span className="text-xs text-gray-500">Completed</span>
                               )}
                             </td>
@@ -726,8 +652,8 @@ const fetchNewProducts = async (hName, token) => {
                         ))
                     ) : (
                       <tr>
-                        <td colSpan="7" className="px-6 py-4 text-center text-gray-500">
-                          No processing or fulfilled orders found
+                        <td colSpan="8" className="px-6 py-4 text-center text-gray-500">
+                          No processing or completed orders found
                         </td>
                       </tr>
                     )}
@@ -895,46 +821,42 @@ const fetchNewProducts = async (hName, token) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {newProducts && newProducts.length > 0 ? (
+                  {newProducts.length > 0 ? (
                     newProducts.map((product) => (
-                      <tr key={product._id || Math.random().toString(36).substr(2, 9)} 
+                      <tr key={getId(product)} 
                           className="hover:bg-green-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {product["Product Name"]}
+                          {product.product_name}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {product["Product Type"]}
+                          {product.product_type}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {product["Supplier Company"]}
+                          {product.supplier_company}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          ₹{product["Price (Per Unit/Strip)"]}
+                          ₹{product.price_per_strip}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {product["Stock"]}
+                          {product.stock}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            product.status === 'approved' ? 'bg-green-100 text-green-800' :
-                            product.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                            'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {product.status ? (product.status.charAt(0).toUpperCase() + product.status.slice(1)) : 'Pending'}
+                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                            Pending
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {product.status === 'pending' && (
+                          {!product.is_approved && (
                             <div className="flex space-x-2">
                               <button
-                                onClick={() => handleApproveProduct(product._id, "approved")}
+                                onClick={() => handleApproveProduct(getId(product), "approved")}
                                 className="p-1 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
                                 title="Approve"
                               >
                                 <Check size={16} />
                               </button>
                               <button
-                                onClick={() => handleApproveProduct(product._id, "rejected")}
+                                onClick={() => handleApproveProduct(getId(product), "rejected")}
                                 className="p-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
                                 title="Reject"
                               >

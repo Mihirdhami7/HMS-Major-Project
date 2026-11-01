@@ -1,8 +1,10 @@
-import { useState, useEffect,} from "react";
-import { Route, Routes, useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import PropTypes from "prop-types";
 import Slidebar from "../../components/Sidebar";
-import Appointment from "./Appointments";
-import Disease from "./Disease";
+import { useAuth } from "../../context/AuthContext";
+import { pickList } from "../../services/apiClient";
+import { getMyAppointments, getMyPrescriptions } from "../../services/appointmentsService";
 import {
   BarChart,
   Bar,
@@ -16,23 +18,7 @@ import {
   Cell,
 } from "recharts";
 
-// ── appointment history data ──────────────────────────────────────────────────
-const appointmentData = [
-  { month: "Dec", scheduled: 1, completed: 1 },
-  { month: "Jan", scheduled: 2, completed: 2 },
-  { month: "Feb", scheduled: 1, completed: 1 },
-  { month: "Mar", scheduled: 3, completed: 2 },
-  { month: "Apr", scheduled: 2, completed: 2 },
-  { month: "May", scheduled: 1, completed: 0 },
-];
-
-// ── health score breakdown data ───────────────────────────────────────────────
-const healthData = [
-  { name: "Good", value: 82, color: "#22c55e" },
-  { name: "Needs attention", value: 18, color: "#e5e7eb" },
-];
-
-// ── health tips ───────────────────────────────────────────────────────────────
+// ── health tips (static content) ──────────────────────────────────────────────
 const healthTips = [
   { icon: "💧", tip: "Drink at least 8 glasses of water daily." },
   { icon: "🚶", tip: "Take a 30-minute walk for heart health." },
@@ -52,17 +38,17 @@ const features = [
   },
   {
     icon: "🛡️",
-    title: "Secure Records",
-    desc: "Access and share your medical records safely at any time.",
+    title: "Your History",
+    desc: "See all your past appointments and prescriptions in one place.",
     color: "green",
-    path: null,
+    path: "/patient/appointments",
   },
   {
-    icon: "💡",
-    title: "Health Insights",
-    desc: "Get personalised tips and recommendations based on your profile.",
+    icon: "👤",
+    title: "Your Profile",
+    desc: "Keep your contact details and personal information up to date.",
     color: "amber",
-    path: null,
+    path: "/patient/profile",
   },
   {
     icon: "🔬",
@@ -81,6 +67,16 @@ const colorMap = {
   teal:  { bg: "bg-teal-50",   text: "text-teal-600",  border: "border-teal-400" },
 };
 
+const STATUS_COLORS = {
+  pending: "#facc15",
+  approved: "#60a5fa",
+  completed: "#4ade80",
+  rejected: "#f87171",
+};
+
+const apptDate = (a) => a.acceptedDate || a.appointmentDate;
+const apptTime = (a) => a.acceptedTime || a.requestedTime || "";
+
 // ── stat card ─────────────────────────────────────────────────────────────────
 function StatCard({ icon, label, value, sub }) {
   return (
@@ -96,6 +92,13 @@ function StatCard({ icon, label, value, sub }) {
     </div>
   );
 }
+
+StatCard.propTypes = {
+  icon: PropTypes.node,
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  sub: PropTypes.string,
+};
 
 // ── feature card ──────────────────────────────────────────────────────────────
 function FeatureCard({ icon, title, desc, color, onClick }) {
@@ -117,6 +120,14 @@ function FeatureCard({ icon, title, desc, color, onClick }) {
   );
 }
 
+FeatureCard.propTypes = {
+  icon: PropTypes.node,
+  title: PropTypes.string.isRequired,
+  desc: PropTypes.string,
+  color: PropTypes.oneOf(Object.keys(colorMap)).isRequired,
+  onClick: PropTypes.func,
+};
+
 // ── custom tooltip for bar chart ──────────────────────────────────────────────
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -132,8 +143,53 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
+CustomTooltip.propTypes = {
+  active: PropTypes.bool,
+  payload: PropTypes.array,
+  label: PropTypes.string,
+};
+
+/** Last 6 calendar months (oldest first) with booked / completed counts. */
+const buildMonthlyData = (appointments) => {
+  const now = new Date();
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      month: d.toLocaleString(undefined, { month: "short" }),
+      scheduled: 0,
+      completed: 0,
+    });
+  }
+  appointments.forEach((a) => {
+    const key = (apptDate(a) || "").slice(0, 7);
+    const m = months.find((x) => x.key === key);
+    if (!m) return;
+    m.scheduled += 1;
+    if (a.status === "completed") m.completed += 1;
+  });
+  return months;
+};
+
 // ── dashboard content ─────────────────────────────────────────────────────────
-function Dashboard({ userData, navigate }) {
+function Dashboard({ name, appointments, prescriptions, loading, error, navigate }) {
+  const today = new Date().toISOString().split("T")[0];
+
+  const stats = useMemo(() => {
+    const upcoming = appointments
+      .filter((a) => (a.status === "approved" || a.status === "pending") && (apptDate(a) || "") >= today)
+      .sort((a, b) => `${apptDate(a)} ${apptTime(a)}`.localeCompare(`${apptDate(b)} ${apptTime(b)}`));
+    const completed = appointments.filter((a) => a.status === "completed").length;
+    const doctors = new Set(appointments.map((a) => a.doctor?.email).filter(Boolean)).size;
+    const byStatus = Object.keys(STATUS_COLORS)
+      .map((s) => ({ name: s, value: appointments.filter((a) => a.status === s).length, color: STATUS_COLORS[s] }))
+      .filter((s) => s.value > 0);
+    return { upcoming, completed, doctors, byStatus, monthly: buildMonthlyData(appointments) };
+  }, [appointments, today]);
+
+  const next = stats.upcoming[0];
+
   return (
     <div className="space-y-6">
 
@@ -141,23 +197,49 @@ function Dashboard({ userData, navigate }) {
       <div className="bg-gradient-to-r from-blue-500 to-green-500 rounded-2xl p-6 text-white flex items-center justify-between shadow-sm">
         <div>
           <h1 className="text-2xl font-bold mb-1">
-            Welcome back, {userData?.name}! 👋
+            Welcome back{name ? `, ${name}` : ""}! 👋
           </h1>
           <p className="text-sm text-white/85">
-            Your health is our priority. Here's your summary for today.
+            Your health is our priority. Here&apos;s your summary for today.
           </p>
         </div>
         <div className="w-14 h-14 rounded-full bg-white/25 flex items-center justify-center text-2xl font-bold shrink-0">
-          {userData?.name?.[0] ?? "P"}
+          {name?.[0]?.toUpperCase() ?? ""}
         </div>
       </div>
 
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl text-sm">
+          {error}
+        </div>
+      )}
+
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard icon="📋" label="Appointments"  value="0"   sub="No upcoming" />
-        <StatCard icon="📁" label="Medical Records" value="3" sub="Reports saved" />
-        <StatCard icon="❤️" label="Health Score"  value="82"  sub="Out of 100" />
-        <StatCard icon="👨‍⚕️" label="Doctors"      value="2"   sub="Assigned to you" />
+        <StatCard
+          icon="📋"
+          label="Upcoming Appointments"
+          value={loading ? "…" : stats.upcoming.length}
+          sub={stats.upcoming.length ? "Pending or approved" : "No upcoming"}
+        />
+        <StatCard
+          icon="📁"
+          label="Prescriptions"
+          value={loading ? "…" : prescriptions.length}
+          sub="From your doctors"
+        />
+        <StatCard
+          icon="✅"
+          label="Completed Visits"
+          value={loading ? "…" : stats.completed}
+          sub={`${appointments.length} booked in total`}
+        />
+        <StatCard
+          icon="👨‍⚕️"
+          label="Doctors"
+          value={loading ? "…" : stats.doctors}
+          sub="You have consulted"
+        />
       </div>
 
       {/* Next appointment */}
@@ -168,7 +250,14 @@ function Dashboard({ userData, navigate }) {
           </div>
           <div>
             <p className="text-sm font-semibold text-gray-800">Next Appointment</p>
-            <p className="text-xs text-gray-400 mt-0.5">You have no upcoming appointments scheduled.</p>
+            {next ? (
+              <p className="text-xs text-gray-500 mt-0.5">
+                {apptDate(next)} {apptTime(next)} · Dr. {next.doctor?.name} · {next.department} ({next.hospitalName}) ·{" "}
+                <span className="capitalize">{next.status}</span>
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400 mt-0.5">You have no upcoming appointments scheduled.</p>
+            )}
           </div>
         </div>
         <button
@@ -188,60 +277,89 @@ function Dashboard({ userData, navigate }) {
           <p className="text-xs text-gray-400 mb-4">Last 6 months</p>
           <div className="flex gap-4 mb-3">
             <span className="flex items-center gap-1.5 text-xs text-gray-500">
-              <span className="w-3 h-3 rounded bg-blue-400 inline-block" /> Scheduled
+              <span className="w-3 h-3 rounded bg-blue-400 inline-block" /> Booked
             </span>
             <span className="flex items-center gap-1.5 text-xs text-gray-500">
               <span className="w-3 h-3 rounded bg-green-400 inline-block" /> Completed
             </span>
           </div>
           <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={appointmentData} barCategoryGap="30%">
+            <BarChart data={stats.monthly} barCategoryGap="30%">
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} allowDecimals={false} />
               <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="scheduled" name="Scheduled" fill="#60a5fa" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="scheduled" name="Booked" fill="#60a5fa" radius={[4, 4, 0, 0]} />
               <Bar dataKey="completed" name="Completed"  fill="#4ade80" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Health score donut + tips */}
+        {/* Appointment status donut */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col gap-4">
           <div>
-            <p className="text-sm font-semibold text-gray-800 mb-1">Health Score</p>
-            <p className="text-xs text-gray-400">Based on your profile</p>
+            <p className="text-sm font-semibold text-gray-800 mb-1">Appointment Status</p>
+            <p className="text-xs text-gray-400">All your appointments</p>
           </div>
-          <div className="flex items-center gap-6">
-            <div className="relative shrink-0">
-              <PieChart width={100} height={100}>
-                <Pie
-                  data={healthData}
-                  cx={45}
-                  cy={45}
-                  innerRadius={32}
-                  outerRadius={45}
-                  startAngle={90}
-                  endAngle={-270}
-                  dataKey="value"
-                  strokeWidth={0}
-                >
-                  {healthData.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
-                  ))}
-                </Pie>
-              </PieChart>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-lg font-bold text-gray-800">82</span>
+          {stats.byStatus.length === 0 ? (
+            <p className="text-xs text-gray-400">{loading ? "Loading…" : "No appointments yet."}</p>
+          ) : (
+            <div className="flex items-center gap-6">
+              <div className="relative shrink-0">
+                <PieChart width={100} height={100}>
+                  <Pie
+                    data={stats.byStatus}
+                    cx={45}
+                    cy={45}
+                    innerRadius={32}
+                    outerRadius={45}
+                    startAngle={90}
+                    endAngle={-270}
+                    dataKey="value"
+                    strokeWidth={0}
+                  >
+                    {stats.byStatus.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Pie>
+                </PieChart>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-lg font-bold text-gray-800">{appointments.length}</span>
+                </div>
+              </div>
+              <div className="text-xs text-gray-500 space-y-1">
+                {stats.byStatus.map((s) => (
+                  <p key={s.name} className="flex items-center gap-2 capitalize">
+                    <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: s.color }} />
+                    {s.name} — {s.value}
+                  </p>
+                ))}
               </div>
             </div>
-            <div className="text-xs text-gray-500 space-y-1">
-              <p className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block" /> Good — 82%</p>
-              <p className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-gray-200 inline-block" /> Needs attention — 18%</p>
-              <p className="text-gray-400 mt-2 leading-relaxed">Keep up your healthy habits to improve your score!</p>
-            </div>
-          </div>
+          )}
         </div>
+      </div>
+
+      {/* Recent prescriptions */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <h2 className="text-sm font-semibold text-gray-800 mb-3">Recent Prescriptions</h2>
+        {prescriptions.length === 0 ? (
+          <p className="text-xs text-gray-400">{loading ? "Loading…" : "No prescriptions yet."}</p>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {prescriptions.slice(0, 3).map((p) => (
+              <li key={p._id} className="py-2 text-xs text-gray-600 flex justify-between gap-4">
+                <span>
+                  Dr. {p.doctor?.name} · {p.department} ·{" "}
+                  {(p.medicines || []).map((m) => m.name).join(", ") || "No medicines"}
+                </span>
+                <span className="text-gray-400 whitespace-nowrap">
+                  {p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* How EasyTreat helps */}
@@ -298,30 +416,58 @@ function Dashboard({ userData, navigate }) {
   );
 }
 
+Dashboard.propTypes = {
+  name: PropTypes.string,
+  appointments: PropTypes.array.isRequired,
+  prescriptions: PropTypes.array.isRequired,
+  loading: PropTypes.bool,
+  error: PropTypes.string,
+  navigate: PropTypes.func.isRequired,
+};
+
 // ── main component ────────────────────────────────────────────────────────────
 function PatientSection() {
+  const { token, user } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [userData, setUserData] = useState(null);
+  const [appointments, setAppointments] = useState([]);
+  const [prescriptions, setPrescriptions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const email    = localStorage.getItem("userEmail");
-    const userType = localStorage.getItem("userType");
-    setUserData({ name: "Patient", email, type: userType });
-  }, []);
+    if (!token) return undefined;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const [apptRes, prescRes] = await Promise.all([
+        getMyAppointments(token),
+        getMyPrescriptions(token),
+      ]);
+      if (cancelled) return;
+      setAppointments(pickList(apptRes, "appointments"));
+      setPrescriptions(pickList(prescRes, "prescriptions"));
+      const failed = [apptRes, prescRes].find((r) => !r.success);
+      setError(failed ? failed.message : null);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   return (
     <div className="flex bg-gray-50 min-h-screen">
-      <Slidebar activeTab={activeTab} setActiveTab={setActiveTab} userType="patient" />
+      <Slidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       <div className="flex-1 p-6 mt-16">
-        <Routes>
-          <Route path="/patient/appointments" element={<Appointment />} />
-          <Route path="/patient/disease"      element={<Disease />} />
-          <Route
-            path="*"
-            element={<Dashboard userData={userData} navigate={navigate} />}
-          />
-        </Routes>
+        <Dashboard
+          name={user?.name}
+          appointments={appointments}
+          prescriptions={prescriptions}
+          loading={loading}
+          error={error}
+          navigate={navigate}
+        />
       </div>
     </div>
   );

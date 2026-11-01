@@ -26,3 +26,6 @@ __pycache__/
 
 
 
+
+# Local sample / seed data (contains personal data + password hashes)
+Backend/sample data/

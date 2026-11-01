@@ -1,130 +1,99 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Slidebar from "../../components/Sidebar";
 import { FiPackage, FiSearch, FiFilter, FiRefreshCw } from "react-icons/fi";
-import { getUserProfile, getHospitalProducts } from "../../services/userService";
-import { getToken } from "../../services/authService";
+import { useAuth } from "../../context/AuthContext";
+import { useHospitals } from "../../hooks/useHospitals";
+import { pickList } from "../../services/apiClient";
+import { listProducts } from "../../services/orderService";
 
 const MedicalProducts = () => {
+  const { token, user } = useAuth();
+  const { hospitals } = useHospitals(token);
+  const hospitalName = user?.hospitalName || "";
   const [activeTab, setActiveTab] = useState("medical_products");
   const [searchTerm, setSearchTerm] = useState("");
   const [category, setCategory] = useState("all");
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [hospitalName, setHospitalName] = useState("");
   const [error, setError] = useState(null);
+
+  const hospital = useMemo(
+    () => hospitals.find((h) => h.name?.toLowerCase() === hospitalName.toLowerCase()) || null,
+    [hospitals, hospitalName]
+  );
+
+  const fetchProducts = useCallback(async () => {
+    if (!token) return;
+    if (!hospitalName) {
+      setError("No hospital is linked to your account.");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const result = await listProducts(token, hospitalName);
+    if (result.success) {
+      setProducts(
+        pickList(result, "products").map((product) => ({
+          id: product._id || product.id,
+          name: product.product_name || "Unnamed product",
+          category: product.product_type || "Other",
+          price: Number(product.price_per_strip) || 0,
+          description: product.description || "",
+          stock: Number(product.stock) || 0,
+          status: product.status || "",
+          supplier: product.supplier_company || "-",
+          department: product.department || "",
+        }))
+      );
+      setError(null);
+    } else {
+      setProducts([]);
+      setError(result.message || "Failed to fetch products");
+    }
+    setLoading(false);
+  }, [token, hospitalName]);
 
   useEffect(() => {
     fetchProducts();
-  }, []);
+  }, [fetchProducts]);
 
-  const fetchProducts = async () => {
-    setLoading(true);
-    try {
-      const token = getToken();
-      if (!token) {
-        setError("Session expired. Please login again.");
-        return;
-      }
-
-      // Get user profile to get hospital name
-      const profileResult = await getUserProfile(token);
-      if (!profileResult.success) {
-        setError("Failed to fetch user profile");
-        return;
-      }
-
-      const hospital = profileResult.data?.hospitalName;
-      setHospitalName(hospital);
-
-      if (!hospital) {
-        setError("Hospital name not found in user profile");
-        return;
-      }
-
-      // Get products for the hospital
-      const productsResult = await getHospitalProducts(hospital, token);
-      
-      if (productsResult.success) {
-        // Process products to match the format needed for display
-        const processedProducts = productsResult.data.map(product => ({
-          name: product["Product Name"],
-          category: product["Product Type"],
-          price: `$${product["Price (Per Unit/Strip)"]}`,
-          description: product["Product Description"] || `High-quality ${product["Product Type"].toLowerCase()}`,
-          image: product["Image"] || `/images/products/${product["Product Type"].toLowerCase()}.jpg`,
-          stock: product["Stock"],
-          supplier: product["Supplier Company"]
-        }));
-        setProducts(processedProducts);
-        setError(null);
-      } else {
-        setError(productsResult.error || "Failed to fetch products");
-      }
-    } catch (error) {
-      console.error("Error fetching products:", error);
-      setError("Failed to fetch products. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const categories = useMemo(
+    () => [...new Set(products.map((p) => p.category).filter(Boolean))].sort(),
+    [products]
+  );
 
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
-    // Better category matching
-    const matchesCategory = 
-      category === "all" || 
+    const matchesCategory =
+      category === "all" ||
       product.category.toLowerCase() === category.toLowerCase();
-      
     return matchesSearch && matchesCategory;
   });
 
-  const handleRefresh = async () => {
-    await fetchProducts();
-  };
-
   return (
     <div className="flex h-screen bg-gradient-to-br from-blue-50 to-green-50">
-      <Slidebar userType="doctor" activeTab={activeTab} setActiveTab={setActiveTab} />
-      
+      <Slidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+
       <div className="flex-1 p-8 overflow-auto mt-16">
 
         {/* Hospital Name Display */}
         {hospitalName && (
-            <div className="mb-4 p-4 bg-white rounded-lg shadow-lg flex items-center border-l-4 border-blue-500">
-              <img
-                src={
-                  hospitalName === "Zydus"
-                    ? "/public/images/zydus.png"
-                    : hospitalName === "Iris"
-                    ? "/public/images/iris.png"
-                    : "/public/images/default-hospital.png"
-                }
-                alt={`${hospitalName} Hospital`}
-                className="w-20 h-20 rounded-full mr-4 object-cover"
-                onError={(e) => {
-                  e.target.src = "/public/images/default-hospital.png";
-                  e.target.onerror = null;
-                }}
-              />
-              <div>
-                <h3 className="text-lg font-bold text-blue-700">{hospitalName} Hospital</h3>
-                <p className="text-sm text-gray-600">
-                  {hospitalName === "Zydus"
-                    ? "Zydus Hospital is a leading healthcare provider offering world-class medical services and facilities. Our team of specialists ensures the best care for your health."
-                    : hospitalName === "Iris"
-                    ? "Iris Hospital is known for its advanced medical technology and compassionate care, providing exceptional healthcare services to patients."
-                    : "Welcome to our hospital. We are committed to providing quality healthcare services tailored to your needs."}
-                </p>
-              </div>
+          <div className="mb-4 p-4 bg-white rounded-lg shadow-lg flex items-center border-l-4 border-blue-500">
+            <div>
+              <h3 className="text-lg font-bold text-blue-700">{hospital?.name || hospitalName}</h3>
+              {hospital?.description && (
+                <p className="text-sm text-gray-600">{hospital.description}</p>
+              )}
             </div>
-          )}
+          </div>
+        )}
         <div className="flex justify-between items-center mb-8">
           <h2 className="text-3xl font-bold text-blue-700 flex items-center">
             <FiPackage className="mr-2 text-green-600" />
             Medical Products
           </h2>
           <button
-            onClick={handleRefresh}
+            onClick={fetchProducts}
             className="px-4 py-2 bg-teal-100 text-teal-700 rounded-lg hover:bg-teal-200 flex items-center transition-colors"
             disabled={loading}
           >
@@ -156,8 +125,9 @@ const MedicalProducts = () => {
                 className="w-full pl-10 pr-4 py-2 border rounded-lg appearance-none bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="all">All Categories</option>
-                <option value="Equipment">Equipment</option>
-                <option value="Medicine">Medicines</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -169,7 +139,7 @@ const MedicalProducts = () => {
             <p>{error}</p>
           </div>
         )}
-        
+
         {loading ? (
           <div className="flex justify-center items-center py-20">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -177,44 +147,43 @@ const MedicalProducts = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProducts.length > 0 ? (
-              filteredProducts.map((product, index) => (
-                <div key={index} className="bg-white rounded-lg shadow-lg overflow-hidden transform transition-all hover:scale-105 border border-blue-100 hover:border-green-200">
-                  <div className="h-48 bg-gradient-to-r from-blue-100 to-green-100">
-                    <img
-                      src={product.image}
-                      alt={product.name}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.target.src = "https://via.placeholder.com/400x200?text=Product+Image";
-                      }}
-                    />
+              filteredProducts.map((product) => (
+                <div key={product.id} className="bg-white rounded-lg shadow-lg overflow-hidden transform transition-all hover:scale-105 border border-blue-100 hover:border-green-200">
+                  <div className="h-24 bg-gradient-to-r from-blue-100 to-green-100 flex items-center justify-center">
+                    <FiPackage className="text-blue-400" size={40} />
                   </div>
                   <div className="p-6">
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="text-xl font-bold text-blue-700">{product.name}</h3>
-                      <span className="text-green-600 font-semibold">{product.price}</span>
+                      <span className="text-green-600 font-semibold">₹{product.price}</span>
                     </div>
-                    <p className="text-gray-600 mb-4">{product.description}</p>
+                    {product.description && (
+                      <p className="text-gray-600 mb-4">{product.description}</p>
+                    )}
                     <div className="flex justify-between items-center">
                       <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
                         {product.category}
                       </span>
-                      <span className="text-gray-600 text-sm">
+                      <span className={`text-sm ${product.stock > 0 ? "text-gray-600" : "text-red-500"}`}>
                         Stock: {product.stock}
                       </span>
                     </div>
                     <div className="text-sm text-gray-500 mt-2">
                       Supplier: {product.supplier}
                     </div>
-                    <button className="mt-4 w-full bg-gradient-to-r from-blue-500 to-green-500 text-white py-2 rounded-lg hover:from-blue-600 hover:to-green-600 transition-all">
-                      Order Now
-                    </button>
+                    {product.department && (
+                      <div className="text-sm text-gray-500">Department: {product.department}</div>
+                    )}
                   </div>
                 </div>
               ))
             ) : (
               <div className="col-span-3 text-center py-10">
-                <p className="text-gray-500">No products found matching your search criteria</p>
+                <p className="text-gray-500">
+                  {products.length === 0 && !error
+                    ? "No approved products for this hospital yet."
+                    : "No products found matching your search criteria"}
+                </p>
               </div>
             )}
           </div>

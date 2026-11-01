@@ -1,19 +1,18 @@
-import { Navigate } from "react-router-dom";
+import PropTypes from "prop-types";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { homeForRole, isRole } from "../constants/roles";
 
 /**
- * ProtectedRoute Component
- * 
- * Wraps protected routes to:
- * 1. Check if user is authenticated
- * 2. Verify token with backend
- * 3. Redirect to login if not authenticated
- * 4. Show loading state while verifying
+ * Wraps protected routes:
+ * 1. Shows a loader while a restored session is being verified
+ * 2. Redirects to /login when not authenticated (remembering where the user wanted to go)
+ * 3. Redirects to the user's own home when the role does not match
  */
 export const ProtectedRoute = ({ children, requiredRole = null }) => {
   const { isAuthenticated, isLoading, user } = useAuth();
+  const location = useLocation();
 
-  // Show loading state while verifying token
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-blue-50">
@@ -25,18 +24,20 @@ export const ProtectedRoute = ({ children, requiredRole = null }) => {
     );
   }
 
-  // Redirect to login if not authenticated
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  // Check if required role matches user's role
-  if (requiredRole && user?.userType?.toLowerCase() !== requiredRole.toLowerCase()) {
-    return <Navigate to="/" replace />;
+  if (requiredRole && !isRole(user?.userType, requiredRole)) {
+    return <Navigate to={homeForRole(user?.userType)} replace />;
   }
 
-  // Render protected component
   return children;
+};
+
+ProtectedRoute.propTypes = {
+  children: PropTypes.node.isRequired,
+  requiredRole: PropTypes.string,
 };
 
 export default ProtectedRoute;

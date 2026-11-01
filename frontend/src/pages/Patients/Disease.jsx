@@ -114,7 +114,7 @@ const Disease = () => {
       {
         name: "Common Cold",
         description: "A viral infection of your nose and throat (upper respiratory tract).",
-        image: "/images/common-cold.jpg",
+        image: null,
         symptoms: [
           "Runny or stuffy nose",
           "Sore throat",
@@ -126,7 +126,7 @@ const Disease = () => {
       {
         name: "Influenza (Flu)",
         description: "A viral infection that attacks your respiratory system — your nose, throat, and lungs.",
-        image: "/images/flu.jpg",
+        image: null,
         symptoms: [
           "Fever",
           "Chills",
@@ -138,7 +138,7 @@ const Disease = () => {
       {
         name: "Migraine",
         description: "A headache of varying intensity, often accompanied by nausea and sensitivity to light and sound.",
-        image: "/images/migraine.jpg",
+        image: null,
         symptoms: [
           "Throbbing pain",
           "Nausea",
@@ -150,7 +150,7 @@ const Disease = () => {
       {
         name: "Allergies",
         description: "A condition in which the immune system reacts abnormally to a foreign substance.",
-        image: "/images/allergies.jpg",
+        image: null,
         symptoms: [
           "Sneezing",
           "Runny nose",
@@ -162,7 +162,7 @@ const Disease = () => {
       {
         name: "Food Poisoning",
         description: "An illness caused by eating contaminated food.",
-        image: "/images/food-poisoning.jpg",
+        image: null,
         symptoms: [
           "Nausea",
           "Vomiting",
@@ -174,7 +174,7 @@ const Disease = () => {
       {
         name: "Acne",
         description: "A skin condition that occurs when hair follicles become plugged with oil and dead skin cells.",
-        image: "/images/acne.jpg",
+        image: null,
         symptoms: [
           "Pimples",
           "Blackheads",
@@ -199,7 +199,7 @@ const Disease = () => {
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-blue-50 to-green-50">
-      <Slidebar userType="patient" activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Slidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       
       <div className="flex-1 p-8 overflow-auto mt-16">
         <h2 className="text-3xl font-bold mb-6 flex items-center text-blue-700">
@@ -240,14 +240,20 @@ const Disease = () => {
             <div key={index} className="bg-white rounded-lg shadow-lg overflow-hidden transform transition-transform hover:scale-105 border border-blue-100 hover:border-green-200">
               {/* Disease Image */}
               <div className="h-48 bg-gradient-to-r from-blue-100 to-green-100">
-                <img
-                  src={disease.image}
-                  alt={disease.name}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.target.src = "https://via.placeholder.com/400x200?text=Disease+Image";
-                  }}
-                />
+                {disease.image ? (
+                  <img
+                    src={disease.image}
+                    alt={disease.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-blue-700">
+                    {disease.name}
+                  </div>
+                )}
               </div>
 
               {/* Disease Content */}

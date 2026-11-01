@@ -56,11 +56,6 @@ export default function Header() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ── Get avatar initials ───────────────────────────────────
-  const getInitials = (email) => {
-    if (!email) return "U";
-    return email.slice(0, 2).toUpperCase();
-  };
 
   // ── Current notifications (sample) ──────────────────────────
   const sampleNotifications = [

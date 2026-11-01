@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react"
+import { useState } from "react"
+import PropTypes from "prop-types"
 import { ChevronLeft, ChevronRight, Star } from "lucide-react"
 
 const testimonials = [
@@ -26,7 +27,7 @@ const StarRating = ({ rating }) => (
 const TestimonialCard = ({ testimonial }) => (
   <div className="bg-white border border-[#b2e8d2] rounded-2xl p-8 hover:shadow-xl hover:border-[#0F6E56] transition-all duration-300 h-full flex flex-col">
     {/* Quote Mark */}
-    <span className="text-5xl text-[#DAF8ED] font-serif leading-none pointer-events-none select-none mb-3">"</span>
+    <span className="text-5xl text-[#DAF8ED] font-serif leading-none pointer-events-none select-none mb-3">&quot;</span>
     
     {/* Testimonial Text */}
     <p className="text-sm text-gray-700 leading-relaxed mb-6 flex-grow">
@@ -55,6 +56,19 @@ const TestimonialCard = ({ testimonial }) => (
     </div>
   </div>
 )
+
+StarRating.propTypes = { rating: PropTypes.number }
+
+TestimonialCard.propTypes = {
+  testimonial: PropTypes.shape({
+    text: PropTypes.string,
+    rating: PropTypes.number,
+    color: PropTypes.string,
+    initials: PropTypes.string,
+    name: PropTypes.string,
+    role: PropTypes.string,
+  }).isRequired,
+}
 
 export default function Testimonials() {
   const [current, setCurrent] = useState(0)

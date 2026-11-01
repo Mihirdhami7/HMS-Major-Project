@@ -35,7 +35,6 @@ import Reports from "../pages/SuperAdmin/Reports"
 
 
 const Routers = () => {
-    console.log("Routers component rendered");
     return (
         <Routes>
             {/* Public Routes */}
@@ -67,6 +66,7 @@ const Routers = () => {
                 <Route path="/admin/newRegister" element={<ProtectedRoute requiredRole="Admin"><NewRegister /></ProtectedRoute>} />
                 <Route path="/admin/product" element={<ProtectedRoute requiredRole="Admin"><Products /></ProtectedRoute>} />
                 <Route path="/admin/department" element={<ProtectedRoute requiredRole="Admin"><Department /></ProtectedRoute>} />
+                <Route path="/admin/profile" element={<ProtectedRoute requiredRole="Admin"><Profiile /></ProtectedRoute>} />
 
                 {/* Supplier Routes */}
                 <Route path="/supplier" element={<ProtectedRoute requiredRole="Supplier"><SupplierSection /></ProtectedRoute>} />
@@ -79,6 +79,7 @@ const Routers = () => {
                 <Route path="/superadmin/dashboard" element={<ProtectedRoute requiredRole="SuperAdmin"><SuperAdminDashboard /></ProtectedRoute>} />
                 <Route path="/superadmin/hospitals" element={<ProtectedRoute requiredRole="SuperAdmin"><Hospitals /></ProtectedRoute>} />
                 <Route path="/superadmin/reports" element={<ProtectedRoute requiredRole="SuperAdmin"><Reports /></ProtectedRoute>} />
+                <Route path="/superadmin/profile" element={<ProtectedRoute requiredRole="SuperAdmin"><Profiile /></ProtectedRoute>} />
 
             {/* Catch all - 404 */}
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,30 +1,24 @@
 import { Button } from "../ui/button";
 import HeroImage from "../../../public/images/Hero-doctor.png";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FiBarChart2,  FiClock, FiCheckCircle } from "react-icons/fi";
+import { useAuth } from "../../context/AuthContext";
+import { isRole } from "../../constants/roles";
 
 export default function Hero() {
-  const [scrollY, setScrollY] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const [activeStats, setActiveStats] = useState(null);
   const navigate = useNavigate();
-  
-  // Check if user is logged in as patient
-  const isLoggedIn = sessionStorage.getItem("session_Id") ? true : false;
-  const userType = sessionStorage.getItem("userType");
-  const isPatient = userType === "Patient";
 
-  useEffect(() => {
-    const handleScroll = () => setScrollY(window.scrollY);
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  // Check if user is logged in as patient
+  const { isAuthenticated: isLoggedIn, user } = useAuth();
+  const isPatient = isRole(user?.userType, "Patient");
 
   const handleBookAppointment = () => {
     if (isLoggedIn && isPatient) {
-      navigate("/patient/book-appointment");
+      navigate("/patient/appointments");
     } else {
       navigate("/login");
     }

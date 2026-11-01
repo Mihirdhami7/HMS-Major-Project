@@ -1,251 +1,117 @@
 /**
- * Authentication Service
- * Handles all auth-related API calls and local storage management
+ * authService.js
+ * All authentication-related API calls.
+ *
+ * Routes used:
+ *   POST   /api/accounts/register/
+ *   POST   /api/accounts/verify-email/
+ *   POST   /api/accounts/login/
+ *   POST   /api/accounts/logout/          (requires token)
+ *   GET    /api/accounts/verify/           (requires token)
+ *   GET    /api/accounts/profile/me/       (requires token)
+ *   PATCH  /api/accounts/profile/me/update/ (requires token)
+ *   GET    /api/accounts/get_company_name/<email>/ (requires token)
  */
 
-const API_BASE = "http://127.0.0.1:8000/api/accounts";
+import apiClient, { authHeaders, handleRequest } from "./apiClient";
+import { ACCOUNTS } from "./endpoints";
 
-// ═══════════════════════════════════════════════════════════
-// TOKEN MANAGEMENT
-// ═══════════════════════════════════════════════════════════
-
-export const setToken = (token) => {
-  localStorage.setItem("access_token", token);
-};
-
-export const getToken = () => {
-  return localStorage.getItem("access_token");
-};
-
-export const removeToken = () => {
-  localStorage.removeItem("access_token");
-};
-
-export const hasToken = () => {
-  return !!getToken();
-};
-
-// ═══════════════════════════════════════════════════════════
-// USER DATA MANAGEMENT
-// ═══════════════════════════════════════════════════════════
-
-export const setUserData = (userData) => {
-  localStorage.setItem("userData", JSON.stringify(userData));
-};
-
-export const getUserData = () => {
-  try {
-    const data = localStorage.getItem("userData");
-    return data ? JSON.parse(data) : null;
-  } catch (error) {
-    console.error("Error parsing user data:", error);
-    return null;
-  }
-};
-
-export const removeUserData = () => {
-  localStorage.removeItem("userData");
-};
-
-// ═══════════════════════════════════════════════════════════
-// AUTH OPERATIONS
-// ═══════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────
+// PUBLIC — no token required
+// ─────────────────────────────────────────────────────────────
 
 /**
- * Register new user
- * POST /api/accounts/register/
+ * Register a new user.
+ * Accepts multipart/form-data (FormData) for photo / certificate uploads.
+ * @param {FormData} formData
  */
-export const registerUser = async (formData) => {
-  try {
-    const response = await fetch(`${API_BASE}/register/`, {
-      method: "POST",
-      headers: {
-        "Accept": "application/json",
-        // Don't set Content-Type, let browser set it for FormData
-      },
-      body: formData,
-    });
-
-    const data = await response.json();
-
-    return {
-      success: response.ok && data.status === "success",
-      status: response.status,
-      data: data,
-      message: data.message || "Registration failed",
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error.message,
-      message: "Network error during registration",
-    };
-  }
-};
+export const registerUser = (formData) =>
+    handleRequest(() =>
+        apiClient.post(ACCOUNTS.REGISTER, formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+        })
+    );
 
 /**
- * Verify email with OTP
- * POST /api/accounts/verify-email/
+ * Verify email with OTP sent during registration.
+ * @param {string} email
+ * @param {string} otp
  */
-export const verifyEmail = async (email, otp) => {
-  try {
-    const response = await fetch(`${API_BASE}/verify-email/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email, otp }),
-    });
-
-    const data = await response.json();
-
-    return {
-      success: response.ok && data.status === "success",
-      data: data,
-      message: data.message || "Verification failed",
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error.message,
-      message: "Network error during verification",
-    };
-  }
-};
+export const verifyEmail = (email, otp) =>
+    handleRequest(() =>
+        apiClient.post(ACCOUNTS.VERIFY_EMAIL, { email, otp })
+    );
 
 /**
- * Login user
- * POST /api/accounts/login/
- * Returns: { status, access, userData }
+ * Login user.
+ * Returns access token + userData on success.
+ * @param {{ email: string, password: string, category: string, hospitalName?: string }} loginData
  */
-export const loginUser = async (loginData) => {
-  try {
-    const response = await fetch(`${API_BASE}/login/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
-      body: JSON.stringify(loginData),
-    });
+export const loginUser = (loginData) =>
+    handleRequest(() =>
+        apiClient.post(ACCOUNTS.LOGIN, loginData)
+    );
 
-    const data = await response.json();
-
-    if (response.ok && data.status === "success") {
-      // Store token and user data
-      setToken(data.access);
-      setUserData({
-        email: data.userData.email,
-        userType: data.userData.userType,
-        name: data.userData.name,
-        hospitalName: data.userData.hospitalName,
-      });
-
-      return {
-        success: true,
-        token: data.access,
-        user: data.userData,
-        message: data.message,
-      };
-    } else {
-      return {
-        success: false,
-        message: data.message || "Login failed",
-      };
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error.message,
-      message: "Network error during login",
-    };
-  }
-};
+// ─────────────────────────────────────────────────────────────
+// AUTHENTICATED — token required
+// ─────────────────────────────────────────────────────────────
 
 /**
- * Verify current session
- * GET /api/accounts/verify/
- * Requires: Authorization: Bearer <token>
+ * Verify the current JWT session.
+ * Returns { email, userType, hospitalName } on success.
+ * @param {string} token
  */
-export const verifyAuth = async (token) => {
-  if (!token) {
-    return {
-      success: false,
-      authenticated: false,
-      message: "No token provided",
-    };
-  }
-
-  try {
-    const response = await fetch(`${API_BASE}/verify/`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-      },
-    });
-
-    const data = await response.json();
-
-    if (response.ok && data.status === "success") {
-      return {
-        success: true,
-        authenticated: true,
-        user: data.user,
-        message: "Authentication verified",
-      };
-    } else {
-      // Token invalid or expired
-      removeToken();
-      removeUserData();
-      return {
-        success: false,
-        authenticated: false,
-        message: data.message || "Authentication failed",
-      };
-    }
-  } catch (error) {
-    removeToken();
-    removeUserData();
-    return {
-      success: false,
-      authenticated: false,
-      error: error.message,
-      message: "Network error during verification",
-    };
-  }
-};
+export const verifyAuth = (token) =>
+    handleRequest(() =>
+        apiClient.get(ACCOUNTS.VERIFY, {
+            headers: authHeaders(token),
+        })
+    );
 
 /**
- * Logout user
- * POST /api/accounts/logout/
- * Requires: Authorization: Bearer <token>
+ * Logout — invalidates the session on the server.
+ * @param {string} token
  */
-export const logoutUser = async (token) => {
-  try {
-    if (token) {
-      await fetch(`${API_BASE}/logout/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-      });
-    }
-  } catch (error) {
-    console.error("Logout error:", error);
-  } finally {
-    // Always clear local storage
-    removeToken();
-    removeUserData();
-  }
-};
+export const logoutUser = (token) =>
+    handleRequest(() =>
+        apiClient.post(ACCOUNTS.LOGOUT, {}, {
+            headers: authHeaders(token),
+        })
+    );
 
-// ═══════════════════════════════════════════════════════════
-// CLEAR ALL AUTH DATA
-// ═══════════════════════════════════════════════════════════
+/**
+ * Get the authenticated user's profile.
+ * @param {string} token
+ */
+export const getUserProfile = (token) =>
+    handleRequest(() =>
+        apiClient.get(ACCOUNTS.PROFILE_ME, {
+            headers: authHeaders(token),
+        })
+    );
 
-export const clearAuth = () => {
-  removeToken();
-  removeUserData();
-};
+/**
+ * Update the authenticated user's profile.
+ * Accepts multipart/form-data for photo / certificate uploads.
+ * @param {string} token
+ * @param {FormData} formData
+ */
+export const updateUserProfile = (token, formData) =>
+    handleRequest(() =>
+        apiClient.patch(ACCOUNTS.PROFILE_UPDATE, formData, {
+            headers: authHeaders(token, { "Content-Type": "multipart/form-data" }),
+        })
+    );
+
+/**
+ * Get a supplier's company name by email.
+ * Accessible by: Admin, SuperAdmin.
+ * @param {string} token
+ * @param {string} email  - Supplier email
+ */
+export const getCompanyName = (token, email) =>
+    handleRequest(() =>
+        apiClient.get(ACCOUNTS.COMPANY_NAME(email), {
+            headers: authHeaders(token),
+        })
+    );

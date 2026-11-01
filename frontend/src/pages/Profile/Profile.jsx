@@ -1,67 +1,80 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { FiUser, FiMail, FiPhone, FiCalendar, FiMapPin, FiEdit, FiSave, FiX , FiFileText, FiPackage, FiCheck} from "react-icons/fi";
 import { MdOutlineSchool, MdOutlineMedicalServices } from "react-icons/md";
 import Slidebar from "../../components/Sidebar";
-import { getUserProfile, updateUserProfile } from "../../services/userService";
+import { getUserProfile, updateUserProfile } from "../../services/authService";
+import { getMyPrescriptions } from "../../services/appointmentsService";
+import { mediaUrl, pickList } from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 
-function Profile() {  // Changed name to match what's imported in routes
-    const navigate = useNavigate();
-    const { user, token, isAuthenticated } = useAuth();
-    
+const DEFAULT_AVATAR = "/images/avatar-icon.png";
+
+// Fields UserProfileSerializer accepts for update, per role.
+const EDITABLE_FIELDS = {
+    common: ["name", "contactNo"],
+    personal: ["gender", "dateOfBirth"],
+    doctor: ["doctorQualification", "doctorSpecialization"],
+    supplier: ["companyName", "companyStartingDate"],
+};
+
+function Profile() {
+    const { user, token, updateUser } = useAuth();
+
     const [userData, setUserData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
+    const [saveError, setSaveError] = useState(null);
+    const [saveMessage, setSaveMessage] = useState(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editableData, setEditableData] = useState({});
     const [profilePhoto, setProfilePhoto] = useState(null);
     const [photoPreview, setPhotoPreview] = useState(null);
+    const [prescriptions, setPrescriptions] = useState([]);
+    const [historyError, setHistoryError] = useState(null);
 
-    // Get user information from auth context
     const userType = user?.userType?.toLowerCase() || null;
     const isDoctor = userType === "doctor";
+    const isPatient = userType === "patient";
+    const isSupplier = userType === "supplier";
 
     useEffect(() => {
-        const fetchUserProfile = async () => {
-            try {
-                // Validate required authentication
-                if (!token || !userType) {
-                    console.log("Missing required data:", { token, userType });
-                    navigate("/login");
-                    return;
-                }
-
-                console.log(`Fetching profile for userType: ${userType}`);
-
-                // Use the service function
-                const result = await getUserProfile(token);
-                
-                if (result.success) {
-                    console.log("Profile data received:", result.data);
-                    setUserData(result.data);
-                    setEditableData(result.data);
-                } else {
-                    // Handle specific error cases
-                    if (result.status === 404) {
-                        setError("Profile not found. Please complete your registration.");
-                    } else if (result.status === 401) {
-                        setError("Session expired. Please login again.");
-                        navigate("/login");
-                    } else {
-                        setError(`Error fetching profile: ${result.error}`);
-                    }
-                }
-            } catch (err) {
-                console.error("Full error details:", err);
-                setError("An unexpected error occurred while fetching profile.");
-            } finally {
-                setLoading(false);
+        if (!token) return undefined;
+        let cancelled = false;
+        (async () => {
+            setLoading(true);
+            const result = await getUserProfile(token);
+            if (cancelled) return;
+            if (result.success && result.data?.user) {
+                setUserData(result.data.user);
+                setEditableData(result.data.user);
+                setError(null);
+            } else if (result.status === 404) {
+                setError("Profile not found. Please complete your registration.");
+            } else {
+                setError(result.message || "Failed to load profile");
             }
+            setLoading(false);
+        })();
+        return () => {
+            cancelled = true;
         };
+    }, [token]);
 
-        fetchUserProfile();
-    }, [navigate, userType, token]);
+    // Patients: real medical history = their prescriptions.
+    useEffect(() => {
+        if (!token || !isPatient) return undefined;
+        let cancelled = false;
+        (async () => {
+            const result = await getMyPrescriptions(token);
+            if (cancelled) return;
+            setPrescriptions(pickList(result, "prescriptions"));
+            setHistoryError(result.success ? null : result.message);
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [token, isPatient]);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -85,62 +98,55 @@ function Profile() {  // Changed name to match what's imported in routes
 
     const cancelEdit = () => {
         setIsEditing(false);
-        setEditableData(userData);  // Reset to original data
-        setPhotoPreview(null);      // Reset photo preview
-        setProfilePhoto(null);      // Reset photo file
+        setEditableData(userData);
+        setPhotoPreview(null);
+        setProfilePhoto(null);
+        setSaveError(null);
     };
 
     const handleSaveChanges = async () => {
-        try {
-            setLoading(true);
-            
-            if (!token) {
-                navigate("/login");
-                return;
-            }
+        setSaveError(null);
+        setSaveMessage(null);
+        const fields = [
+            ...EDITABLE_FIELDS.common,
+            ...(isSupplier ? EDITABLE_FIELDS.supplier : EDITABLE_FIELDS.personal),
+            ...(isDoctor ? EDITABLE_FIELDS.doctor : []),
+        ];
+        const formData = new FormData();
+        let changed = 0;
+        fields.forEach((key) => {
+            const value = editableData[key];
+            if (value === undefined || value === null || value === "") return;
+            if (value === userData[key]) return;
+            formData.append(key, value);
+            changed += 1;
+        });
+        if (profilePhoto) {
+            formData.append("photo", profilePhoto);
+            changed += 1;
+        }
+        if (changed === 0) {
+            setIsEditing(false);
+            return;
+        }
 
-            // Create FormData to handle file upload
-            const formData = new FormData();
-            
-            // Add all editable fields to form data
-            Object.entries(editableData).forEach(([key, value]) => {
-                // Skip internal fields and null values
-                if (key !== 'photo' && key !== '_id' && value !== undefined && value !== null) {
-                    formData.append(key, value);
-                }
-            });
-            
-            // Add photo if it exists
-            if (profilePhoto) {
-                formData.append('photo', profilePhoto);
-            }
+        setSaving(true);
+        const result = await updateUserProfile(token, formData);
+        setSaving(false);
 
-            // Use the service function
-            const result = await updateUserProfile(token, formData);
-
-            if (result.success) {
-                console.log("Profile updated successfully:", result.data);
-                setUserData(result.data);
-                setEditableData(result.data);
-                setIsEditing(false);
-                setPhotoPreview(null);
-                setProfilePhoto(null);
-            } else {
-                // Handle specific error cases
-                if (result.status === 401) {
-                    setError("Session expired. Please login again.");
-                    navigate("/login");
-                } else if (result.status === 403) {
-                    setError("You don't have permission to update this profile");
-                } else {
-                    setError(`Error updating profile: ${result.error}`);
-                }
-            }
-        } catch (err) {
-            console.error("Update error:", err);
-            setError("An unexpected error occurred while updating profile.");
-        } finally {
-            setLoading(false);
+        if (result.success && result.data?.user) {
+            const updated = result.data.user;
+            setUserData(updated);
+            setEditableData(updated);
+            setIsEditing(false);
+            setPhotoPreview(null);
+            setProfilePhoto(null);
+            setSaveMessage(result.message || "Profile updated successfully");
+            updateUser({ name: updated.name });
+        } else if (result.status === 403) {
+            setSaveError("You don't have permission to update this profile");
+        } else {
+            setSaveError(result.message || "Failed to update profile");
         }
     };
 
@@ -170,7 +176,7 @@ function Profile() {  // Changed name to match what's imported in routes
 
     return (
         <div className="flex h-screen bg-blue-50 overflow-hidden">
-            <Slidebar activeTab="profile" userType={userType} />
+            <Slidebar activeTab="profile" />
             <div className="flex flex-col flex-1 p-8 overflow-auto mt-14">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-3xl font-bold text-blue-800">My Profile</h2>
@@ -183,11 +189,12 @@ function Profile() {  // Changed name to match what's imported in routes
                         </button>
                     ) : (
                         <div className="flex space-x-2">
-                            <button 
+                            <button
                                 onClick={handleSaveChanges}
-                                className="flex items-center bg-green-600 text-white px-4 py-2 rounded-lg shadow hover:bg-green-700 transition"
+                                disabled={saving}
+                                className="flex items-center bg-green-600 text-white px-4 py-2 rounded-lg shadow hover:bg-green-700 transition disabled:opacity-50"
                             >
-                                <FiSave className="mr-2" /> Save
+                                <FiSave className="mr-2" /> {saving ? "Saving..." : "Save"}
                             </button>
                             <button 
                                 onClick={cancelEdit}
@@ -199,7 +206,17 @@ function Profile() {  // Changed name to match what's imported in routes
                     )}
                 </div>
 
-                {/* Rest of your component JSX remains the same */}
+                {saveError && (
+                    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                        {saveError}
+                    </div>
+                )}
+                {saveMessage && (
+                    <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+                        {saveMessage}
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {/* Profile Photo Card */}
                     <div className="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center">
@@ -207,10 +224,15 @@ function Profile() {  // Changed name to match what's imported in routes
                             <img
                                 src={
                                     photoPreview || 
-                                    (userData.photo ? `http://127.0.0.1:8000${userData.photo}` : "/default-avatar.png")
+                                    mediaUrl(userData.photo) ||
+                                    DEFAULT_AVATAR
                                 }
                                 alt={userData.name || "User"}
                                 className="w-full h-full object-cover"
+                                onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.src = DEFAULT_AVATAR;
+                                }}
                             />
                         </div>
                         {isEditing && (
@@ -274,7 +296,7 @@ function Profile() {  // Changed name to match what's imported in routes
                                             className="border p-2 rounded w-full shadow-sm"
                                         />
                                     ) : (
-                                        <p className="font-medium">{userData.contactNo}</p>
+                                        <p className="font-medium">{userData.contactNo || 'Not provided'}</p>
                                     )}
                                 </div>
                             </div>
@@ -323,17 +345,7 @@ function Profile() {  // Changed name to match what's imported in routes
                                 <FiMapPin className="text-blue-600 mt-1" />
                                 <div className="w-full">
                                     <p className="text-gray-500 text-sm">Hospital Name</p>
-                                    {isEditing ? (
-                                        <input
-                                            type="text"
-                                            name="hospitalName"
-                                            value={editableData.hospitalName || ""}
-                                            onChange={handleInputChange}
-                                            className="border p-2 rounded w-full shadow-sm"
-                                        />
-                                    ) : (
-                                        <p className="font-medium">{userData.hospitalName || 'Not applicable'}</p>
-                                    )}
+                                    <p className="font-medium">{userData.hospitalName || 'Not applicable'}</p>
                                 </div>
                             </div>
                         </div>
@@ -402,30 +414,32 @@ function Profile() {  // Changed name to match what's imported in routes
                                             <th className="py-3 px-4 bg-blue-50 text-left text-sm font-semibold text-blue-800">Date</th>
                                             <th className="py-3 px-4 bg-blue-50 text-left text-sm font-semibold text-blue-800">Doctor</th>
                                             <th className="py-3 px-4 bg-blue-50 text-left text-sm font-semibold text-blue-800">Department</th>
-                                            <th className="py-3 px-4 bg-blue-50 text-left text-sm font-semibold text-blue-800">Diagnosis</th>
-                                            <th className="py-3 px-4 bg-blue-50 text-left text-sm font-semibold text-blue-800">View Details</th>
+                                            <th className="py-3 px-4 bg-blue-50 text-left text-sm font-semibold text-blue-800">Medicines</th>
+                                            <th className="py-3 px-4 bg-blue-50 text-left text-sm font-semibold text-blue-800">Advice</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {/* Sample data - would be fetched from the backend */}
-                                        <tr className="border-b">
-                                            <td className="py-3 px-4 text-sm">Feb 20, 2025</td>
-                                            <td className="py-3 px-4 text-sm">Dr. Sarah Johnson</td>
-                                            <td className="py-3 px-4 text-sm">Cardiology</td>
-                                            <td className="py-3 px-4 text-sm">Hypertension</td>
-                                            <td className="py-3 px-4 text-sm">
-                                                <button className="text-blue-600 hover:underline">View</button>
-                                            </td>
-                                        </tr>
-                                        <tr className="border-b">
-                                            <td className="py-3 px-4 text-sm">Jan 15, 2025</td>
-                                            <td className="py-3 px-4 text-sm">Dr. Michael Chen</td>
-                                            <td className="py-3 px-4 text-sm">Orthopedic</td>
-                                            <td className="py-3 px-4 text-sm">Ankle Sprain</td>
-                                            <td className="py-3 px-4 text-sm">
-                                                <button className="text-blue-600 hover:underline">View</button>
-                                            </td>
-                                        </tr>
+                                        {prescriptions.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={5} className="py-4 px-4 text-sm text-gray-500 text-center">
+                                                    {historyError || "No prescriptions on record yet."}
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            prescriptions.map((p) => (
+                                                <tr key={p._id} className="border-b">
+                                                    <td className="py-3 px-4 text-sm">
+                                                        {p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "-"}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-sm">Dr. {p.doctor?.name}</td>
+                                                    <td className="py-3 px-4 text-sm">{p.department}</td>
+                                                    <td className="py-3 px-4 text-sm">
+                                                        {(p.medicines || []).map((m) => m.name).join(", ") || "-"}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-sm whitespace-pre-wrap">{p.suggestions || "-"}</td>
+                                                </tr>
+                                            ))
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
@@ -458,21 +472,22 @@ function Profile() {  // Changed name to match what's imported in routes
                                     </div>
                                 </div>
 
-                                {/* Business Type */}
+                                {/* Company License */}
                                 <div className="flex items-start space-x-3">
                                     <FiFileText className="text-blue-600 mt-1 text-xl" />
                                     <div className="w-full">
-                                        <p className="text-gray-500 text-sm">Business Type</p>
-                                        {isEditing ? (
-                                            <input
-                                                type="text"
-                                                name="businessType"
-                                                value={editableData.businessType || ''}
-                                                onChange={handleInputChange}
-                                                className="border p-2 rounded w-full shadow-sm"
-                                            />
+                                        <p className="text-gray-500 text-sm">Company License</p>
+                                        {userData.companyLicense ? (
+                                            <a
+                                                href={mediaUrl(userData.companyLicense)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="font-medium text-blue-600 hover:underline"
+                                            >
+                                                View document
+                                            </a>
                                         ) : (
-                                            <p className="font-medium">{userData.businessType || 'Not provided'}</p>
+                                            <p className="font-medium">Not provided</p>
                                         )}
                                     </div>
                                 </div>
@@ -481,18 +496,10 @@ function Profile() {  // Changed name to match what's imported in routes
                                 <div className="flex items-start space-x-3">
                                     <FiCheck className="text-blue-600 mt-1 text-xl" />
                                     <div className="w-full">
-                                        <p className="text-gray-500 text-sm">License Number</p>
-                                        {isEditing ? (
-                                            <input
-                                                type="text"
-                                                name="licenseNumber"
-                                                value={editableData.licenseNumber || ''}
-                                                onChange={handleInputChange}
-                                                className="border p-2 rounded w-full shadow-sm"
-                                            />
-                                        ) : (
-                                            <p className="font-medium">{userData.licenseNumber || 'Not provided'}</p>
-                                        )}
+                                        <p className="text-gray-500 text-sm">Account Status</p>
+                                        <p className="font-medium">
+                                            {userData.isApproved === false ? "Pending approval" : userData.is_active === false ? "Inactive" : "Active"}
+                                        </p>
                                     </div>
                                 </div>
                                 
@@ -500,17 +507,17 @@ function Profile() {  // Changed name to match what's imported in routes
                                 <div className="flex items-start space-x-3">
                                     <FiCalendar className="text-blue-600 mt-1 text-xl" />
                                     <div className="w-full">
-                                        <p className="text-gray-500 text-sm">Supplier Since</p>
+                                        <p className="text-gray-500 text-sm">Company Since</p>
                                         {isEditing ? (
                                             <input
                                                 type="date"
-                                                name="supplierSince"
-                                                value={editableData.supplierSince || ''}
+                                                name="companyStartingDate"
+                                                value={editableData.companyStartingDate || ''}
                                                 onChange={handleInputChange}
                                                 className="border p-2 rounded w-full shadow-sm"
                                             />
                                         ) : (
-                                            <p className="font-medium">{userData.supplierSince || 'Not provided'}</p>
+                                            <p className="font-medium">{userData.companyStartingDate || 'Not provided'}</p>
                                         )}
                                     </div>
                                 </div>

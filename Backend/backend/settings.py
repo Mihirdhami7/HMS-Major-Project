@@ -33,9 +33,6 @@ SECRET_KEY = os.getenv("SECRET_KEY", "1fy%j02cvs&0$)-ny@3pj6l$+p)%cl6_ogu0h8-z=!
 # RAZORPAY_KEY_ID = "rzp_test_Rxv4DGlM4J7iQg"
 # RAZORPAY_KEY_SECRET = "vqw55uSU5sdK0I3KMTCs2gJy"
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DEBUG", "True").lower() in ("1", "true", "yes", "on")
-
 _allowed_hosts = os.getenv("ALLOWED_HOSTS", "*")
 ALLOWED_HOSTS = [host.strip() for host in _allowed_hosts.split(",") if host.strip()]
 
@@ -147,6 +144,8 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  
     "http://localhost:5173",  # React frontend URL
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",  # same dev server opened via IP address
 ]
 
 CORS_ALLOW_METHODS = [

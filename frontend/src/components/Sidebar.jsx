@@ -12,7 +12,6 @@ const slidebars = {
     { icon: FiUserPlus, label: "Products", value: "product" },
     { icon: FiUsers, label: "Departments", value: "department" }, 
     { icon: FiUsers, label: "GiveMedicine", value: "givemedicine" }, 
-    { icon: FiFileText, label: "Reports", value: "reports" },
   ],
   doctor: [
     { icon: FiCalendar, label: "Appointments", value: "appointments" },
@@ -46,11 +45,12 @@ const getLinkPath = (userType, value) => {
 };
 
 
-function Slidebar({ activeTab = "dashboard", setActiveTab = () => {} }) {
-  const { userType, isAuthenticated } = useAuthStorage();
+function Slidebar({ activeTab = "dashboard", setActiveTab = () => {}, userType: userTypeProp }) {
+  const { userType: authUserType, isAuthenticated } = useAuthStorage();
   const navigate = useNavigate();
-  
-  // Only proceed if authenticated and userType is available
+
+  // Logged-in role is the source of truth; the prop is only a fallback hint.
+  const userType = authUserType || userTypeProp || null;
   const currentUserType = userType?.toLowerCase() || "patient";
   const navItems = slidebars[currentUserType] || [];
   
@@ -70,7 +70,7 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {} }) {
     const allowedPaths = {
       doctor: ['appointments', 'medical_products','profile',],
       patient: ['appointments', 'disease', 'profile'],
-      admin: ['dashboard', 'newRegister', 'product', 'department', 'reports','givemedicine'],
+      admin: ['dashboard', 'newRegister', 'product', 'department', 'givemedicine'],
       supplier: ['suppdashboard', 'suppproduct', 'profile'],
       superadmin: ['dashboard', 'hospitals', 'reports']
     };
@@ -99,7 +99,7 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {} }) {
       {/* Navigation Menu */}
       <nav className="mt-4 flex-1">
         {navItems.map((item) => {
-          const linkPath = getLinkPath(userType, item.value);
+          const linkPath = getLinkPath(currentUserType, item.value);
           return (
             <div
               key={item.value}
@@ -124,6 +124,7 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {} }) {
 Slidebar.propTypes = {
   activeTab: PropTypes.string,
   setActiveTab: PropTypes.func,
+  userType: PropTypes.string,
 };
 
 export default Slidebar;

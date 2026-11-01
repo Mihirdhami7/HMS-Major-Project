@@ -1,16 +1,46 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
 import { FiEdit2, FiTrash2, FiPlus, FiCheck, FiX, FiRefreshCw} from "react-icons/fi";
 import { MdMedicalServices } from "react-icons/md";
 import Slidebar from "../../components/Sidebar";
-import axios from "axios";
-import { getHospitalDepartments, getPendingDoctors, getUserProfile, approveDoctor, rejectDoctor } from "../../services/userService";
-import { getToken } from "../../services/authService";
+import { useAuth } from "../../context/AuthContext";
+import { useDepartments } from "../../hooks/useHospitals";
+import { pickList } from "../../services/apiClient";
+import {
+  listPendingDoctors,
+  listDoctorsByDepartment,
+  approveDoctor,
+  rejectDoctor,
+  deleteDoctor,
+  assignDoctorRoles,
+} from "../../services/userService";
+import {
+  createDepartment,
+  updateDepartment,
+  deleteDepartment,
+} from "../../services/hospitalService";
+
+// Available roles for doctors
+const AVAILABLE_ROLES = [
+  "Department Head",
+  "Senior Consultant",
+  "Consultant",
+  "Resident Doctor",
+  "Specialist"
+];
 
 const DepartmentManagement = () => {
-  const navigate = useNavigate();
-  const [departments, setDepartments] = useState([]);
+  const { token, user } = useAuth();
+  const hospitalName = user?.hospitalName || "";
+  const {
+    departments,
+    hospital,
+    loading: departmentsLoading,
+    error: departmentsError,
+    reload: reloadDepartments,
+  } = useDepartments(token, { hospitalName });
+
   const [doctors, setDoctors] = useState([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(false);
   const [pendingDoctors, setPendingDoctors] = useState([]);
   const [selectedDepartment, setSelectedDepartment] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -18,423 +48,251 @@ const DepartmentManagement = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [hospitalName, setHospitalName] = useState("");
 
   // Form data states
   const [editData, setEditData] = useState({
     name: "",
-    Description: "",
+    description: "",
     roles: []
   });
 
   const [newDepartment, setNewDepartment] = useState({
     name: "",
-    Description: "",
+    description: "",
     roles: []
   });
 
-  // Available roles for doctors
-  const availableRoles = [
-    "Department Head",
-    "Senior Consultant",
-    "Consultant",
-    "Resident Doctor",
-    "Specialist"
-  ];
+  const availableRoles = AVAILABLE_ROLES;
+
+  useEffect(() => {
+    if (!hospitalName) setError("No hospital is linked to this admin account.");
+  }, [hospitalName]);
+
+  useEffect(() => {
+    if (departmentsError) setError(departmentsError);
+  }, [departmentsError]);
+
+  // Keep the selected department in sync after a reload
+  useEffect(() => {
+    setSelectedDepartment((current) => {
+      if (!current) return current;
+      return departments.find((d) => d.id === current.id) || null;
+    });
+  }, [departments]);
+
+  const fetchPendingDoctors = useCallback(async () => {
+    if (!token || !hospitalName) return;
+    const result = await listPendingDoctors(token, hospitalName);
+    if (result.success) {
+      setPendingDoctors(pickList(result, "pending_doctors"));
+    } else {
+      setPendingDoctors([]);
+      setError(result.message);
+    }
+  }, [token, hospitalName]);
+
+  const fetchDoctorsByDepartment = useCallback(async (departmentName) => {
+    if (!token || !hospitalName || !departmentName) return;
+    setDoctorsLoading(true);
+    const result = await listDoctorsByDepartment(token, hospitalName, departmentName);
+    if (result.success) {
+      setDoctors(pickList(result, "doctors"));
+    } else {
+      setDoctors([]);
+      setError(result.message);
+    }
+    setDoctorsLoading(false);
+  }, [token, hospitalName]);
+
+  useEffect(() => {
+    fetchPendingDoctors();
+  }, [fetchPendingDoctors]);
+
+  // Fetch doctors when a department is selected
+  const selectedName = selectedDepartment?.name;
+  useEffect(() => {
+    if (selectedName) fetchDoctorsByDepartment(selectedName);
+    else setDoctors([]);
+  }, [selectedName, fetchDoctorsByDepartment]);
 
   const handleRefresh = async () => {
-    setLoading(true);
     setError("");
     setSuccess("");
-    
-    try {
-      const token = getToken();
-      if (!token) {
-        navigate("/login");
-        return;
-      }
-
-      // Refresh all data
-      await fetchDepartments(hospitalName, token);
-      await fetchPendingDoctors(hospitalName, token);
-      
-      // If a department is selected, refresh its doctors too
-      if (selectedDepartment) {
-        await fetchDoctorsByDepartment(selectedDepartment._id, hospitalName, token);
-      }
-      
-      setSuccess("Data refreshed successfully");
-    } catch (error) {
-      setError("Failed to refresh data");
-      console.error("Error refreshing data:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Fetch hospital and departments on component mount
-  useEffect(() => {
-    const initData = async () => {
-      const token = getToken();
-      if (!token) {
-        navigate("/login");
-        return;
-      }
-
-      // Get user profile to get hospital name
-      const userResult = await getUserProfile(token);
-      if (userResult.success) {
-        const hName = userResult.data.hospitalName || "Zydus";
-        setHospitalName(hName);
-        
-        // Fetch departments and pending doctors
-        fetchDepartments(hName, token);
-        fetchPendingDoctors(hName, token);
-      } else if (userResult.status === 401) {
-        navigate("/login");
-      }
-    };
-
-    initData();
-  }, [navigate]);
-
-  // Fetch doctors and patients when department is selected
-  useEffect(() => {
-    if (selectedDepartment && hospitalName) {
-      const token = getToken();
-      if (token) {
-        fetchDoctorsByDepartment(selectedDepartment._id, hospitalName, token);
-      }
-    }
-  }, [selectedDepartment]);
-
-  const fetchDepartments = async (hName, token) => {
-    try {
-      setLoading(true);
-      const result = await getHospitalDepartments(hName, token);
-      
-      if (result.success) {
-        if (Array.isArray(result.data)) {
-          setDepartments(result.data);
-        } else {
-          setDepartments([]);
-        }
-      } else {
-        setError("Failed to fetch departments");
-        setDepartments([]);
-      }
-    } catch (error) {
-      setError("Failed to fetch departments");
-      console.error("Error fetching departments:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPendingDoctors = async (hName, token) => {
-    try {
-      const result = await getPendingDoctors(hName, token);
-      if (result.success) {
-        setPendingDoctors(Array.isArray(result.data) ? result.data : []);
-      } else {
-        setPendingDoctors([]);
-      }
-    } catch (error) {
-      console.error("Error fetching pending doctors:", error);
-    }
-  };
-
-  const fetchDoctorsByDepartment = async (departmentId, hName, token) => {
-    try {
-      setLoading(true);
-      const response = await axios.get(
-        `http://localhost:8000/api/hospitals/get_hospital_doctors/${departmentId}/${hName}`,
-        {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        }
-      );
-      setDoctors(response.data.doctors || []);
-    } catch (error) {
-      setError("Failed to fetch doctors");
-      console.error("Error fetching doctors:", error);
-    } finally {
-      setLoading(false);
-    }
+    reloadDepartments();
+    await fetchPendingDoctors();
+    if (selectedDepartment) await fetchDoctorsByDepartment(selectedDepartment.name);
   };
 
   const handleDepartmentSelect = (department) => {
     setSelectedDepartment(department);
+    setIsEditing(false);
     setEditData({
       name: department.name,
-      Description: department.Description,
+      description: department.description || "",
       roles: department.roles || []
     });
   };
 
   const handleAddDepartment = async () => {
-    try {
-      setLoading(true);
-      const token = getToken();
-      
-      const response = await axios.post(
-        "http://localhost:8000/api/add_department/",
-        {
-          ...newDepartment,
-          hospitalName
-        },
-        {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        }
-      );
-
-      setDepartments([...departments, response.data.department]);
-      setSuccess("Department added successfully");
-      setShowAddDepartment(false);
-      setNewDepartment({
-        name: "",
-        Description: "",
-        roles: []
-      });
-    } catch (error) {
-      setError("Failed to add department");
-      console.error("Error adding department:", error);
-    } finally {
-      setLoading(false);
+    if (!hospital?.id) {
+      setError("Hospital not loaded yet. Please refresh.");
+      return;
     }
+    if (!newDepartment.name.trim()) {
+      setError("Department name is required");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const result = await createDepartment(token, hospital.id, {
+      name: newDepartment.name.trim(),
+      description: newDepartment.description,
+      roles: newDepartment.roles,
+    });
+    setLoading(false);
+    if (!result.success) {
+      setError(result.message);
+      return;
+    }
+    setSuccess("Department added successfully");
+    setShowAddDepartment(false);
+    setNewDepartment({ name: "", description: "", roles: [] });
+    reloadDepartments();
   };
 
-
-
-
-
-
   const handleEditSubmit = async () => {
-    try {
-      setLoading(true);
-      const token = getToken();
-      const response = await axios.put(
-        `http://localhost:8000/api/update_department/${selectedDepartment._id}/`,
-        {
-          name: editData.name,
-          Description: editData.Description,
-          roles: editData.roles
-        },
-        {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        }
-      );
- 
-      setDepartments(departments.map(dept =>
-        dept._id === selectedDepartment._id ? { ...dept, ...editData } : dept
-      ));
-      setSelectedDepartment({...selectedDepartment, ...editData});
-      setSuccess("Department updated successfully");
-      setIsEditing(false);
-    } catch (error) {
-      setError("Failed to update department");
-      console.error("Error updating department:", error);
-    } finally {
-      setLoading(false);
+    if (!hospital?.id || !selectedDepartment) return;
+    setLoading(true);
+    setError("");
+    const result = await updateDepartment(token, hospital.id, selectedDepartment.id, {
+      name: editData.name,
+      description: editData.description,
+      roles: editData.roles,
+    });
+    setLoading(false);
+    if (!result.success) {
+      setError(result.message);
+      return;
     }
+    setSelectedDepartment({ ...selectedDepartment, ...editData });
+    setSuccess("Department updated successfully");
+    setIsEditing(false);
+    reloadDepartments();
   };
 
   const handleDeleteDepartment = async (departmentId) => {
-    if (!window.confirm("Are you sure you want to delete this department? This will also remove all associated doctors")) return;
-
-    try {
-      setLoading(true);
-      const token = getToken();
-      await axios.delete(`http://localhost:8000/api/delete_department/${departmentId}/`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      setDepartments(departments.filter(dept => dept._id !== departmentId));
-      if (selectedDepartment && selectedDepartment._id === departmentId) {
-        setSelectedDepartment(null);
-      }
-      setSuccess("Department deleted successfully");
-    } catch (error) {
-      setError("Failed to delete department");
-      console.error("Error deleting department:", error);
-    } finally {
-      setLoading(false);
+    if (!window.confirm("Are you sure you want to delete this department? It must have no doctors assigned.")) return;
+    if (!hospital?.id) return;
+    setLoading(true);
+    setError("");
+    const result = await deleteDepartment(token, hospital.id, departmentId);
+    setLoading(false);
+    if (!result.success) {
+      setError(result.message);
+      return;
     }
+    if (selectedDepartment?.id === departmentId) setSelectedDepartment(null);
+    setSuccess("Department deleted successfully");
+    reloadDepartments();
   };
 
-  
   const handleDeleteDoctor = async (doctorId) => {
     if (!window.confirm("Are you sure you want to delete this doctor?")) return;
-
-    try {
-      setLoading(true);
-      const token = getToken();
-      await axios.delete(`http://localhost:8000/api/users/delete_doctor/${doctorId}/`, {
-        headers: {
-          "Authorization": `Bearer ${token}`
-        }
-      });
-
-      setDoctors(doctors.filter(doc => doc._id !== doctorId));
-      setSuccess("Doctor deleted successfully");
-    } catch (error) {
-      setError("Failed to delete doctor");
-      console.error("Error deleting doctor:", error);
-    } finally {
-      setLoading(false);
+    setLoading(true);
+    setError("");
+    const result = await deleteDoctor(token, doctorId);
+    setLoading(false);
+    if (!result.success) {
+      setError(result.message);
+      return;
     }
+    setDoctors(doctors.filter(doc => doc._id !== doctorId));
+    setSuccess("Doctor deleted successfully");
   };
 
-
   const handleAssignRole = async (doctor) => {
-    try {
-      setLoading(true);
-      
-       // Use a simple confirm dialog instead of useState hooks inside a function
-      const isAddingHeadRole = !doctor.roles?.includes("Department Head") && 
+    const isAddingHeadRole = !doctor.roles?.includes("Department Head") &&
       window.confirm(`Make ${doctor.name} the Department Head?`);
 
-      // Create a copy of roles
-      let updatedRoles = [...(doctor.roles || [])];
-      if (isAddingHeadRole) {
-        // Add Department Head role
-        if (!updatedRoles.includes("Department Head")) {
-          updatedRoles.push("Department Head");
-        }
-      } else if (doctor.roles?.includes("Department Head") && 
-                window.confirm(`Remove ${doctor.name} from Department Head role?`)) {
-        // Remove Department Head role
-        updatedRoles = updatedRoles.filter(role => role !== "Department Head");
-      } else {
-        // Show role selection dialog
-        const availableRolesMsg = (selectedDepartment?.roles || availableRoles)
-          .map((r, i) => `${i+1}. ${r}`).join('\n');
-        
-        const roleInput = prompt(
-          `Enter role numbers separated by commas:\n${availableRolesMsg}`,
-          (doctor.roles || []).join(', ')
-        );
-        
-        if (roleInput !== null) {
-          const selectedRoles = roleInput.split(',')
-            .map(r => r.trim())
-            .filter(r => (selectedDepartment?.roles || availableRoles).includes(r));
-          
-          updatedRoles = selectedRoles;
-        } else {
-          setLoading(false);
-          return; // User canceled
-        }
+    let updatedRoles = [...(doctor.roles || [])];
+    if (isAddingHeadRole) {
+      if (!updatedRoles.includes("Department Head")) {
+        updatedRoles.push("Department Head");
       }
-
-      const hospitalName = sessionStorage.getItem("hospitalName") || "Zydus";
-      const response = await axios.put(
-        `http://localhost:8000/api/doctors/update_roles_by_email`,
-        {
-          email: doctor.email,
-          roles: updatedRoles,
-          hospitalName: hospitalName
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${getToken()}`
-          }
-        }
+    } else if (doctor.roles?.includes("Department Head") &&
+              window.confirm(`Remove ${doctor.name} from Department Head role?`)) {
+      updatedRoles = updatedRoles.filter(role => role !== "Department Head");
+    } else {
+      const roleChoices = selectedDepartment?.roles?.length ? selectedDepartment.roles : availableRoles;
+      const roleInput = prompt(
+        `Enter role names separated by commas:\n${roleChoices.map((r, i) => `${i + 1}. ${r}`).join("\n")}`,
+        (doctor.roles || []).join(", ")
       );
-
-      // Update the doctor in the local state
-      setDoctors(doctors.map(doc => 
-        doc.email === doctor.email ? { ...doc, roles: updatedRoles } : doc
-      ));
-      
-      setSuccess("Doctor roles updated successfully");
-    } catch (error) {
-      setError("Failed to update doctor roles");
-      console.error("Error updating doctor roles:", error);
-    } finally {
-      setLoading(false);
+      if (roleInput === null) return; // User canceled
+      updatedRoles = roleInput.split(",")
+        .map(r => r.trim())
+        .filter(r => roleChoices.includes(r));
     }
+
+    setLoading(true);
+    setError("");
+    const result = await assignDoctorRoles(token, doctor._id, updatedRoles);
+    setLoading(false);
+    if (!result.success) {
+      setError(result.message);
+      return;
+    }
+    setDoctors(doctors.map(doc =>
+      doc._id === doctor._id ? { ...doc, roles: updatedRoles } : doc
+    ));
+    setSuccess("Doctor roles updated successfully");
+    if (updatedRoles.includes("Department Head")) reloadDepartments();
   };
 
   const handleApproveDoctor = async (doctor) => {
-    try {
-      setLoading(true);
-      if(!doctor.departmentSelected){
-        setError("Please select a department for the doctor before approving.");
-        return;
-      }
-
-      // Find the department name from the selected department ID
-      const selectedDept = departments.find(dept => dept._id === doctor.departmentSelected);
-      if (!selectedDept) {
-        setError("Selected department not found");
-        return;
-      }
-
-      const token = getToken();
-      const response = await approveDoctor({
-        email: doctor.email,
-        hospitalName: hospitalName,
-        department: selectedDept.name
-      }, token);
-      
-      if (!response.success) {
-        setError(response.error || "Failed to approve doctor");
-        return;
-      }
-      
-      setPendingDoctors(pendingDoctors.filter(d => d.email !== doctor.email));
-      setSuccess("Doctor approved successfully");
-      
-      // Refresh the doctors list if a department is selected
-      if (selectedDepartment && selectedDepartment._id === doctor.departmentSelected) {
-        fetchDoctorsByDepartment(selectedDepartment._id, hospitalName, token);
-      }
-    } catch (error) {
-      setError("Failed to approve doctor");
-      console.error("Error approving doctor:", error);
-    } finally {
-      setLoading(false);
+    if (!doctor.departmentSelected) {
+      setError("Please select a department for the doctor before approving.");
+      return;
+    }
+    const selectedDept = departments.find(dept => dept.id === doctor.departmentSelected);
+    if (!selectedDept) {
+      setError("Selected department not found");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const result = await approveDoctor(token, {
+      email: doctor.email,
+      hospitalName,
+      department: selectedDept.name,
+    });
+    setLoading(false);
+    if (!result.success) {
+      setError(result.message);
+      return;
+    }
+    setPendingDoctors(pendingDoctors.filter(d => d.email !== doctor.email));
+    setSuccess(result.message || "Doctor approved successfully");
+    if (selectedDepartment?.id === selectedDept.id) {
+      fetchDoctorsByDepartment(selectedDept.name);
     }
   };
 
   const handleRejectDoctor = async (doctorEmail) => {
-    try {
-      if(!window.confirm("Are you sure you want to reject this doctor application?")) {
-        return;
-      }
-      setLoading(true);
-      
-      const token = getToken();
-      const response = await rejectDoctor({
-        email: doctorEmail,
-        hospitalName: hospitalName
-      }, token);
-
-      if (!response.success) {
-        setError(response.error || "Failed to reject doctor");
-        return;
-      }
-
-      setPendingDoctors(pendingDoctors.filter(doctor => doctor.email !== doctorEmail));
-      setSuccess("Doctor rejected successfully");
-    } catch (error) {
-      setError("Failed to reject doctor");
-      console.error("Error rejecting doctor:", error);
-    } finally {
-      setLoading(false);
+    if (!window.confirm("Are you sure you want to reject this doctor application?")) return;
+    setLoading(true);
+    setError("");
+    const result = await rejectDoctor(token, { email: doctorEmail, hospitalName });
+    setLoading(false);
+    if (!result.success) {
+      setError(result.message);
+      return;
     }
+    setPendingDoctors(pendingDoctors.filter(doctor => doctor.email !== doctorEmail));
+    setSuccess("Doctor rejected successfully");
   };
 
-
-  
+  const busy = loading || departmentsLoading;
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-green-50 to-blue-50">
@@ -445,17 +303,17 @@ const DepartmentManagement = () => {
           <div className="flex justify-between items-center mb-8">
             <div>
               <h2 className="text-3xl font-bold text-blue-700">Department Management</h2>
-              <p className="text-green-600 mt-1">{hospitalName || 'Hospital'}</p>
+              <p className="text-green-600 mt-1">{hospitalName || 'No hospital linked'}</p>
             </div>
             <div className="flex gap-2">
               {/* Add the refresh button here */}
               <button
                 onClick={handleRefresh}
-                disabled={loading}
+                disabled={busy}
                 className="flex items-center px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all"
                 title="Refresh data"
               >
-                <FiRefreshCw className={`${loading ? 'animate-spin' : ''} mr-2`} /> Refresh
+                <FiRefreshCw className={`${busy ? 'animate-spin' : ''} mr-2`} /> Refresh
               </button>
               <button
                 onClick={() => setShowAddDepartment(true)}
@@ -488,27 +346,29 @@ const DepartmentManagement = () => {
             {/* Departments List */}
             <div className="bg-white rounded-lg shadow-lg p-6 border-t-4 border-blue-500">
               <h3 className="text-xl font-semibold text-blue-600 mb-4">Departments</h3>
-              {departments.length === 0 ? (
+              {departmentsLoading ? (
+                <p className="text-center text-gray-500 py-8">Loading departments...</p>
+              ) : departments.length === 0 ? (
                 <p className="text-center text-gray-500 py-8">No departments available. Add a new department to get started.</p>
               ) : (
                 <div className="space-y-3">
                   {departments.map(department => (
                     <div
-                      key={department._id}
+                      key={department.id}
                       onClick={() => handleDepartmentSelect(department)}
                       className={`p-4 rounded-lg cursor-pointer transition-all ${
-                        selectedDepartment?._id === department._id
+                        selectedDepartment?.id === department.id
                           ? "bg-gradient-to-r from-blue-100 to-green-100 border-l-4 border-blue-500 shadow"
                           : "hover:bg-gray-100 border-l-4 border-transparent"
                       }`}
                     >
                       <div className="flex justify-between">
                         <h4 className="font-medium text-blue-700">{department.name}</h4>
-                        {selectedDepartment?._id === department._id && (
+                        {selectedDepartment?.id === department.id && (
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDeleteDepartment(department._id);
+                              handleDeleteDepartment(department.id);
                             }}
                             className="text-red-500 hover:text-red-700"
                           >
@@ -557,8 +417,8 @@ const DepartmentManagement = () => {
                         Description
                       </label>
                       <textarea
-                        value={editData.Description}
-                        onChange={(e) => setEditData({ ...editData, Description: e.target.value })}
+                        value={editData.description}
+                        onChange={(e) => setEditData({ ...editData, description: e.target.value })}
                         className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                         rows="3"
                       />
@@ -602,9 +462,9 @@ const DepartmentManagement = () => {
                 ) : (
                   <div className="space-y-4">
                     <h4 className="font-medium text-gray-700 mb-2">Description:</h4>
-                    <p className="text-gray-600 bg-blue-50 p-4 rounded-lg">{selectedDepartment.Description}</p>
+                    <p className="text-gray-600 bg-blue-50 p-4 rounded-lg">{selectedDepartment.description || "No description"}</p>
                     <h4 className="font-medium text-gray-700 mb-2">Department Head:</h4>
-                    <p className="text-gray-600 bg-blue-50 p-4 rounded-lg">{selectedDepartment.head}</p>
+                    <p className="text-gray-600 bg-blue-50 p-4 rounded-lg">{selectedDepartment.headOfDepartment || "Not assigned"}</p>
                     <div>
                       <h4 className="font-medium text-gray-700 mb-2">Available Roles:</h4>
                       <div className="flex flex-wrap gap-2">
@@ -632,7 +492,7 @@ const DepartmentManagement = () => {
                   </div>
 
                   <div className="space-y-4">
-                  {loading ? (
+                  {doctorsLoading ? (
                     <p className="text-center py-4">Loading doctors...</p>
                   ) : doctors.length === 0 ? (
                     <p className="text-center text-gray-500 py-8">No doctors assigned to this department</p>
@@ -647,9 +507,9 @@ const DepartmentManagement = () => {
                             <h5 className="font-medium text-blue-600">{doctor.name}</h5>
                             <p className="text-sm text-gray-600">{doctor.email}</p>
                             <p className="text-sm text-gray-600">
-                              {doctor.doctorQualification} • {doctor.doctorSpecialization}
+                              {doctor.qualification || "—"} • {doctor.specialization || "—"}
                             </p>
-                            <p className="text-sm text-green-600 font-semibold">⭐ {doctor.rating || "Not Rated"}</p>
+                            <p className="text-sm text-green-600 font-semibold">⭐ {doctor.rating || "Not Rated"}{doctor.roles?.length ? ` • ${doctor.roles.join(", ")}` : ""}</p>
                           </div>
                           <div className="flex space-x-2">
                             <button
@@ -735,7 +595,7 @@ const DepartmentManagement = () => {
                             >
                               <option value="">Select Department</option>
                               {departments.map(dept => (
-                                <option key={dept._id} value={dept._id}>
+                                <option key={dept.id} value={dept.id}>
                                   {dept.name}
                                 </option>
                               ))}
@@ -808,8 +668,8 @@ const DepartmentManagement = () => {
                     Description
                   </label>
                   <textarea
-                    value={newDepartment.Description}
-                    onChange={(e) => setNewDepartment({ ...newDepartment, Description: e.target.value })}
+                    value={newDepartment.description}
+                    onChange={(e) => setNewDepartment({ ...newDepartment, description: e.target.value })}
                     className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     rows="3"
                   />

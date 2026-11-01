@@ -1,68 +1,114 @@
-import { useState, useEffect } from "react";
-import { Route, Routes, useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { Route, Routes } from "react-router-dom";
 import Sidebar from "../../components/Sidebar";
-import { FiUsers, FiActivity, FiCalendar, FiBriefcase, FiTrendingUp, FiClock} from "react-icons/fi";
+import { FiUsers, FiActivity, FiCalendar, FiBriefcase, FiClock } from "react-icons/fi";
 import { MdLocalHospital, MdOutlineMedicalServices } from "react-icons/md";
-import { getUserProfile } from "../../services/userService";
-import { getToken } from "../../services/authService";
+import { useAuth } from "../../context/AuthContext";
+import { useHospitals } from "../../hooks/useHospitals";
+import { listDoctors, listPatients } from "../../services/userService";
+import { listDepartments } from "../../services/hospitalService";
+import { getAllAppointments } from "../../services/appointmentsService";
+import { pickList } from "../../services/apiClient";
+
+const todayISO = () => new Date().toISOString().split("T")[0];
+
+const STATUS_DOT = {
+  pending: "bg-yellow-500",
+  approved: "bg-green-500",
+  completed: "bg-blue-500",
+  rejected: "bg-red-500",
+};
 
 function AdminSection() {
-  const navigate = useNavigate();
+  const { token, user } = useAuth();
+  const hospitalName = user?.hospitalName || "";
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [userData, setUserData] = useState(null);
-  const [hospitalInfo, setHospitalInfo] = useState(null);
+  const { hospitals } = useHospitals(token);
+
+  const [counts, setCounts] = useState({ patients: null, doctors: null, today: null, departments: null });
+  const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+  const [error, setError] = useState("");
+
+  const hospitalInfo = useMemo(
+    () => hospitals.find((h) => h.name?.toLowerCase() === hospitalName.toLowerCase()) || null,
+    [hospitals, hospitalName]
+  );
+
   useEffect(() => {
-    const fetchAdminData = async () => {
-      const token = getToken();
-      if (!token) {
-        navigate("/login");
-        return;
-      }
-
-      const result = await getUserProfile(token);
-      if (result.success) {
-        const user = result.data;
-        setUserData({
-          name: user.name || user.email?.split("@")[0] || "Admin",
-          email: user.email
-        });
-
-        // Set hospital info from user's hospital
-        const hospitalName = user.hospitalName || "Hospital Management System";
-        if (hospitalName === "Zydus") {
-          setHospitalInfo({
-            name: "Zydus Hospital",
-            address: "Zydus Hospital Rd, Thaltej, Ahmedabad, Gujarat 380054",
-            founded: 2007,
-            type: "Multispecialty",
-            contactNumber: "+91 79 6617 7777",
-            website: "www.zydushospitals.com"
-          });
-        } else {
-          setHospitalInfo({
-            name: hospitalName,
-            address: "Healthcare Avenue, Medical District",
-            type: "General Hospital"
-          });
-        }
-      } else if (result.status === 401) {
-        navigate("/login");
-      }
+    if (!token || !hospitalName) {
       setLoading(false);
+      if (!hospitalName) setError("No hospital is linked to this admin account.");
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError("");
+      const [docRes, patRes, apptRes] = await Promise.all([
+        listDoctors(token, hospitalName),
+        listPatients(token, hospitalName),
+        getAllAppointments(token),
+      ]);
+      if (cancelled) return;
+      const appts = pickList(apptRes, "appointments");
+      const today = todayISO();
+      setAppointments(appts);
+      setCounts((prev) => ({
+        ...prev,
+        doctors: docRes.success ? pickList(docRes, "doctors").length : null,
+        patients: patRes.success ? pickList(patRes, "patients").length : null,
+        today: apptRes.success
+          ? appts.filter((a) => (a.acceptedDate || a.appointmentDate) === today).length
+          : null,
+      }));
+      const failed = [docRes, patRes, apptRes].find((r) => !r.success);
+      if (failed) setError(failed.message);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
     };
+  }, [token, hospitalName]);
 
-    fetchAdminData();
-  }, [navigate]);
+  // Department count needs the hospital id (resolved from the hospitals list)
+  useEffect(() => {
+    if (!token || !hospitalInfo?.id) return undefined;
+    let cancelled = false;
+    (async () => {
+      const res = await listDepartments(token, hospitalInfo.id);
+      if (cancelled) return;
+      setCounts((prev) => ({ ...prev, departments: res.success ? pickList(res, "departments").length : null }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, hospitalInfo?.id]);
 
-  // Real-time stats that would be fetched from backend in production
+  const fmt = (v) => (v === null || v === undefined ? (loading ? "…" : "—") : v);
+
   const stats = [
-    { label: "Total Patients", value: "100+", icon: <FiUsers />, color: "blue", change: "+12% ↑" },
-    { label: "Active Doctors", value: "35+", icon: <FiActivity />, color: "green", change: "+3% ↑" },
-    { label: "Today's Appointments", value: "50+", icon: <FiCalendar />, color: "blue", change: "+7% ↑" },
-    { label: "Departments", value: "5+", icon: <FiBriefcase />, color: "green", change: "" }
+    { label: "Total Patients", value: fmt(counts.patients), icon: <FiUsers />, color: "blue" },
+    { label: "Doctors", value: fmt(counts.doctors), icon: <FiActivity />, color: "green" },
+    { label: "Today's Appointments", value: fmt(counts.today), icon: <FiCalendar />, color: "blue" },
+    { label: "Departments", value: fmt(counts.departments), icon: <FiBriefcase />, color: "green" },
   ];
+
+  const statusCounts = useMemo(() => {
+    const c = { pending: 0, approved: 0, completed: 0, rejected: 0 };
+    appointments.forEach((a) => {
+      if (c[a.status] !== undefined) c[a.status] += 1;
+    });
+    return c;
+  }, [appointments]);
+
+  const recentAppointments = useMemo(
+    () =>
+      [...appointments]
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+        .slice(0, 5),
+    [appointments]
+  );
 
   return (
     <div className="flex bg-gray-50">
@@ -77,28 +123,31 @@ function AdminSection() {
                 <div className="flex justify-between items-start">
                   <div>
                     <h1 className="text-4xl font-bold mb-2">
-                      Welcome, {userData?.name}! <span className="ml-2">👋</span>
+                      Welcome, {user?.name || user?.email?.split("@")[0] || "Admin"}! <span className="ml-2">👋</span>
                     </h1>
                     <p className="text-lg opacity-90 mb-3">
-                      {hospitalInfo?.name} Administration Portal
+                      {hospitalInfo?.name || hospitalName || "Hospital"} Administration Portal
                     </p>
-                    {hospitalInfo && hospitalInfo.name === "Zydus Hospital" && (
+                    {hospitalInfo && (hospitalInfo.address || hospitalInfo.contactNo) && (
                       <div className="mt-2 text-white/80 text-sm space-y-1">
-                        <p><span className="font-semibold">Address:</span> {hospitalInfo.address}</p>
-                        <p><span className="font-semibold">Contact:</span> {hospitalInfo.contactNumber}</p>
-                        <p><span className="font-semibold">Established:</span> {hospitalInfo.founded} | <span className="font-semibold">Website:</span> {hospitalInfo.website}</p>
+                        {hospitalInfo.address && <p><span className="font-semibold">Address:</span> {hospitalInfo.address}</p>}
+                        {hospitalInfo.contactNo && <p><span className="font-semibold">Contact:</span> {hospitalInfo.contactNo}</p>}
                       </div>
                     )}
                   </div>
                   <div className="hidden md:flex items-center space-x-3 bg-white/10 backdrop-blur-sm py-2 px-4 rounded-lg">
                     <MdLocalHospital className="text-3xl" />
                     <div>
-                      <p className="font-semibold">System Status</p>
-                      <p className="text-sm text-green-200">All Systems Operational</p>
+                      <p className="font-semibold">Pending Appointments</p>
+                      <p className="text-sm text-green-200">{loading ? "…" : statusCounts.pending}</p>
                     </div>
                   </div>
                 </div>
               </div>
+
+              {error && (
+                <div className="mb-6 p-4 bg-red-100 text-red-700 rounded-lg">{error}</div>
+              )}
 
               {/* Stats Grid */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -108,9 +157,6 @@ function AdminSection() {
                       <div className={`text-${stat.color}-500 text-2xl mb-2 bg-${stat.color}-50 p-3 rounded-lg`}>
                         {stat.icon}
                       </div>
-                      {stat.change && (
-                        <span className="text-green-500 text-sm font-semibold">{stat.change}</span>
-                      )}
                     </div>
                     <div className="text-3xl font-bold text-gray-800 my-2">
                       {stat.value}
@@ -122,114 +168,58 @@ function AdminSection() {
                 ))}
               </div>
 
-              {/* Hospital Overview & Critical Alerts */}
-              <div className=" mb-8">
+              {/* Appointment overview (real counts by status) */}
+              <div className="mb-8">
                 <div className="bg-white rounded-xl shadow-md p-6 md:col-span-2">
                   <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                    <MdOutlineMedicalServices className="text-blue-500 mr-2" /> Hospital Overview
+                    <MdOutlineMedicalServices className="text-blue-500 mr-2" /> Appointment Overview
                   </h2>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                
-                    
-                    <div className="bg-green-50 p-4 rounded-lg">
-                      <p className="text-green-700 font-medium">Patient Satisfaction</p>
-                      <div className="mt-2 flex justify-between items-center">
-                        <span className="text-2xl font-bold text-gray-800">92%</span>
-                        <span className="text-green-500 text-sm">↑ 5%</span>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {[
+                      { key: "pending", label: "Pending", cls: "bg-yellow-50 text-yellow-700" },
+                      { key: "approved", label: "Approved", cls: "bg-green-50 text-green-700" },
+                      { key: "completed", label: "Completed", cls: "bg-blue-50 text-blue-700" },
+                      { key: "rejected", label: "Rejected", cls: "bg-red-50 text-red-700" },
+                    ].map((s) => (
+                      <div key={s.key} className={`${s.cls} p-4 rounded-lg`}>
+                        <p className="font-medium">{s.label}</p>
+                        <span className="text-2xl font-bold text-gray-800">{loading ? "…" : statusCounts[s.key]}</span>
                       </div>
-                    </div>
-                    
-                    <div className="bg-blue-50 p-4 rounded-lg">
-                      <p className="text-blue-700 font-medium">Average Wait Time</p>
-                      <div className="mt-2 flex justify-between items-center">
-                        <span className="text-2xl font-bold text-gray-800">14 min</span>
-                        <span className="text-red-500 text-sm">↑ 2 min</span>
-                      </div>
-                    </div>
-                    
-                  
-                  </div>
-                </div>
-
-              
-              </div>
-
-              {/* Recent Activities & System Status */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                    <FiClock className="text-blue-500 mr-2" /> Recent Activities
-                  </h2>
-                  <div className="space-y-4">
-                    <div className="flex items-center p-3 border-b border-gray-100">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
-                      <div>
-                        <p className="text-gray-800 font-medium">Dr. Patel added to Cardiology</p>
-                        <p className="text-gray-500 text-sm">Today, 10:45 AM</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center p-3 border-b border-gray-100">
-                      <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
-                      <div>
-                        <p className="text-gray-800 font-medium">Updated emergency protocols</p>
-                        <p className="text-gray-500 text-sm">Yesterday, 3:30 PM</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center p-3 border-b border-gray-100">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
-                      <div>
-                        <p className="text-gray-800 font-medium">New equipment received - Radiology</p>
-                        <p className="text-gray-500 text-sm">Yesterday, 11:15 AM</p>
-                      </div>
-                    </div>
-                    
-
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                    <FiTrendingUp className="text-green-500 mr-2" /> Performance Metrics
-                  </h2>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-gray-700 font-medium">System Health</span>
-                      <span className="text-green-500 font-medium">98%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div className="bg-green-500 h-2 rounded-full" style={{ width: '98%' }}></div>
-                    </div>
-                    
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-gray-700 font-medium">Patient Records Accuracy</span>
-                      <span className="text-green-500 font-medium">99.7%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div className="bg-green-500 h-2 rounded-full" style={{ width: '99.7%' }}></div>
-                    </div>
-                    
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-gray-700 font-medium">Server Uptime</span>
-                      <span className="text-green-500 font-medium">99.9%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div className="bg-green-500 h-2 rounded-full" style={{ width: '99.9%' }}></div>
-                    </div>
-                    
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-gray-700 font-medium">Staff Efficiency</span>
-                      <span className="text-blue-500 font-medium">87%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div className="bg-blue-500 h-2 rounded-full" style={{ width: '87%' }}></div>
-                    </div>
+                    ))}
                   </div>
                 </div>
               </div>
 
+              {/* Recent Activities (latest appointment updates) */}
+              <div className="mb-8">
+                <div className="bg-white rounded-xl shadow-md p-6">
+                  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <FiClock className="text-blue-500 mr-2" /> Recent Appointment Activity
+                  </h2>
+                  {loading ? (
+                    <p className="text-gray-500">Loading…</p>
+                  ) : recentAppointments.length === 0 ? (
+                    <p className="text-gray-500">No appointment activity yet.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {recentAppointments.map((a) => (
+                        <div key={a._id} className="flex items-center p-3 border-b border-gray-100">
+                          <div className={`w-2 h-2 ${STATUS_DOT[a.status] || "bg-gray-400"} rounded-full mr-3`}></div>
+                          <div>
+                            <p className="text-gray-800 font-medium">
+                              {a.patient?.name || a.patient?.email || "Patient"} with Dr. {a.doctor?.name || "—"}
+                              {a.department ? ` (${a.department})` : ""} — {a.status}
+                            </p>
+                            <p className="text-gray-500 text-sm">
+                              {a.acceptedDate || a.appointmentDate} {a.acceptedTime || a.requestedTime || ""}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             
             </div>
           } />
