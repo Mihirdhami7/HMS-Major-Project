@@ -1,5 +1,7 @@
-from datetime import datetime, timedelta
-from types import SimpleNamespace
+from datetime import datetime, timedelta, timezone
+import hashlib
+import logging
+import secrets
 
 import bcrypt
 import jwt
@@ -17,16 +19,49 @@ from rest_framework.throttling import AnonRateThrottle
 
 from backend.db import (
     client,
-    users_collection, staff_collection, otp_collection, sessions_collection,
+    users_collection, staff_collection, otp_collection, sessions_collection, hospitals_collection,
     generate_otp, clear_expired_otps
 )
 from backend import settings
 from .serializers import (
-    RegisterSerializer, VerifyEmailSerializer, LoginSerializer, LogoutSerializer, UserProfileSerializer
+    RegisterSerializer, VerifyEmailSerializer, LoginSerializer, LogoutSerializer, UserProfileSerializer,
+    PasswordResetRequestSerializer, PasswordResetConfirmSerializer,
 )
 from .permissions import IsSameUser, IsSuperAdminOrIsSameHospitalAdmin
 from .models import UserDocument, OTPDocument
 from .authentication import JWTAuthentication
+
+logger = logging.getLogger(__name__)
+
+# Role names as stored in the users collection (token may carry e.g. "superAdmin").
+CANONICAL_ROLES = {r.lower(): r for r in ("Patient", "Doctor", "Admin", "Supplier", "SuperAdmin")}
+
+
+def canonical_role(user_type):
+    return CANONICAL_ROLES.get(str(user_type or "").strip().lower(), user_type)
+
+
+def account_query(request_user):
+    """
+    Mongo filter for the account behind the current login.
+    A patient can have one account per hospital (same email), so the hospital
+    chosen at login (stored in the token) is part of the lookup for patients.
+    """
+    role = canonical_role(getattr(request_user, "userType", None))
+    query = {"email": getattr(request_user, "email", None), "userType": role}
+    hospital = getattr(request_user, "hospitalName", None)
+    if role == "Patient" and hospital:
+        query["hospitalName"] = hospital
+    return query
+
+
+def utc_now():
+    """Naive UTC datetime (pymongo returns naive datetimes, so compare like with like)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def hash_code(code: str) -> str:
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
 
 class RegisterUserAPIView(generics.CreateAPIView):
@@ -53,11 +88,33 @@ class RegisterUserAPIView(generics.CreateAPIView):
         email = data.get("email")
         userType = data.get("userType", "Patient")
 
-        # Check if user already exists
-        if users_collection.find_one({"email": email}):
+        hospital_name = (data.get("hospitalName") or "").strip()
+        if userType in ("Patient", "Doctor", "Admin"):
+            if not hospital_name or not hospitals_collection.find_one({"name": hospital_name}):
+                return Response({
+                    "status": "error",
+                    "errors": {"hospitalName": ["Please select a hospital from the list"]}
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if user already exists.
+        # A patient may hold one account per hospital (same email); every other
+        # combination must be unique per email.
+        existing = list(users_collection.find({"email": email}, {"userType": 1, "hospitalName": 1}))
+        if userType == "Patient":
+            clash = any(
+                u.get("userType") != "Patient" or u.get("hospitalName") == hospital_name
+                for u in existing
+            )
+            clash_msg = (f"You already have a patient account at {hospital_name}"
+                         if any(u.get("hospitalName") == hospital_name for u in existing)
+                         else "This email is already used by a non-patient account")
+        else:
+            clash = bool(existing)
+            clash_msg = "User with this email already exists"
+        if clash:
             return Response({
                 "status": "error",
-                "errors": {"email": ["User with this email already exists"]}
+                "errors": {"email": [clash_msg]}
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
@@ -127,15 +184,24 @@ class RegisterUserAPIView(generics.CreateAPIView):
             if not result:
                 raise exceptions.APIException("Failed to create user")
 
+            email_error = None
             try:
                 self._send_otp_email(email, otp_code, data.get("name"))
-            except Exception as e:
+            except Exception as exc:
+                email_error = exc
+
+            if email_error is not None and settings.DEBUG:
+                # Local development only: email not configured -> print the OTP in the server log.
+                logger.warning("OTP email failed (%s). DEBUG OTP for %s: %s", email_error, email, otp_code)
+                print(f"[DEBUG] Signup OTP for {email}: {otp_code}  (email sending failed: {email_error})", flush=True)
+            elif email_error is not None:
                 # Rollback user creation if email fails
+                logger.error("Verification email failed for %s: %s", email, email_error)
                 users_collection.delete_one({"_id": inserted_user_id})
-                otp_collection.delete_many({"email": email})
+                otp_collection.delete_many({"email": email, "purpose": {"$ne": "password_reset"}})
                 return Response({
                     "status": "error",
-                    "message": f"Failed to send verification email: {str(e)}"
+                    "message": "Could not send the verification email. Please try again later."
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             # Prepare response (remove sensitive data)
@@ -229,9 +295,10 @@ class VerifyEmailAPIView(generics.GenericAPIView):
                     "message": "OTP has expired. Please request a new one"
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Activate user account
-            result = users_collection.update_one(
-                {"email": email},
+            # Activate the not-yet-activated account(s) for this email
+            # (a patient may already have an active account at another hospital).
+            result = users_collection.update_many(
+                {"email": email, "is_active": {"$ne": True}},
                 {"$set": {
                     "is_active": True,
                     "activated_at": datetime.utcnow(),
@@ -322,7 +389,8 @@ class LoginAPIView(generics.CreateAPIView):
                 if not stored or not bcrypt.checkpw(password.encode("utf-8"), stored.encode("utf-8")):
                     return Response({"status": "error", "message": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
-            exp = datetime.utcnow() + timedelta(hours=4)
+            # Aware UTC datetime: a naive utcnow().timestamp() is read as LOCAL time on non-UTC machines
+            exp = datetime.now(timezone.utc) + timedelta(hours=4)
             payload = {
                 "email": email,
                 "userType": category if email == "21it402@bvmengineering.ac.in" else user.get("userType"),
@@ -350,6 +418,7 @@ class LoginAPIView(generics.CreateAPIView):
                     "email": email,
                     "hospitalName": user.get("hospitalName"),
                     "name": user.get("name"),
+                    "contactNo": str(user.get("contactNo") or ""),
                 },
                 "access": token_str
             }, status=status.HTTP_200_OK)
@@ -443,10 +512,7 @@ class GetUserProfileAPIView(generics.RetrieveAPIView):
         #     raise exceptions.PermissionDenied("You can only access your own profile")
         
         # Fetch user from database
-        user_doc = users_collection.find_one({
-            "email": email,
-            "userType": userType.capitalize()
-        })
+        user_doc = users_collection.find_one(account_query(self.request.user))
         
         if not user_doc:
             raise exceptions.NotFound("User not found")
@@ -514,10 +580,7 @@ class UpdateUserProfileAPIView(generics.UpdateAPIView):
         #     raise exceptions.PermissionDenied("You can only update your own profile")
         
         # Fetch user from database
-        user_doc = users_collection.find_one({
-            "email": email,
-            "userType": userType.capitalize()
-        })
+        user_doc = users_collection.find_one(account_query(self.request.user))
         
         if not user_doc:
             raise exceptions.NotFound("User not found")
@@ -551,10 +614,7 @@ class UpdateUserProfileAPIView(generics.UpdateAPIView):
             email = getattr(request.user, 'email', None)
             userType = getattr(request.user, 'userType', None)
             
-            updated_user = users_collection.find_one({
-                "email": email,
-                "userType": userType.capitalize()
-            })
+            updated_user = users_collection.find_one(account_query(request.user))
             
             if not updated_user:
                 raise exceptions.NotFound("User not found after update")
@@ -592,8 +652,9 @@ class UpdateUserProfileAPIView(generics.UpdateAPIView):
         # Build update dictionary (exclude read-only fields)
         update_data = {}
         
-        # Common updatable fields
-        updatable_fields = ['name', 'contactNo', 'gender', 'dateOfBirth', 'hospitalName']
+        # Common updatable fields.
+        # hospitalName is NOT editable: it is fixed by the hospital chosen at registration/login.
+        updatable_fields = ['name', 'contactNo', 'gender', 'dateOfBirth']
         
         for field in updatable_fields:
             if field in validated_data:
@@ -651,18 +712,25 @@ class UpdateUserProfileAPIView(generics.UpdateAPIView):
         
         # Update in users collection
         result = users_collection.update_one(
-            {"email": email, "userType": userType.capitalize()},
+            account_query(self.request.user),
             {"$set": update_data}
         )
         
         if result.matched_count == 0:
             raise exceptions.NotFound("User not found")
         
-        # Update in staff collection if doctor
+        # Update in staff collection if doctor (never copy the password hash into staff:
+        # staff records are returned by the public doctor list).
         if userType.lower() == "doctor":
+            staff_fields = {
+                "name": "name", "contactNo": "contactNo", "photo": "photo",
+                "doctorQualification": "qualification", "doctorSpecialization": "specialization",
+                "doctorCertificate": "certificate", "updated_at": "updated_at",
+            }
+            staff_update = {staff_fields[k]: v for k, v in update_data.items() if k in staff_fields}
             staff_collection.update_one(
                 {"email": email},
-                {"$set": update_data}
+                {"$set": staff_update}
             )
 
 
@@ -690,3 +758,131 @@ class GetCompanyNameAPIView(APIView):
 
         return Response({"status": "success", "companyName": supplier.get("companyName")}, status=status.HTTP_200_OK)
 
+
+
+# ==================== FORGOT PASSWORD ====================
+RESET_CODE_MINUTES = 10
+RESET_MAX_ATTEMPTS = 5
+RESET_PURPOSE = "password_reset"
+
+
+def _send_reset_email(email: str, code: str, name: str = None):
+    display = name or email.split("@", 1)[0]
+    text = (f"Hello {display},\n\nYour EasyTreat password reset code is: {code}\n"
+            f"It expires in {RESET_CODE_MINUTES} minutes.\n\n"
+            "If you did not ask to reset your password, ignore this email.")
+    html = (f"<p>Hello {display},</p><p>Your EasyTreat password reset code is: <strong>{code}</strong></p>"
+            f"<p>It expires in {RESET_CODE_MINUTES} minutes.</p>"
+            "<p>If you did not ask to reset your password, ignore this email.</p>")
+    msg = EmailMultiAlternatives(
+        subject="EasyTreat - Password reset code",
+        body=text,
+        from_email=settings.EMAIL_HOST_USER,
+        to=[email],
+    )
+    msg.attach_alternative(html, "text/html")
+    msg.send(fail_silently=False)
+
+
+class PasswordResetRequestAPIView(APIView):
+    """
+    POST /api/accounts/password-reset/request/   { "email": "..." }
+    Emails a 6-digit code. Always answers the same way, so it does not reveal
+    whether an account exists for that email.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [AnonRateThrottle]
+
+    def post(self, request, *args, **kwargs):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"status": "error", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        email = serializer.validated_data["email"]
+        generic = {
+            "status": "success",
+            "message": f"If an account exists for {email}, a reset code has been sent. It expires in {RESET_CODE_MINUTES} minutes.",
+        }
+
+        user = users_collection.find_one({"email": email}, {"name": 1})
+        if not user:
+            return Response(generic, status=status.HTTP_200_OK)
+
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        now = utc_now()
+        otp_collection.delete_many({"email": email, "purpose": RESET_PURPOSE})
+        otp_collection.insert_one({
+            "email": email,
+            "purpose": RESET_PURPOSE,
+            "codeHash": hash_code(code),
+            "attempts": 0,
+            "created_at": now,
+            "expires_at": now + timedelta(minutes=RESET_CODE_MINUTES),
+        })
+
+        try:
+            _send_reset_email(email, code, user.get("name"))
+        except Exception as exc:
+            if settings.DEBUG:
+                # Local development only: email is not configured, so print the code in the server log.
+                logger.warning("Password reset email failed (%s). DEBUG code for %s: %s", exc, email, code)
+                print(f"[DEBUG] Password reset code for {email}: {code}  (email sending failed: {exc})", flush=True)
+            else:
+                logger.error("Password reset email failed for %s: %s", email, exc)
+                otp_collection.delete_many({"email": email, "purpose": RESET_PURPOSE})
+                return Response({
+                    "status": "error",
+                    "message": "Could not send the reset email right now. Please try again later.",
+                }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        return Response(generic, status=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmAPIView(APIView):
+    """
+    POST /api/accounts/password-reset/confirm/   { "email", "otp", "newPassword" }
+    Sets the new password on every account of that email (a patient may have one per hospital)
+    and logs out all existing sessions.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [AnonRateThrottle]
+
+    def post(self, request, *args, **kwargs):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"status": "error", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        email = serializer.validated_data["email"]
+        code = serializer.validated_data["otp"]
+        invalid = Response({"status": "error", "message": "Invalid or expired code. Request a new one."},
+                           status=status.HTTP_400_BAD_REQUEST)
+
+        record = otp_collection.find_one({"email": email, "purpose": RESET_PURPOSE})
+        if not record or record.get("expires_at") is None or record["expires_at"] <= utc_now():
+            if record:
+                otp_collection.delete_one({"_id": record["_id"]})
+            return invalid
+
+        if not secrets.compare_digest(record.get("codeHash", ""), hash_code(code)):
+            attempts = record.get("attempts", 0) + 1
+            if attempts >= RESET_MAX_ATTEMPTS:
+                otp_collection.delete_one({"_id": record["_id"]})
+                return Response({"status": "error", "message": "Too many wrong attempts. Request a new code."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            otp_collection.update_one({"_id": record["_id"]}, {"$set": {"attempts": attempts}})
+            return invalid
+
+        new_hash = bcrypt.hashpw(serializer.validated_data["newPassword"].encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        result = users_collection.update_many(
+            {"email": email},
+            {"$set": {"hpassword": new_hash, "updated_at": utc_now()}, "$unset": {"password": ""}},
+        )
+        otp_collection.delete_many({"email": email, "purpose": RESET_PURPOSE})
+        sessions_collection.delete_many({"email": email})
+
+        if result.matched_count == 0:
+            return invalid
+        return Response({"status": "success", "message": "Password updated. You can now log in with your new password."},
+                        status=status.HTTP_200_OK)

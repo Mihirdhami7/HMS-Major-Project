@@ -3,7 +3,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.generics import ListCreateAPIView, UpdateAPIView, DestroyAPIView
 from bson.objectid import ObjectId
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from datetime import datetime
 
 
@@ -272,16 +272,18 @@ class DepartmentDestroyView(DestroyAPIView):
 
 class HospitalListCreateView(ListCreateAPIView):
     """
-    GET: List all hospitals (Authenticated users)
+    GET: List all hospitals. Public (login / signup dropdown); anonymous callers only get
+         public fields, admin contact details are returned to logged-in users only.
     POST: Create hospital (SuperAdmin only)
     """
-    
+
     authentication_classes = [JWTAuthentication]
+    PUBLIC_FIELDS = ("id", "name", "description", "address", "contactNo")
 
     def get_permissions(self):
         if self.request.method == 'POST':
             return [IsSuperAdmin()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -290,12 +292,14 @@ class HospitalListCreateView(ListCreateAPIView):
     
     def list(self, request, *args, **kwargs):
         try:
-            hospitals = list(hospitals_collection.find({}))
-            serializer = self.get_serializer(hospitals, many=True)
+            hospitals = list(hospitals_collection.find({}).sort("name", 1))
+            data = self.get_serializer(hospitals, many=True).data
+            if not getattr(request.user, "is_authenticated", False):
+                data = [{k: h.get(k, "") for k in self.PUBLIC_FIELDS} for h in data]
             return Response({
                 "status": "success",
-                "count": len(hospitals),
-                "hospitals": serializer.data
+                "count": len(data),
+                "hospitals": data
             }, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({

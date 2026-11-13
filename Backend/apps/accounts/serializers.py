@@ -1,6 +1,25 @@
 from datetime import datetime
 from rest_framework import serializers
 
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """Step 1 of 'forgot password': user enters the account email."""
+    email = serializers.EmailField(required=True)
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """Step 2: emailed 6-digit code + new password."""
+    email = serializers.EmailField(required=True)
+    otp = serializers.RegexField(r"^\d{6}$", required=True,
+                                 error_messages={"invalid": "Code must be exactly 6 digits"})
+    newPassword = serializers.CharField(required=True, min_length=6, write_only=True)
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
 class RegisterSerializer(serializers.Serializer):
 
     """

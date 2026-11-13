@@ -30,8 +30,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv("SECRET_KEY", "1fy%j02cvs&0$)-ny@3pj6l$+p)%cl6_ogu0h8-z=!&sy*v_ju")
 
-# RAZORPAY_KEY_ID = "rzp_test_Rxv4DGlM4J7iQg"
-# RAZORPAY_KEY_SECRET = "vqw55uSU5sdK0I3KMTCs2gJy"
+# Razorpay keys come ONLY from Backend/.env (never commit them). Use test keys (rzp_test_...) locally.
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
+# Appointment booking fee in INR (decided by the server, never by the browser)
+APPOINTMENT_BOOKING_FEE = int(os.getenv("APPOINTMENT_BOOKING_FEE", "100"))
+
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = os.getenv("DEBUG", "False").strip().lower() in ("1", "true", "yes", "on")
 
 _allowed_hosts = os.getenv("ALLOWED_HOSTS", "*")
 ALLOWED_HOSTS = [host.strip() for host in _allowed_hosts.split(",") if host.strip()]
@@ -181,11 +187,13 @@ EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'hmstemp07@gmail.com'  # Your email address
-EMAIL_HOST_PASSWORD = 'ivdi baqv kzdj tqzd'  # Your email password or app password
-DEFAULT_FROM_EMAIL = 'HMS Healthcare <hmstemp07@gmail.com>'
+# System mailbox used for ALL outgoing mail (OTP, password reset, prescriptions).
+# Set in Backend/.env. For Gmail use a 16-letter App Password (Google Account > Security > App passwords).
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "").strip()
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "").strip()
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "").strip() or f"EasyTreat Hospital <{EMAIL_HOST_USER}>"
 
-EMAIL_TIMEOUT = 60
+EMAIL_TIMEOUT = 20
 
 # For development/testing, use console backend to avoid email sending:
 # EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # This will print emails to console instead of sending
