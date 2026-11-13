@@ -8,6 +8,7 @@ import { getPendingPrescriptions } from '../../services/appointmentsService';
 import { listProducts } from '../../services/orderService';
 import { createRazorpayOrder, verifyRazorpayPayment } from '../../services/paymentService';
 
+import { doctorName } from "../../utils/format";
 const RAZORPAY_SRC = "https://checkout.razorpay.com/v1/checkout.js";
 
 // Load the Razorpay checkout script once, only when a payment is started.
@@ -232,6 +233,7 @@ const Givemedicine = () => {
                 prefill: {
                     email: patient.email,
                     name: patient.name,
+                    contact: patient.phone || patient.contactNo || "",
                 },
                 theme: {
                     color: "#3399cc",
@@ -301,7 +303,7 @@ const Givemedicine = () => {
                                 <div className="space-y-2 text-gray-600">
                                     <p className="flex items-center">
                                         <span className="font-medium text-green-600 mr-2">Doctor:</span>
-                                        Dr. {prescription.doctor?.name}
+                                        {doctorName(prescription.doctor?.name)}
                                     </p>
                                     <p className="flex items-center">
                                         <span className="font-medium text-green-600 mr-2">Date:</span>
@@ -380,7 +382,7 @@ const Givemedicine = () => {
                                     <div className="bg-white p-4 rounded-lg">
                                         <h3 className="font-bold text-green-800 mb-3">Doctor Information</h3>
                                         <div className="space-y-2 text-gray-700">
-                                            <p><span className="font-medium text-green-600">Name:</span> Dr. {selectedPrescription.doctor?.name}</p>
+                                            <p><span className="font-medium text-green-600">Name:</span> {doctorName(selectedPrescription.doctor?.name)}</p>
                                             <p><span className="font-medium text-green-600">Department:</span> {selectedPrescription.department}</p>
                                         </div>
                                     </div>
@@ -572,7 +574,7 @@ const Givemedicine = () => {
                                     <div className="space-y-2 text-gray-700">
                                         <p>
                                             <span className="font-medium text-green-600">Name:</span>
-                                            <span className="text-gray-800"> Dr. {selectedPrescription.doctor?.name}</span>
+                                            <span className="text-gray-800"> {doctorName(selectedPrescription.doctor?.name)}</span>
                                         </p>
                                         <p>
                                             <span className="font-medium text-green-600">Department:</span>

@@ -10,6 +10,7 @@ import { listDepartments } from "../../services/hospitalService";
 import { getAllAppointments } from "../../services/appointmentsService";
 import { pickList } from "../../services/apiClient";
 
+import { doctorName } from "../../utils/format";
 const todayISO = () => new Date().toISOString().split("T")[0];
 
 const STATUS_DOT = {
@@ -207,7 +208,7 @@ function AdminSection() {
                           <div className={`w-2 h-2 ${STATUS_DOT[a.status] || "bg-gray-400"} rounded-full mr-3`}></div>
                           <div>
                             <p className="text-gray-800 font-medium">
-                              {a.patient?.name || a.patient?.email || "Patient"} with Dr. {a.doctor?.name || "—"}
+                              {a.patient?.name || a.patient?.email || "Patient"} with {doctorName(a.doctor?.name || "—")}
                               {a.department ? ` (${a.department})` : ""} — {a.status}
                             </p>
                             <p className="text-gray-500 text-sm">

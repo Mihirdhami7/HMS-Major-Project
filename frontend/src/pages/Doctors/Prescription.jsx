@@ -1,16 +1,14 @@
-import { useState, useEffect, useMemo } from "react";
-import { useLocation, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useLocation, Link, useNavigate } from "react-router-dom";
 import Slidebar from "../../components/Sidebar";
 import { FiClipboard, FiPlus } from "react-icons/fi";
 import { MdDelete } from "react-icons/md";
-import jsPDF from 'jspdf';
-import 'jspdf-autotable'; // For better table formatting
 import { useAuth } from "../../context/AuthContext";
-import { useHospitals } from "../../hooks/useHospitals";
 import { pickList } from "../../services/apiClient";
-import { getUserProfile } from "../../services/authService";
 import { searchPatient } from "../../services/userService";
-import { getMyHospitalMedicines, savePrescription as savePrescriptionAPI } from "../../services/appointmentsService";
+import { getMyHospitalMedicines, savePrescription as savePrescriptionAPI, emailPrescription } from "../../services/appointmentsService";
+import { createMedicineRequest } from "../../services/orderService";
+import AddMedicineDialog from "../../components/doctor/AddMedicineDialog";
 
 // Report types accepted by the backend (PrescriptionSerializer.validate_reports)
 const REPORT_TYPES = [
@@ -110,20 +108,15 @@ const ageFromDob = (dob) => {
 function Prescription() {
     const location = useLocation();
     const { token, user } = useAuth();
-    const { hospitals } = useHospitals(token);
+    const navigate = useNavigate();
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
     const [medicinesError, setMedicinesError] = useState(null);
-    const [doctorInfo, setDoctorInfo] = useState(null);
     const [savedPrescriptionId, setSavedPrescriptionId] = useState(null);
     const appointmentData = location.state?.appointment;
     const hospitalName = appointmentData?.hospitalName || user?.hospitalName || "";
-    const hospital = useMemo(
-        () => hospitals.find((h) => h.name?.toLowerCase() === hospitalName.toLowerCase()) || null,
-        [hospitals, hospitalName]
-    );
 
     const apptPatient = appointmentData?.patient || {};
     const [patient, setPatient] = useState({
@@ -140,6 +133,7 @@ function Prescription() {
 
     const [vitals, setVitals] = useState(EMPTY_VITALS);
     const [medicineSearch, setMedicineSearch] = useState("");
+    const [showAddDialog, setShowAddDialog] = useState(false);
     const [selectedMedicines, setSelectedMedicines] = useState([]);
     const [reportType, setReportType] = useState("none");
     const [reportValues, setReportValues] = useState(EMPTY_BLOOD_VALUES);
@@ -153,20 +147,13 @@ function Prescription() {
         let cancelled = false;
         (async () => {
             setLoading(true);
-            const [profileRes, medsRes, patientRes] = await Promise.all([
-                getUserProfile(token),
+            const [medsRes, patientRes] = await Promise.all([
                 getMyHospitalMedicines(token),
                 appointmentData.patient?.email
                     ? searchPatient(token, appointmentData.patient.email)
                     : Promise.resolve(null),
             ]);
             if (cancelled) return;
-
-            if (profileRes.success) {
-                setDoctorInfo(profileRes.data?.user || null);
-            } else {
-                setError(profileRes.message || "Failed to load doctor profile");
-            }
 
             if (medsRes.success) {
                 setAvailableMedicines(
@@ -230,18 +217,30 @@ function Prescription() {
         ]);
     };
 
-    const handleMedicineSelect = () => {
-        if (medicineSearch.trim() === "") return;
-        const term = medicineSearch.trim().toLowerCase();
-        const match =
-            availableMedicines.find((m) => m.name.toLowerCase() === term) ||
-            availableMedicines.find((m) => m.name.toLowerCase().includes(term));
-        if (!match) {
-            setError("Select a medicine from the hospital inventory list.");
-            return;
-        }
-        addMedicine(match);
+    /** Medicine not in the hospital pharmacy: patient buys it outside (₹0 on the hospital bill). */
+    const addOutsideMedicine = (name) => {
+        const clean = (name || "").trim();
+        if (!clean) return;
+        setMedicineSearch("");
+        if (selectedMedicines.some((m) => m.name.toLowerCase() === clean.toLowerCase())) return;
+        setSelectedMedicines([
+            ...selectedMedicines,
+            {
+                key: `outside-${Date.now()}`,
+                medicineId: null,
+                outside: true,
+                name: clean,
+                price: 0,
+                stock: null,
+                quantity: 1,
+                dosage: "1 tablet",
+                frequency: "1 time/day",
+                duration: "7 days",
+            },
+        ]);
     };
+
+    const requestMedicine = (data) => createMedicineRequest(token, data);
 
     const removeMedicine = (index) => {
         setSelectedMedicines(selectedMedicines.filter((_, i) => i !== index));
@@ -287,6 +286,7 @@ function Prescription() {
                 frequency: m.frequency,
                 duration: m.duration,
                 price: Number(m.price),
+                ...(m.outside && { outside: true }),
             })),
             suggestions,
             reports,
@@ -302,7 +302,7 @@ function Prescription() {
             return null;
         }
         if (selectedMedicines.length === 0) {
-            setError("Add at least one medicine from the hospital inventory.");
+            setError("Add at least one medicine.");
             return null;
         }
         const bad = selectedMedicines.find(
@@ -325,355 +325,13 @@ function Prescription() {
         return id;
     };
 
-    const handleSaveAndGenerate = async () => {
-        const id = await savePrescription();
-        if (id !== null) generateReport(id);
-    };
-
-    const generateReport = (prescriptionId) => {
-        try {
-            // Create a new PDF document
-            const doc = new jsPDF();
-            const pageWidth = doc.internal.pageSize.width;
-            const pageHeight = doc.internal.pageSize.height;
-            let yPos = 30; // Start a bit lower to accommodate header
-    
-            // Helper function for adding text
-            const addText = (text, y, fontSize = 12, isBold = false, color = [0, 0, 0]) => {
-                doc.setFontSize(fontSize);
-                doc.setFont(undefined, isBold ? 'bold' : 'normal');
-                doc.setTextColor(color[0], color[1], color[2]);
-                doc.text(text, 20, y);
-                return doc.getTextDimensions(text).h + y + 5;
-            };
-    
-            // Add a stylish header with hospital logo
-            doc.setFillColor(41, 82, 163); // Dark blue header
-            doc.rect(0, 0, pageWidth, 22, 'F');
-            
-            // Add hospital name and tagline
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(18);
-            doc.setFont(undefined, 'bold');
-            doc.text(hospitalName, 60, 15);
-            
-            // Add a simple logo (simulate with shapes since we can't import an image)
-            doc.setFillColor(255, 255, 255);
-            doc.circle(30, 11, 8, 'F'); // White circle
-            doc.setFillColor(41, 82, 163);
-            doc.setDrawColor(255, 255, 255);
-            doc.setLineWidth(0.5);
-            // Draw a medical cross
-            doc.line(30, 7, 30, 15); // Vertical line
-            doc.line(26, 11, 34, 11); // Horizontal line
-    
-            // Add date and prescription ID at top right
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(10);
-            doc.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth - 60, 10);
-            if (prescriptionId) doc.text(`Prescription ID: ${prescriptionId}`, pageWidth - 60, 15);
-            
-            // Add a subtle background for the entire page
-            doc.setFillColor(248, 250, 252); // Very light blue-gray
-            doc.rect(0, 22, pageWidth, pageHeight - 22, 'F');
-            
-            // Reset text color for the main content
-            doc.setTextColor(0, 0, 0);
-            
-            // Add decorative line under header
-            doc.setDrawColor(41, 82, 163);
-            doc.setLineWidth(0.5);
-            doc.line(20, 26, pageWidth - 20, 26);
-            
-            // Document Title
-            yPos = addText("MEDICAL PRESCRIPTION", yPos, 16, true, [41, 82, 163]);
-            doc.setLineWidth(0.2);
-            doc.line(20, yPos - 2, 120, yPos - 2);
-            yPos += 5;
-    
-            // Patient Information Section
-            doc.setDrawColor(41, 82, 163);
-            doc.setFillColor(235, 245, 255); // Light blue background
-            doc.roundedRect(15, yPos - 5, pageWidth - 30, 65, 3, 3, 'FD');
-            
-            yPos = addText('Patient Details', yPos, 14, true, [41, 82, 163]);
-            
-            // Two column layout for patient details
-            const leftCol = 25;
-            const rightCol = pageWidth / 2 + 5;
-            
-            // Left column fields
-            doc.setFontSize(11);
-            doc.setFont(undefined, 'bold');
-            doc.text("Name:", leftCol, yPos + 5);
-            doc.text("Age:", leftCol, yPos + 15);
-            doc.text("Gender:", leftCol, yPos + 25);
-            doc.text("Date of Birth:", leftCol, yPos + 35);
-            
-            // Right column fields
-            doc.text("Email:", rightCol, yPos + 5);
-            doc.text("Contact:", rightCol, yPos + 15);
-            doc.text("Address:", rightCol, yPos + 25);
-            
-            // Left column values
-            doc.setFont(undefined, 'normal');
-            doc.text(patient.patientName || "Unknown", leftCol + 30, yPos + 5);
-            doc.text(patient.patientAge || "N/A", leftCol + 30, yPos + 15);
-            doc.text(patient.patientGender || "N/A", leftCol + 30, yPos + 25);
-            doc.text(formatDate(patient.patientDOB) || "N/A", leftCol + 30, yPos + 35);
-            
-            // Right column values
-            doc.text(patient.patientEmail || "N/A", rightCol + 30, yPos + 5);
-            doc.text(patient.patientPhone || "N/A", rightCol + 30, yPos + 15);
-            
-            // Address might need multiple lines
-            const address = patient.patientAddress || "N/A";
-            const addressLines = doc.splitTextToSize(address, pageWidth / 2 - 40);
-            doc.text(addressLines, rightCol + 30, yPos + 25);
-            
-            yPos += 50; // Move past the patient info box
-            
-            // Vital Signs Section
-            doc.setDrawColor(41, 82, 163);
-            doc.setFillColor(240, 249, 255); // Even lighter blue background
-            doc.roundedRect(15, yPos - 5, pageWidth - 30, 50, 3, 3, 'FD');
-            
-            yPos = addText('Vital Signs', yPos, 14, true, [41, 82, 163]);
-            
-            // Display vitals in a 3-column grid
-            let vitalsEntries = Object.entries(vitals).filter(([, value]) => value);
-            if (vitalsEntries.length > 0) {
-                const cols = 3;
-                const colWidth = (pageWidth - 40) / cols;
-                
-                vitalsEntries.forEach(([key, value], index) => {
-                    const col = index % cols;
-                    const row = Math.floor(index / cols);
-                    const xPos = 25 + col * colWidth;
-                    const rowYPos = yPos + 10 + row * 12;
-                    
-                    const label = key.replace(/([A-Z])/g, ' $1').trim();
-                    
-                    doc.setFont(undefined, 'bold');
-                    doc.setFontSize(10);
-                    doc.text(`${label}:`, xPos, rowYPos);
-                    
-                    doc.setFont(undefined, 'normal');
-                    doc.text(value, xPos + 35, rowYPos);
-                });
-                
-                // Adjust yPos based on number of rows
-                yPos += 10 + Math.ceil(vitalsEntries.length / cols) * 12 + 5;
-            } else {
-                yPos = addText("No vital signs recorded", yPos + 10, 10, false, [100, 100, 100]);
-            }
-            
-            yPos += 15;
-            
-            // Reports Section (if any)
-            if (reportType !== "none") {
-                doc.setDrawColor(41, 82, 163);
-                doc.setFillColor(245, 250, 255); // Another light blue shade
-                doc.roundedRect(15, yPos - 5, pageWidth - 30, 35 + (reportType === "blood_test" ? 30 : 0), 3, 3, 'FD');
-                
-                yPos = addText('Diagnostic Reports', yPos, 14, true, [41, 82, 163]);
-                
-                // Two-column layout for report info
-                doc.setFontSize(11);
-                doc.setFont(undefined, 'bold');
-                doc.text("Department:", 25, yPos + 10);
-                doc.text("Report Type:", 25, yPos + 22);
-                
-                doc.setFont(undefined, 'normal');
-                doc.text(department, 85, yPos + 10);
-                doc.text(REPORT_TYPES.find((r) => r.value === reportType)?.label || reportType, 85, yPos + 22);
-                
-                // Blood test values
-                if (reportType === "blood_test") {
-                    yPos += 34;
-                    
-                    const reportEntries = Object.entries(reportValues).filter(([, value]) => value);
-                    if (reportEntries.length > 0) {
-                        const cols = 3;
-                        const colWidth = (pageWidth - 40) / cols;
-                        
-                        reportEntries.forEach(([key, value], index) => {
-                            const col = index % cols;
-                            const row = Math.floor(index / cols);
-                            const xPos = 25 + col * colWidth;
-                            const rowYPos = yPos + row * 12;
-                            
-                            const label = key.replace(/([A-Z])/g, ' $1').trim();
-                            
-                            doc.setFont(undefined, 'bold');
-                            doc.setFontSize(10);
-                            doc.text(`${label}:`, xPos, rowYPos);
-                            
-                            doc.setFont(undefined, 'normal');
-                            doc.text(value, xPos + 35, rowYPos);
-                        });
-                        
-                        // Adjust yPos based on number of rows
-                        yPos += Math.ceil(reportEntries.length / cols) * 12;
-                    }
-                } else {
-                    if (reportNotes.trim()) {
-                        const noteLines = doc.splitTextToSize(reportNotes.trim(), pageWidth - 110);
-                        doc.text(noteLines, 85, yPos + 34);
-                    }
-                    yPos += 35;
-                }
-            }
-            
-            // Prescribed Medicines Section
-            if (selectedMedicines.length > 0) {
-                doc.setDrawColor(41, 82, 163);
-                doc.setFillColor(235, 245, 255);
-                const medicineBoxHeight = selectedMedicines.length * 15 + 30;
-                doc.roundedRect(15, yPos - 5, pageWidth - 30, medicineBoxHeight, 3, 3, 'FD');
-                
-                yPos = addText('Prescribed Medications', yPos, 14, true, [41, 82, 163]);
-                yPos += 5;
-                
-                // Create styled table headers
-                doc.setFillColor(41, 82, 163);
-                doc.rect(20, yPos, pageWidth - 40, 10, 'F');
-                
-                const colWidth = (pageWidth - 40) / 4;
-                
-                // Table headers
-                doc.setTextColor(255, 255, 255);
-                doc.setFontSize(11);
-                doc.setFont(undefined, 'bold');
-                doc.text('Medication', 25, yPos + 7);
-                doc.text('Dosage', 25 + colWidth, yPos + 7);
-                doc.text('Duration', 25 + (colWidth * 2), yPos + 7);
-                doc.text('Qty', 25 + (colWidth * 3), yPos + 7);
-                
-                yPos += 15;
-                
-                // Table rows
-                doc.setTextColor(0, 0, 0);
-                doc.setFontSize(10);
-                selectedMedicines.forEach((med, index) => {
-                    const isEven = index % 2 === 0;
-                    
-                    if (isEven) {
-                        doc.setFillColor(245, 250, 255); // Alternating row color
-                        doc.rect(20, yPos - 5, pageWidth - 40, 10, 'F');
-                    }
-                    
-                    doc.setFont(undefined, 'bold');
-                    doc.text(med.name || "", 25, yPos);
-                    
-                    doc.setFont(undefined, 'normal');
-                    doc.text(`${med.dosage || ""} ${med.frequency || ""}`.trim(), 25 + colWidth, yPos);
-                    doc.text(med.duration || "", 25 + (colWidth * 2), yPos);
-                    doc.text(String(med.quantity || ""), 25 + (colWidth * 3), yPos);
-                    
-                    yPos += 10;
-                });
-                
-                yPos += 5;
-            }
-            
-            // Check if we need a new page for suggestions
-            if (yPos > pageHeight - 60) {
-                doc.addPage();
-                yPos = 30;
-                
-                // Add header to new page
-                doc.setFillColor(41, 82, 163);
-                doc.rect(0, 0, pageWidth, 22, 'F');
-                
-                doc.setTextColor(255, 255, 255);
-                doc.setFontSize(18);
-                doc.setFont(undefined, 'bold');
-                doc.text(hospitalName, 60, 15);
-                
-                // Logo on new page
-                doc.setFillColor(255, 255, 255);
-                doc.circle(30, 11, 8, 'F');
-                doc.setFillColor(41, 82, 163);
-                doc.setDrawColor(255, 255, 255);
-                doc.line(30, 7, 30, 15);
-                doc.line(26, 11, 34, 11);
-                
-                // Page number
-                doc.setFontSize(10);
-                doc.text("Page 2", pageWidth - 30, 15);
-            }
-            
-            // Doctor Suggestions
-            if (suggestions) {
-                doc.setDrawColor(41, 82, 163);
-                doc.setFillColor(240, 249, 255);
-                
-                const suggestionLines = doc.splitTextToSize(suggestions, pageWidth - 50);
-                const suggestionHeight = Math.max(40, suggestionLines.length * 7 + 20);
-                
-                doc.roundedRect(15, yPos - 5, pageWidth - 30, suggestionHeight, 3, 3, 'FD');
-                
-                yPos = addText('Doctor Recommendations', yPos, 14, true, [41, 82, 163]);
-                
-                doc.setFontSize(10);
-                doc.setFont(undefined, 'normal');
-                doc.text(suggestionLines, 25, yPos + 10);
-                
-                yPos += suggestionHeight + 5;
-            }
-            
-            // Footer with signature
-            const footerY = pageHeight - 30;
-            
-            // Line for signature
-            doc.setDrawColor(100, 100, 100);
-            doc.line(pageWidth - 80, footerY, pageWidth - 20, footerY);
-            
-            // Text for signature
-            doc.setFontSize(10);
-            doc.text("Doctor's Signature", pageWidth - 80, footerY + 5);
-            
-            // Doctor's name
-            const doctorName = doctorInfo?.name || "Doctor";
-            doc.setFont(undefined, 'bold');
-            doc.text(doctorName, pageWidth - 80, footerY + 12);
-            
-            // Hospital Stamp (simulated with a rounded rectangle and text)
-            doc.setDrawColor(100, 100, 100);
-            doc.setFillColor(245, 245, 245);
-            doc.roundedRect(25, footerY - 15, 60, 25, 3, 3, 'FD');
-            doc.setFontSize(8);
-            doc.text("OFFICIAL STAMP", 35, footerY - 5);
-            doc.setFont(undefined, 'normal');
-            doc.text(hospitalName, 35, footerY);
-            doc.text("Verified " + new Date().toLocaleDateString(), 35, footerY + 5);
-            
-            // Bottom line
-            doc.setDrawColor(41, 82, 163);
-            doc.setLineWidth(1);
-            doc.line(15, pageHeight - 10, pageWidth - 15, pageHeight - 10);
-            
-            // Contact info in footer
-            doc.setFontSize(8);
-            const footerParts = [hospitalName, hospital?.contactNo && `Phone: ${hospital.contactNo}`, hospital?.address].filter(Boolean);
-            doc.text(footerParts.join(" | "), pageWidth/2, pageHeight - 5, { align: "center" });
-            
-            // Save the PDF with improved filename
-            const safeName = patient.patientName 
-                ? patient.patientName.replace(/[^\w\s]/gi, '_').replace(/\s+/g, '_')
-                : "prescription";
-            
-            const safeDate = new Date().toLocaleDateString().replace(/\//g, '-');
-            
-            doc.save(`${hospitalName}_Prescription_${safeName}_${safeDate}.pdf`);
-            
-            return true;
-        } catch (error) {
-            console.error("Error generating PDF:", error);
-            setError(`Failed to generate report: ${error.message}`);
-            return false;
-        }
+    /** The server builds the PDF and emails it to the patient from the system mailbox. */
+    const resendEmail = async () => {
+        if (!savedPrescriptionId || savedPrescriptionId === "saved") return;
+        setError(null);
+        const result = await emailPrescription(token, savedPrescriptionId);
+        if (result.success) setSuccess(result.message || "The prescription PDF is being sent to the patient.");
+        else setError(result.message || "Could not send the email.");
     };
 
 
@@ -845,7 +503,8 @@ function Prescription() {
                                     placeholder="Search medicines..."
                                 />
                                 <button
-                                    onClick={handleMedicineSelect}
+                                    onClick={() => setShowAddDialog(true)}
+                                    title="Add medicine"
                                     className="px-4 py-2 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-lg hover:from-blue-600 hover:to-green-600"
                                 >
                                     <FiPlus className="w-5 h-5" />
@@ -869,12 +528,28 @@ function Prescription() {
                                             </div>
                                         ))
                                     ) : (
-                                        <div className="p-2 text-gray-500">No medicines found</div>
+                                        <button
+                                            onClick={() => setShowAddDialog(true)}
+                                            className="w-full text-left p-2 text-sm text-blue-700 hover:bg-blue-50"
+                                        >
+                                            Not in pharmacy — prescribe outside or request it…
+                                        </button>
                                     )}
                                 </div>
                             )}
                         </div>
                     </div>
+
+                    <AddMedicineDialog
+                        open={showAddDialog}
+                        onClose={() => setShowAddDialog(false)}
+                        medicines={availableMedicines}
+                        initialQuery={medicineSearch}
+                        selectedIds={selectedMedicines.map((m) => m.medicineId).filter(Boolean)}
+                        onAdd={addMedicine}
+                        onAddOutside={addOutsideMedicine}
+                        onRequest={requestMedicine}
+                    />
 
                     {medicinesError && (
                         <p className="text-sm text-red-600 mb-2">{medicinesError}</p>
@@ -888,9 +563,14 @@ function Prescription() {
                     {/* Selected Medicines */}
                     <div className="space-y-2">
                         {selectedMedicines.map((medicine, index) => (
-                            <div key={medicine.medicineId} className="bg-gradient-to-r from-blue-50 to-green-50 p-4 rounded-lg">
+                            <div key={medicine.medicineId || medicine.key} className="bg-gradient-to-r from-blue-50 to-green-50 p-4 rounded-lg">
                                 <div className="flex items-center justify-between mb-3">
-                                    <span className="font-medium text-blue-700">{medicine.name}</span>
+                                    <span className="font-medium text-blue-700">
+                                        {medicine.name}
+                                        {medicine.outside && (
+                                            <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-800">Buy outside</span>
+                                        )}
+                                    </span>
                                     <button 
                                         onClick={() => removeMedicine(index)}
                                         className="text-red-500 hover:text-red-700"
@@ -940,7 +620,7 @@ function Prescription() {
                                         <input
                                             type="number"
                                             min="1"
-                                            max={medicine.stock || undefined}
+                                            max={medicine.outside ? undefined : medicine.stock || undefined}
                                             value={medicine.quantity}
                                             onChange={(e) => updateMedicine(index, 'quantity', e.target.value)}
                                             className="w-full p-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
@@ -948,7 +628,9 @@ function Prescription() {
                                     </div>
                                     <div>
                                         <label className="text-gray-600 text-sm block mb-1">Price / strip</label>
-                                        <p className="p-2 text-gray-700">₹{medicine.price} (stock {medicine.stock})</p>
+                                        <p className="p-2 text-gray-700">
+                                            {medicine.outside ? "Not in pharmacy" : `₹${medicine.price} (stock ${medicine.stock})`}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
@@ -1086,24 +768,35 @@ function Prescription() {
                         )}
                     </div>
 
-                    {/* Generate Report Button */}
-                    <div className="flex justify-end mt-6 space-x-4">
+                    {/* Save: PDF is generated on the server and emailed to the patient */}
+                    <div className="flex flex-wrap justify-end items-center mt-6 gap-3">
                         {savedPrescriptionId ? (
-                            <button
-                                onClick={() => generateReport(savedPrescriptionId === "saved" ? "" : savedPrescriptionId)}
-                                className="bg-gradient-to-r from-blue-500 to-green-500 text-white px-6 py-3 rounded-lg shadow-lg hover:from-blue-600 hover:to-green-600 flex items-center"
-                            >
-                                <FiClipboard className="mr-2" />
-                                Download PDF Again
-                            </button>
+                            <>
+                                <span className="text-sm text-green-700 mr-auto">
+                                    ✓ Saved. The PDF is emailed to {patient?.patientEmail || "the patient"}; they can also view it in their account.
+                                </span>
+                                <button
+                                    onClick={resendEmail}
+                                    className="px-5 py-3 rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-50 flex items-center"
+                                >
+                                    <FiClipboard className="mr-2" />
+                                    Resend email
+                                </button>
+                                <button
+                                    onClick={() => navigate("/doctor/appointments")}
+                                    className="bg-gradient-to-r from-blue-500 to-green-500 text-white px-6 py-3 rounded-lg shadow-lg hover:from-blue-600 hover:to-green-600"
+                                >
+                                    Back to appointments
+                                </button>
+                            </>
                         ) : (
                             <button
-                                onClick={handleSaveAndGenerate}
+                                onClick={savePrescription}
                                 disabled={loading}
                                 className="bg-gradient-to-r from-blue-500 to-green-500 text-white px-6 py-3 rounded-lg shadow-lg hover:from-blue-600 hover:to-green-600 flex items-center disabled:opacity-50"
                             >
                                 <FiClipboard className="mr-2" />
-                                Save Prescription &amp; Generate PDF
+                                {loading ? "Saving..." : "Save Prescription & Email PDF"}
                             </button>
                         )}
                     </div>

@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Slidebar from "../../components/Sidebar";
 import { FiCheckCircle, FiEdit3, FiCalendar, FiClock, FiSearch, FiX, FiXCircle } from "react-icons/fi";
 import { IoDocumentTextOutline } from "react-icons/io5";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { useHospitals } from "../../hooks/useHospitals";
 import { pickList } from "../../services/apiClient";
 import {
   getMyAppointments,
@@ -17,8 +16,7 @@ const apptTime = (appt) => appt.acceptedTime || appt.requestedTime || appt.appoi
 const formatDateTime = (iso) => (iso ? new Date(iso).toLocaleString() : "-");
 
 function DoctorAppointments() {
-  const { token, user } = useAuth();
-  const { hospitals } = useHospitals(token);
+  const { token } = useAuth();
   const navigate = useNavigate();
 
   const [appointments, setAppointments] = useState([]);
@@ -33,14 +31,6 @@ function DoctorAppointments() {
   const [searchEmail, setSearchEmail] = useState("");
   const [historyPatient, setHistoryPatient] = useState(null); // { name, email }
   const [viewPrescription, setViewPrescription] = useState(null);
-
-  const hospital = useMemo(
-    () =>
-      hospitals.find(
-        (h) => h.name?.toLowerCase() === (user?.hospitalName || "").toLowerCase()
-      ) || null,
-    [hospitals, user?.hospitalName]
-  );
 
   const fetchData = useCallback(async () => {
     if (!token) return;
@@ -133,31 +123,10 @@ function DoctorAppointments() {
   );
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen pt-16 overflow-hidden bg-gray-50 dark:bg-gray-900">
       <Slidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <div className="flex flex-col flex-1 p-8 overflow-auto mt-16">
-
-        {/* Hospital Information */}
-        {user?.hospitalName ? (
-          <div className="mb-4 p-4 bg-white rounded-lg shadow-lg flex items-center border-l-4 border-blue-500">
-            <div>
-              <h3 className="text-lg font-bold text-blue-700">{hospital?.name || user.hospitalName}</h3>
-              {hospital?.description && (
-                <p className="text-sm text-gray-600">{hospital.description}</p>
-              )}
-              {(hospital?.address || hospital?.contactNo) && (
-                <p className="text-xs text-gray-500 mt-1">
-                  {[hospital.address, hospital.contactNo].filter(Boolean).join(" · ")}
-                </p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            <p>No hospital is linked to your account.</p>
-          </div>
-        )}
+      <div className="flex flex-col flex-1 p-6 overflow-y-auto">
 
         {loading && (
           <div className="w-full flex justify-center my-12">

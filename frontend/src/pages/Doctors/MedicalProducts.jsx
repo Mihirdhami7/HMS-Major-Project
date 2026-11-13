@@ -2,13 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import Slidebar from "../../components/Sidebar";
 import { FiPackage, FiSearch, FiFilter, FiRefreshCw } from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext";
-import { useHospitals } from "../../hooks/useHospitals";
 import { pickList } from "../../services/apiClient";
 import { listProducts } from "../../services/orderService";
 
 const MedicalProducts = () => {
   const { token, user } = useAuth();
-  const { hospitals } = useHospitals(token);
   const hospitalName = user?.hospitalName || "";
   const [activeTab, setActiveTab] = useState("medical_products");
   const [searchTerm, setSearchTerm] = useState("");
@@ -16,11 +14,6 @@ const MedicalProducts = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  const hospital = useMemo(
-    () => hospitals.find((h) => h.name?.toLowerCase() === hospitalName.toLowerCase()) || null,
-    [hospitals, hospitalName]
-  );
 
   const fetchProducts = useCallback(async () => {
     if (!token) return;
@@ -71,22 +64,11 @@ const MedicalProducts = () => {
   });
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-blue-50 to-green-50">
+    <div className="flex h-screen pt-16 overflow-hidden bg-gray-50 dark:bg-gray-900">
       <Slidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <div className="flex-1 p-8 overflow-auto mt-16">
+      <div className="flex-1 p-6 overflow-y-auto">
 
-        {/* Hospital Name Display */}
-        {hospitalName && (
-          <div className="mb-4 p-4 bg-white rounded-lg shadow-lg flex items-center border-l-4 border-blue-500">
-            <div>
-              <h3 className="text-lg font-bold text-blue-700">{hospital?.name || hospitalName}</h3>
-              {hospital?.description && (
-                <p className="text-sm text-gray-600">{hospital.description}</p>
-              )}
-            </div>
-          </div>
-        )}
         <div className="flex justify-between items-center mb-8">
           <h2 className="text-3xl font-bold text-blue-700 flex items-center">
             <FiPackage className="mr-2 text-green-600" />
