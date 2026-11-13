@@ -1,3 +1,5 @@
+import logging
+import re
 from datetime import datetime, timedelta
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -16,13 +18,25 @@ from .serializers import (
     PrescriptionSerializer,
 )
 from .models import AppointmentDocument, PrescriptionDocument, NotificationDocument
+from .prescription_pdf import build_prescription_pdf, email_prescription_async, pdf_filename
+from django.http import HttpResponse
+
+logger = logging.getLogger(__name__)
+
+
+def _dr(name):
+    """'Alish' -> 'Dr. Alish'; names already starting with 'Dr' are kept as they are."""
+    n = str(name or "").strip()
+    return n if re.match(r"(?i)^dr\.?\s", n) else f"Dr. {n}"
+
 
 from backend.db import (
     users_collection,
     appointments_collection,
     prescriptions_collection,
     notifications_collection,
-    products_collection
+    products_collection,
+    hospitals_collection,
 )
 
 
@@ -33,6 +47,209 @@ def _parse_object_id(value, field_name):
         raise exceptions.ValidationError({
             field_name: [f"A valid {field_name} is required."]
         })
+
+class BookingError(Exception):
+    """Booking validation failure with an HTTP status code."""
+
+    def __init__(self, message, code=status.HTTP_400_BAD_REQUEST):
+        super().__init__(message)
+        self.message = message
+        self.code = code
+
+
+def prepare_booking(data, user_email, user_type, login_hospital):
+    """
+    Validate a booking (BookAppointmentSerializer.validated_data) WITHOUT saving it.
+    Returns (data, patient, doctor). Raises BookingError.
+    Used by the Book endpoint (admin) and by the payment flow (patient pays first, then booked).
+    """
+    data = dict(data)
+    if str(user_type or "").lower() == "patient":
+        if data["hospitalName"] != login_hospital:
+            raise BookingError(
+                f"You are logged in to {login_hospital}. Log in to {data['hospitalName']} to book there.",
+                status.HTTP_403_FORBIDDEN,
+            )
+        data["patientEmail"] = user_email
+
+    # a patient has one account per hospital
+    patient = users_collection.find_one({
+        "email": data["patientEmail"], "userType": "Patient", "hospitalName": data["hospitalName"],
+    })
+    if not patient:
+        raise BookingError("Patient not found", status.HTTP_404_NOT_FOUND)
+
+    doctor = users_collection.find_one({
+        "email": data["doctorEmail"], "userType": "Doctor", "hospitalName": data["hospitalName"],
+    })
+    if not doctor:
+        raise BookingError("Doctor not found in the specified hospital", status.HTTP_404_NOT_FOUND)
+
+    existing = appointments_collection.find_one({
+        "patient.email": data["patientEmail"],
+        "doctor.email": data["doctorEmail"],
+        "appointmentDate": data["appointmentDate"],
+        "$or": [{"requestedTime": data["appointmentTime"]}, {"acceptedTime": data["appointmentTime"]}],
+        "status": {"$in": ["pending", "approved"]},
+    })
+    if existing:
+        raise BookingError("You already have an appointment with this doctor at this time")
+    return data, patient, doctor
+
+
+def create_booking(data, patient, doctor, booked_by, admin_booking=False, payments=None):
+    """Insert the appointment, notify patient / doctor / admin, return the saved document."""
+    appointment_doc = AppointmentDocument.create(
+        hospital_name=data["hospitalName"],
+        department=data["department"],
+        appointment_date=data["appointmentDate"],
+        requested_time=data["appointmentTime"],
+        patient_id=str(patient["_id"]),
+        patient_name=patient["name"],
+        patient_email=patient["email"],
+        patient_gender=patient.get("gender"),
+        patient_dob=patient.get("dateOfBirth"),
+        patient_contact=patient.get("contactNo"),
+        doctor_id=str(doctor["_id"]),
+        doctor_name=doctor["name"],
+        doctor_email=doctor["email"],
+        doctor_gender=doctor.get("gender"),
+        doctor_contact=doctor.get("contactNo"),
+        doctor_specialization=doctor.get("doctorSpecialization"),
+        symptoms=data.get("symptoms", ""),
+        status="pending",
+    )
+    if payments:
+        appointment_doc["payments"] = list(payments)
+    if admin_booking:
+        appointment_doc["status"] = "approved"
+        appointment_doc["acceptedDate"] = data["appointmentDate"]
+        appointment_doc["acceptedTime"] = data["appointmentTime"]
+        appointment_doc["approvedBy"] = booked_by
+        appointment_doc["approvedAt"] = datetime.utcnow()
+
+    result = appointments_collection.insert_one(appointment_doc)
+    appointment_id = str(result.inserted_id)
+    send_booking_notifications(
+        appointment_id=appointment_id,
+        patient_email=patient["email"],
+        patient_name=patient["name"],
+        doctor_email=doctor["email"],
+        doctor_name=doctor["name"],
+        appointment_date=data["appointmentDate"],
+        appointment_time=data["appointmentTime"],
+        hospital_name=data["hospitalName"],
+        is_admin_booking=admin_booking,
+    )
+    created = appointments_collection.find_one({"_id": result.inserted_id})
+    created["_id"] = appointment_id
+    return created
+
+
+def send_booking_notifications(
+    appointment_id: str,
+    patient_email: str,
+    patient_name: str,
+    doctor_email: str,
+    doctor_name: str,
+    appointment_date: str,
+    appointment_time: str,
+    hospital_name: str,
+    is_admin_booking: bool = False
+):
+    """
+    Helper function to send notifications and emails
+    Centralized notification logic for reusability
+    """
+    try:
+        if is_admin_booking:
+            # Notify Patient
+            patient_notification = NotificationDocument.create(
+                user_email=patient_email,
+                title="Appointment Confirmed",
+                message=f"Your appointment with {_dr(doctor_name)} has been confirmed for {appointment_date} at {appointment_time}",
+                notification_type="appointment",
+                reference_id=appointment_id
+            )
+            notifications_collection.insert_one(patient_notification)
+
+            # Notify Doctor
+            doctor_notification = NotificationDocument.create(
+                user_email=doctor_email,
+                title="New Appointment Scheduled",
+                message=f"New appointment with {patient_name} scheduled for {appointment_date} at {appointment_time}",
+                notification_type="appointment",
+                reference_id=appointment_id
+            )
+            notifications_collection.insert_one(doctor_notification)
+
+            # TODO: Send confirmation email to patient
+            # self._send_email(
+            #     to_email=patient_email,
+            #     subject="Appointment Confirmed",
+            #     message=f"Your appointment with Dr. {doctor_name} is confirmed for {appointment_date} at {appointment_time}"
+            # )
+
+            # TODO: Send notification email to doctor
+            # self._send_email(
+            #     to_email=doctor_email,
+            #     subject="New Appointment Scheduled",
+            #     message=f"New appointment with {patient_name} scheduled for {appointment_date} at {appointment_time}"
+            # )
+
+        else:
+            # Notify Doctor
+            doctor_notification = NotificationDocument.create(
+                user_email=doctor_email,
+                title="New Appointment Request",
+                message=f"New appointment request from {patient_name} for {appointment_date} at {appointment_time}",
+                notification_type="appointment",
+                reference_id=appointment_id
+            )
+            notifications_collection.insert_one(doctor_notification)
+
+            # Notify Admin
+            admin = users_collection.find_one({
+                "userType": "Admin",
+                "hospitalName": hospital_name
+            })
+            if admin:
+                admin_notification = NotificationDocument.create(
+                    user_email=admin['email'],
+                    title="New Appointment Request",
+                    message=f"New appointment request from {patient_name} with {_dr(doctor_name)}",
+                    notification_type="appointment",
+                    reference_id=appointment_id
+                )
+                notifications_collection.insert_one(admin_notification)
+
+            # Notify Patient
+            patient_notification = NotificationDocument.create(
+                user_email=patient_email,
+                title="Appointment Request Submitted",
+                message=f"Your appointment request with {_dr(doctor_name)} for {appointment_date} at {appointment_time} is pending approval",
+                notification_type="appointment",
+                reference_id=appointment_id
+            )
+            notifications_collection.insert_one(patient_notification)
+
+            # TODO: Send email to patient
+            # self._send_email(
+            #     to_email=patient_email,
+            #     subject="Appointment Request Received",
+            #     message=f"Your appointment request with Dr. {doctor_name} is pending approval"
+            # )
+
+            # TODO: Send email to doctor
+            # self._send_email(
+            #     to_email=doctor_email,
+            #     subject="New Appointment Request",
+            #     message=f"New appointment request from {patient_name} for {appointment_date} at {appointment_time}"
+            # )
+
+    except Exception as e:
+        print(f"Notification error: {str(e)}")
+
 
 class BookAppointmentAPIView(generics.CreateAPIView):
     """
@@ -59,233 +276,35 @@ class BookAppointmentAPIView(generics.CreateAPIView):
         user_email = getattr(request.user, 'email', None)
         user_type = getattr(request.user, 'userType', None)
         
+        # Patients book by paying the booking fee: the appointment is created only after the
+        # Razorpay payment is verified (see apps/payments/views.py). This endpoint is for admins.
+        if str(user_type or "").lower() == "patient":
+            return Response({
+                "status": "error",
+                "message": "Please pay the booking fee to book an appointment."
+            }, status=status.HTTP_402_PAYMENT_REQUIRED)
+
         try:
-            # Verify patient exists
-            patient = users_collection.find_one({
-                "email": data['patientEmail'],
-                "userType": "Patient"
-            })
-            
-            if not patient:
-                return Response({
-                    "status": "error",
-                    "message": "Patient not found"
-                }, status=status.HTTP_404_NOT_FOUND)
-            
-            # Verify doctor exists
-            doctor = users_collection.find_one({
-                "email": data['doctorEmail'],
-                "userType": "Doctor",
-                "hospitalName": data['hospitalName']
-            })
-            
-            if not doctor:
-                return Response({
-                    "status": "error",
-                    "message": "Doctor not found in the specified hospital"
-                }, status=status.HTTP_404_NOT_FOUND)
-            
-            
-            # Check for duplicate appointment on same date/time
-            existing = appointments_collection.find_one({
-                "patient.email": data['patientEmail'],
-                "doctor.email": data['doctorEmail'],
-                "appointmentDate": data['appointmentDate'],
-                "$or": [
-                    {"requestedTime": data['appointmentTime']},
-                    {"acceptedTime": data.get('appointmentTime')}
-                ],
-                "status": {"$in": ["pending", "approved"]}
-            })
-            
-            if existing:
-                return Response({
-                    "status": "error",
-                    "message": "You already have an appointment with this doctor at this time"
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            
-            # Create appointment document
-            appointment_doc = AppointmentDocument.create(
-                hospital_name=data['hospitalName'],
-                department=data['department'],
-                appointment_date=data['appointmentDate'],
-                requested_time=data['appointmentTime'],
-                patient_id=str(patient['_id']),
-                patient_name=patient['name'],
-                patient_email=patient['email'],
-                patient_gender=patient.get('gender'),
-                patient_dob=patient.get('dateOfBirth'),
-                patient_contact=patient.get('contactNo'),
-                doctor_id=str(doctor['_id']),
-                doctor_name=doctor['name'],
-                doctor_email=doctor['email'],
-                doctor_gender=doctor.get('gender'),
-                doctor_contact=doctor.get('contactNo'),
-                doctor_specialization=doctor.get('doctorSpecialization'),
-                symptoms=data.get('symptoms', ''),
-                status='pending'  # Default status
+            data, patient, doctor = prepare_booking(
+                data, user_email, user_type, getattr(request.user, 'hospitalName', None)
             )
-            
-            # Modify based on user type
-            if user_type == "Admin":
-                # Admin booking - immediate approval
-                appointment_doc['status'] = 'approved'
-                appointment_doc['acceptedDate'] = data['appointmentDate']
-                appointment_doc['acceptedTime'] = data['appointmentTime']
-                appointment_doc['approvedBy'] = user_email
-                appointment_doc['approvedAt'] = datetime.utcnow()
-            
-            # Insert into database
-            result = appointments_collection.insert_one(appointment_doc)
-            appointment_id = str(result.inserted_id)
-            
-            # Send notifications using helper function
-            self._send_notifications(
-                appointment_id=appointment_id,
-                patient_email=patient['email'],
-                patient_name=patient['name'],
-                doctor_email=doctor['email'],
-                doctor_name=doctor['name'],
-                appointment_date=data['appointmentDate'],
-                appointment_time=data['appointmentTime'],
-                hospital_name=data['hospitalName'],
-                is_admin_booking=(user_type == "Admin")
+            created_appointment = create_booking(
+                data, patient, doctor, booked_by=user_email, admin_booking=(user_type == "Admin")
             )
-            
-            # Fetch created appointment
-            created_appointment = appointments_collection.find_one({"_id": result.inserted_id})
-            created_appointment['_id'] = appointment_id
-            
             message = "Appointment confirmed successfully" if user_type == "Admin" else "Appointment booked successfully. Pending approval."
-            
             return Response({
                 "status": "success",
                 "message": message,
                 "appointment": AppointmentSerializer(created_appointment).data
             }, status=status.HTTP_201_CREATED)
-            
+        except BookingError as e:
+            return Response({"status": "error", "message": e.message}, status=e.code)
         except Exception as e:
+            logger.error("BookAppointmentAPIView: %s", e, exc_info=True)
             return Response({
                 "status": "error",
-                "message": str(e)
+                "message": "Could not book the appointment. Please try again."
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    def _send_notifications(
-        self,
-        appointment_id: str,
-        patient_email: str,
-        patient_name: str,
-        doctor_email: str,
-        doctor_name: str,
-        appointment_date: str,
-        appointment_time: str,
-        hospital_name: str,
-        is_admin_booking: bool = False
-    ):
-        """
-        Helper function to send notifications and emails
-        Centralized notification logic for reusability
-        """
-        try:
-            if is_admin_booking:
-                # Notify Patient
-                patient_notification = NotificationDocument.create(
-                    user_email=patient_email,
-                    title="Appointment Confirmed",
-                    message=f"Your appointment with Dr. {doctor_name} has been confirmed for {appointment_date} at {appointment_time}",
-                    notification_type="appointment",
-                    reference_id=appointment_id
-                )
-                notifications_collection.insert_one(patient_notification)
-                
-                # Notify Doctor
-                doctor_notification = NotificationDocument.create(
-                    user_email=doctor_email,
-                    title="New Appointment Scheduled",
-                    message=f"New appointment with {patient_name} scheduled for {appointment_date} at {appointment_time}",
-                    notification_type="appointment",
-                    reference_id=appointment_id
-                )
-                notifications_collection.insert_one(doctor_notification)
-                
-                # TODO: Send confirmation email to patient
-                # self._send_email(
-                #     to_email=patient_email,
-                #     subject="Appointment Confirmed",
-                #     message=f"Your appointment with Dr. {doctor_name} is confirmed for {appointment_date} at {appointment_time}"
-                # )
-                
-                # TODO: Send notification email to doctor
-                # self._send_email(
-                #     to_email=doctor_email,
-                #     subject="New Appointment Scheduled",
-                #     message=f"New appointment with {patient_name} scheduled for {appointment_date} at {appointment_time}"
-                # )
-                
-            else:
-                # Notify Doctor
-                doctor_notification = NotificationDocument.create(
-                    user_email=doctor_email,
-                    title="New Appointment Request",
-                    message=f"New appointment request from {patient_name} for {appointment_date} at {appointment_time}",
-                    notification_type="appointment",
-                    reference_id=appointment_id
-                )
-                notifications_collection.insert_one(doctor_notification)
-                
-                # Notify Admin
-                admin = users_collection.find_one({
-                    "userType": "Admin",
-                    "hospitalName": hospital_name
-                })
-                if admin:
-                    admin_notification = NotificationDocument.create(
-                        user_email=admin['email'],
-                        title="New Appointment Request",
-                        message=f"New appointment request from {patient_name} with Dr. {doctor_name}",
-                        notification_type="appointment",
-                        reference_id=appointment_id
-                    )
-                    notifications_collection.insert_one(admin_notification)
-                
-                # Notify Patient
-                patient_notification = NotificationDocument.create(
-                    user_email=patient_email,
-                    title="Appointment Request Submitted",
-                    message=f"Your appointment request with Dr. {doctor_name} for {appointment_date} at {appointment_time} is pending approval",
-                    notification_type="appointment",
-                    reference_id=appointment_id
-                )
-                notifications_collection.insert_one(patient_notification)
-                
-                # TODO: Send email to patient
-                # self._send_email(
-                #     to_email=patient_email,
-                #     subject="Appointment Request Received",
-                #     message=f"Your appointment request with Dr. {doctor_name} is pending approval"
-                # )
-                
-                # TODO: Send email to doctor
-                # self._send_email(
-                #     to_email=doctor_email,
-                #     subject="New Appointment Request",
-                #     message=f"New appointment request from {patient_name} for {appointment_date} at {appointment_time}"
-                # )
-                
-        except Exception as e:
-            print(f"Notification error: {str(e)}")
-
-
-
-
-
-
-
-
-
-
-
 
 class ApproveAppointmentAPIView(generics.UpdateAPIView):
     """
@@ -393,7 +412,7 @@ class ApproveAppointmentAPIView(generics.UpdateAPIView):
                     notif = NotificationDocument.create(
                         user_email=appointment['patient']['email'],
                         title="Appointment Approved",
-                        message=f"Your appointment with Dr. {appointment['doctor']['name']} has been approved for {update_data.get('acceptedDate')} at {update_data.get('acceptedTime')}",
+                        message=f"Your appointment with {_dr(appointment['doctor']['name'])} has been approved for {update_data.get('acceptedDate')} at {update_data.get('acceptedTime')}",
                         notification_type="appointment",
                         reference_id=appointment_id
                     )
@@ -402,7 +421,7 @@ class ApproveAppointmentAPIView(generics.UpdateAPIView):
                     notif = NotificationDocument.create(
                         user_email=appointment['patient']['email'],
                         title="Appointment Rejected",
-                        message=f"Your appointment with Dr. {appointment['doctor']['name']} has been rejected. Reason: {update_data.get('rejectionReason')}",
+                        message=f"Your appointment with {_dr(appointment['doctor']['name'])} has been rejected. Reason: {update_data.get('rejectionReason')}",
                         notification_type="appointment",
                         reference_id=appointment_id
                     )
@@ -422,7 +441,7 @@ class ApproveAppointmentAPIView(generics.UpdateAPIView):
                 notif = NotificationDocument.create(
                     user_email=appointment['patient']['email'],
                     title="Appointment Rejected",
-                    message=f"Your appointment with Dr. {appointment['doctor']['name']} has been rejected. Reason: {reason}",
+                    message=f"Your appointment with {_dr(appointment['doctor']['name'])} has been rejected. Reason: {reason}",
                     notification_type="appointment",
                     reference_id=appointment_id
                 )
@@ -480,6 +499,9 @@ class GetMyAppointmentsAPIView(generics.ListAPIView):
             # Build query based on user type
             if user_type == "Patient":
                 query = {"patient.email": user_email}
+                # Only the hospital this patient account belongs to (chosen at login)
+                if getattr(request.user, 'hospitalName', None):
+                    query["hospitalName"] = request.user.hospitalName
             else:  # Doctor
                 query = {"doctor.email": user_email}
             
@@ -701,10 +723,14 @@ class GetHospitalMedicinesAPIView(generics.ListAPIView):
             }, status=status.HTTP_403_FORBIDDEN)
         
         try:
+            # Products store the amount in "stock" (there is no "quantity" field).
+            # Prescriptions list approved, in-stock medicines only (no equipment).
             medicines = list(products_collection.find({
                 "hospitalName": hospital_name,
-                "quantity": {"$gt": 0}
-            }))
+                "is_approved": True,
+                "stock": {"$gt": 0},
+                "product_type": "Medicine",
+            }).sort("product_name", 1))
             
             # Convert ObjectId to string
             for med in medicines:
@@ -918,27 +944,86 @@ class CreatePrescriptionAPIView(generics.CreateAPIView):
                 notification = NotificationDocument.create(
                     user_email=patient_email,
                     title="Prescription Created",
-                    message=f"Dr. {doctor_name} has created a prescription for your appointment",
+                    message=f"{_dr(doctor_name)} has created a prescription for your appointment",
                     notification_type="prescription",
                     reference_id=prescription_id
                 )
                 notifications_collection.insert_one(notification)
             
+            # PDF is generated on the server and emailed to the patient from the system mailbox
+            # (background thread; the result is stored on the prescription as emailStatus).
+            if patient_email:
+                email_prescription_async(prescription_id)
+
             # Fetch created prescription
             prescription = prescriptions_collection.find_one({"_id": result.inserted_id})
             prescription['_id'] = prescription_id
-            
+
             return Response({
                 "status": "success",
-                "message": "Prescription created successfully",
+                "message": (f"Prescription saved. A PDF copy is being emailed to {patient_email}."
+                            if patient_email else "Prescription saved."),
+                "emailTo": patient_email,
                 "prescription": prescription
             }, status=status.HTTP_201_CREATED)
-            
+
         except Exception as e:
+            logger.error("CreatePrescriptionAPIView: %s", e, exc_info=True)
             return Response({
                 "status": "error",
-                "message": str(e)
+                "message": "Could not save the prescription. Please try again."
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _prescription_for_user(prescription_id, user):
+    """Return the prescription if this user may see it (patient / author doctor / same-hospital admin)."""
+    oid = _parse_object_id(prescription_id, "prescription id")
+    presc = prescriptions_collection.find_one({"_id": oid})
+    if not presc:
+        raise exceptions.NotFound("Prescription not found")
+    role = str(getattr(user, "userType", "") or "").lower()
+    email = getattr(user, "email", None)
+    hospital = getattr(user, "hospitalName", None)
+    allowed = (
+        role == "superadmin"
+        or (role == "patient" and (presc.get("patient") or {}).get("email") == email and presc.get("hospitalName") == hospital)
+        or (role == "doctor" and (presc.get("doctor") or {}).get("email") == email)
+        or (role == "admin" and presc.get("hospitalName") == hospital)
+    )
+    if not allowed:
+        raise exceptions.PermissionDenied("You cannot access this prescription")
+    return presc
+
+
+class PrescriptionPdfView(APIView):
+    """GET /api/appointments/prescriptions/<id>/pdf/  -> the prescription as a PDF (shown inline)."""
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, prescription_id):
+        presc = _prescription_for_user(prescription_id, request.user)
+        hospital = hospitals_collection.find_one({"name": presc.get("hospitalName")}) or {}
+        pdf_bytes = build_prescription_pdf(presc, hospital)
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="{pdf_filename(presc)}"'
+        response["Cache-Control"] = "no-store"
+        return response
+
+
+class PrescriptionEmailView(APIView):
+    """POST /api/appointments/prescriptions/<id>/email/  -> (re)send the PDF to the patient's email."""
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, prescription_id):
+        presc = _prescription_for_user(prescription_id, request.user)
+        to = (presc.get("patient") or {}).get("email")
+        if not to:
+            return Response({"status": "error", "message": "The patient has no email address."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        email_prescription_async(str(presc["_id"]))
+        return Response({"status": "success", "message": f"The prescription PDF is being sent to {to}."},
+                        status=status.HTTP_202_ACCEPTED)
 
 
 
@@ -1184,8 +1269,10 @@ class GetMyPrescriptionsAPIView(generics.ListAPIView):
             query = {}
             
             if user_type == "Patient":
-                # Patients see their own prescriptions
+                # Patients see their own prescriptions, for the hospital chosen at login
                 query['patient.email'] = user_email
+                if getattr(request.user, 'hospitalName', None):
+                    query['hospitalName'] = request.user.hospitalName
                 
             elif user_type == "Doctor":
                 # Doctors see prescriptions they created

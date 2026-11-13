@@ -39,6 +39,9 @@ class PaymentSerializer(serializers.Serializer):
     purchase_order_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     supplier_note = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
+    # new appointment to create AFTER the payment succeeds (pay-first booking)
+    booking = serializers.DictField(required=False)
+
     # read-only timestamps
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
@@ -57,13 +60,14 @@ class PaymentSerializer(serializers.Serializer):
                     "For appointment or prescription invoice payments, source must be PATIENT."
                 )
 
-            if not attrs.get("patient_id"):
+            new_booking = category == PaymentCategory.APPOINTMENT_BOOKING.value and attrs.get("booking")
+            if not attrs.get("patient_id") and not new_booking:
                 raise serializers.ValidationError("patient_id is required for patient payments.")
 
             if category == PaymentCategory.APPOINTMENT_BOOKING.value:
-                if not attrs.get("appointment_id"):
+                if not attrs.get("appointment_id") and not new_booking:
                     raise serializers.ValidationError(
-                        "appointment_id is required for APPOINTMENT_BOOKING payments."
+                        "appointment_id or booking details are required for APPOINTMENT_BOOKING payments."
                     )
 
             if category == PaymentCategory.PRESCRIPTION_INVOICE.value:
