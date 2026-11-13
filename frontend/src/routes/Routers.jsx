@@ -64,7 +64,8 @@ const Routers = () => {
                 <Route path="/admin/givemedicine" element={<ProtectedRoute requiredRole="Admin"><GiveMedicine /></ProtectedRoute>} />
                 {/* <Route path="/admin/givemedicine/medicine" element={<ProtectedRoute requiredRole="Admin"><Medicine /></ProtectedRoute>} /> */}
                 <Route path="/admin/dashboard" element={<Navigate to="/admin" replace />} />
-                <Route path="/admin/newRegister" element={<ProtectedRoute requiredRole="Admin"><NewRegister /></ProtectedRoute>} />
+                <Route path="/admin/reception" element={<ProtectedRoute requiredRole="Admin"><NewRegister /></ProtectedRoute>} />
+                <Route path="/admin/newRegister" element={<Navigate to="/admin/reception" replace />} />
                 <Route path="/admin/product" element={<ProtectedRoute requiredRole="Admin"><Products /></ProtectedRoute>} />
                 <Route path="/admin/department" element={<ProtectedRoute requiredRole="Admin"><Department /></ProtectedRoute>} />
                 <Route path="/admin/profile" element={<ProtectedRoute requiredRole="Admin"><Profiile /></ProtectedRoute>} />

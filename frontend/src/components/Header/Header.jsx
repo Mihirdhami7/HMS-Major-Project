@@ -73,7 +73,7 @@ export default function Header() {
   // Where a notification should take the user
   const notificationTarget = (n) => {
     const home = homeForRole(user?.userType);
-    if (n.type === "appointment") return home === "/admin" ? "/admin/newRegister" : `${home}/appointments`;
+    if (n.type === "appointment") return home === "/admin" ? "/admin/reception" : `${home}/appointments`;
     return home;
   };
 

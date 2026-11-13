@@ -245,7 +245,7 @@ function AdminSection() {
   );
 
   const attention = [
-    { count: stats.pending, label: "appointment requests waiting", action: "Review", to: "/admin/newRegister", icon: "📅" },
+    { count: stats.pending, label: "appointment requests waiting", action: "Review", to: "/admin/reception", icon: "📅" },
     { count: data.pendingDoctors.length, label: "doctors waiting for approval", action: "Approve", to: "/admin/department", icon: "🩺" },
     { count: data.prescriptions.length, label: "prescriptions to dispense / bill", action: "Give medicine", to: "/admin/givemedicine", icon: "💊" },
     { count: data.unapproved.length, label: "new supplier products to approve", action: "Review", to: "/admin/product", icon: "📦" },
@@ -294,8 +294,8 @@ function AdminSection() {
 
           {/* Overview cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard icon="📅" label="Today's Appointments" value={v(stats.today)} sub={`${stats.upcoming} upcoming approved`} onClick={() => navigate("/admin/newRegister")} />
-            <StatCard icon="⏳" label="Pending Requests" value={v(stats.pending)} sub="Waiting for doctor approval" onClick={() => navigate("/admin/newRegister")} />
+            <StatCard icon="📅" label="Today's Appointments" value={v(stats.today)} sub={`${stats.upcoming} upcoming approved`} onClick={() => navigate("/admin/reception")} />
+            <StatCard icon="⏳" label="Pending Requests" value={v(stats.pending)} sub="Waiting for doctor approval" onClick={() => navigate("/admin/reception")} />
             <StatCard icon="💊" label="To Dispense" value={v(data.prescriptions.length)} sub="Prescriptions not billed yet" onClick={() => navigate("/admin/givemedicine")} />
             <StatCard icon="💰" label="Booking Fees" value={loading ? "…" : `₹${stats.feesTotal.toLocaleString("en-IN")}`} sub={`${stats.fees.length} online payments`} />
             <StatCard icon="🧑‍⚕️" label="Doctors" value={v(data.doctors.length)} sub={`${data.pendingDoctors.length} awaiting approval`} onClick={() => navigate("/admin/department")} />

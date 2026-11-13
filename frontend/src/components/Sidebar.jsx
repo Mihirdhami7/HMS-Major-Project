@@ -8,7 +8,7 @@ import { useAuthStorage } from "../hooks/useAuthStorage";
 const slidebars = {
   admin: [
     { icon: FiHome, label: "Dashboard", value: "home" },
-    { icon: FiUserPlus, label: "New Register", value: "newRegister" },
+    { icon: FiUserPlus, label: "Reception", value: "reception" },
     { icon: FiUserPlus, label: "Products", value: "product" },
     { icon: FiUsers, label: "Departments", value: "department" }, 
     { icon: FiUsers, label: "GiveMedicine", value: "givemedicine" }, 
@@ -78,7 +78,7 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {}, userType: 
     const allowedPaths = {
       doctor: ['home', 'appointments', 'medical_products','profile',],
       patient: ['home', 'appointments', 'disease', 'profile'],
-      admin: ['home', 'newRegister', 'product', 'department', 'givemedicine', 'profile'],
+      admin: ['home', 'reception', 'product', 'department', 'givemedicine', 'profile'],
       supplier: ['suppdashboard', 'suppproduct', 'profile'],
       superadmin: ['dashboard', 'hospitals', 'reports']
     };
