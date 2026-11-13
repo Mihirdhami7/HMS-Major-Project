@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from backend.db import users_collection, staff_collection, departments_collection, hospitals_collection
+from backend.db import users_collection, staff_collection, departments_collection, hospitals_collection, sessions_collection
 from apps.accounts.authentication import JWTAuthentication
 from .models import StaffDocument
 from .serializers import PatientCreateSerializer, DoctorStaffSerializer, DoctorApprovalSerializer, DoctorRejectSerializer
@@ -188,7 +188,14 @@ class DoctorDetailAPIView(APIView):
                 return Response({"status": "error", "message": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
 
             staff_collection.delete_one({"_id": ObjectId(doctor_id)})
-            return Response({"status": "success", "message": "Doctor deleted successfully"}, status=status.HTTP_200_OK)
+            # Remove the doctor from the hospital: deactivate the login account and end sessions,
+            # so they can no longer log in or be booked.
+            users_collection.update_many(
+                {"email": existing.get("email"), "userType": "Doctor", "hospitalName": doctor_hospital},
+                {"$set": {"is_active": False, "removedAt": datetime.utcnow(), "removedBy": getattr(request.user, "email", None)}},
+            )
+            sessions_collection.delete_many({"email": existing.get("email")})
+            return Response({"status": "success", "message": "Doctor removed from the hospital"}, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error("DoctorDetailAPIView.delete: %s", e, exc_info=True)
             return Response({"status": "error", "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

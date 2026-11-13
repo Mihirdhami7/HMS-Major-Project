@@ -109,7 +109,7 @@ export const USERS = {
     /** @param {string} hospitalName @param {string} departmentName */
     DOCTOR_BY_DEPARTMENT:   (hospitalName, departmentName) => `${API_BASE}/users/doctors/${hospitalName}/department/${departmentName}/`,
     /** @param {string} doctorId */
-    DOCTOR_DETAIL:          (doctorId) => `${API_BASE}/users/doctors/${doctorId}/`,
+    DOCTOR_DETAIL:          (doctorId) => `${API_BASE}/users/doctors/id/${doctorId}/`,
     /** @param {string} doctorId */
     DOCTOR_ROLE:            (doctorId) => `${API_BASE}/users/doctors/${doctorId}/role/`,
 
@@ -120,7 +120,7 @@ export const USERS = {
     /** @param {string} hospitalName @param {string} departmentName */
     PATIENT_BY_DEPARTMENT:  (hospitalName, departmentName) => `${API_BASE}/users/patients/${hospitalName}/department/${departmentName}/`,
     /** @param {string} patientId */
-    PATIENT_DETAIL:         (patientId) => `${API_BASE}/users/patients/${patientId}/`,
+    PATIENT_DETAIL:         (patientId) => `${API_BASE}/users/patients/id/${patientId}/`,
 };
 
 // ─────────────────────────────────────────────────────────────
