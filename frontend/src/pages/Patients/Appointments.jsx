@@ -1,18 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Slidebar from "../../components/Sidebar";
+import AppointmentCharts from "../../components/patient/AppointmentCharts";
 import { FiCalendar, FiPhoneCall } from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext";
 import { useHospitals, useDepartments } from "../../hooks/useHospitals";
 import { pickList } from "../../services/apiClient";
 import { listDoctorsByDepartment } from "../../services/userService";
-import {
-  bookAppointment as bookAppointmentAPI,
-  getMyAppointments,
-  getMyPrescriptions,
-} from "../../services/appointmentsService";
+import { getMyAppointments, getMyPrescriptions } from "../../services/appointmentsService";
+import PrescriptionActions from "../../components/patient/PrescriptionActions";
 import { createRazorpayOrder, verifyRazorpayPayment } from "../../services/paymentService";
 
-// Booking fee shown to the patient (backend has no fee configuration endpoint yet).
+// Booking fee shown to the patient. The backend decides the real amount (APPOINTMENT_BOOKING_FEE).
 const BOOKING_FEE = 100;
 
 // Values must be "HH:MM" (BookAppointmentSerializer.validate_appointmentTime).
@@ -70,7 +68,8 @@ function Appointment() {
   const { user, token } = useAuth();
   const [activeTab, setActiveTab] = useState("appointments");
   const { hospitals, loading: hospitalsLoading } = useHospitals(token);
-  const [hospitalName, setHospitalName] = useState(user?.hospitalName || "");
+  // A patient account belongs to the hospital chosen at login; it cannot be changed here.
+  const hospitalName = user?.hospitalName || "";
   const {
     departments,
     loading: departmentsLoading,
@@ -93,7 +92,7 @@ function Appointment() {
   const [selectedDepartment, setSelectedDepartment] = useState(null);
 
   const [previousAppointments, setPreviousAppointments] = useState([]);
-  const [prescriptions, setPrescriptions] = useState([]);
+  const [prescriptionsByAppt, setPrescriptionsByAppt] = useState({});
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState(null);
   const [payingId, setPayingId] = useState(null);
@@ -104,18 +103,27 @@ function Appointment() {
   );
 
   const today = new Date().toISOString().split("T")[0];
+  const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const recentAppointments = useMemo(
+    () =>
+      previousAppointments
+        .filter((a) => (a.acceptedDate || a.appointmentDate || "") >= since30)
+        .sort((a, b) =>
+          (b.acceptedDate || b.appointmentDate || "").localeCompare(a.acceptedDate || a.appointmentDate || "")
+        ),
+    [previousAppointments, since30]
+  );
 
   const fetchHistory = useCallback(async () => {
     if (!token) return;
     setHistoryLoading(true);
-    const [apptRes, prescRes] = await Promise.all([
-      getMyAppointments(token),
-      getMyPrescriptions(token),
-    ]);
+    const [apptRes, prescRes] = await Promise.all([getMyAppointments(token), getMyPrescriptions(token)]);
     setPreviousAppointments(pickList(apptRes, "appointments"));
-    setPrescriptions(pickList(prescRes, "prescriptions"));
-    const failed = [apptRes, prescRes].find((r) => !r.success);
-    setHistoryError(failed ? failed.message : null);
+    // prescription for each completed appointment (linked by appointmentId)
+    setPrescriptionsByAppt(
+      Object.fromEntries(pickList(prescRes, "prescriptions").map((p) => [p.appointmentId, p._id]))
+    );
+    setHistoryError(apptRes.success ? null : apptRes.message);
     setHistoryLoading(false);
   }, [token]);
 
@@ -128,6 +136,14 @@ function Appointment() {
     setSelectedDepartment(null);
     setDoctors([]);
   }, [hospitalName]);
+
+  // Open with the first department selected so the patient sees doctors right away.
+  useEffect(() => {
+    if (!selectedDepartment && departments.length > 0) {
+      handleDepartmentSelect(departments[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [departments]);
 
   const handleDepartmentSelect = async (department) => {
     setSelectedDepartment(department);
@@ -203,7 +219,7 @@ function Appointment() {
       name: appt.hospitalName || "Hospital",
       description: "Appointment Booking Fee",
       order_id: rpOrder?.id,
-      prefill: { email: user?.email, name: user?.name },
+      prefill: { email: user?.email, name: user?.name, contact: appt.patient?.contactNo || "" },
       theme: { color: "#3399cc" },
       handler: async (resp) => {
         const verifyRes = await verifyRazorpayPayment(token, {
@@ -227,6 +243,10 @@ function Appointment() {
     rz.open();
   };
 
+  /**
+   * Pay first, then book: the backend validates the booking, creates a Razorpay order for the
+   * booking fee, and creates the appointment ONLY after the payment is verified.
+   */
   const handleBook = async () => {
     setModalError(null);
     if (!user?.email) {
@@ -234,7 +254,7 @@ function Appointment() {
       return;
     }
     if (!hospitalName) {
-      setModalError("Select a hospital first.");
+      setModalError("Your account is not linked to a hospital. Please log in again.");
       return;
     }
     if (!selectedDoctor || !selectedDepartment) {
@@ -251,70 +271,92 @@ function Appointment() {
     }
 
     setBookingLoading(true);
-    const result = await bookAppointmentAPI(token, {
-      patientEmail: user.email,
-      doctorEmail: selectedDoctor.email,
-      department: selectedDepartment.name,
-      hospitalName,
-      appointmentDate,
-      appointmentTime,
-      symptoms: symptoms.trim(),
-    });
-    setBookingLoading(false);
-
-    if (!result.success) {
-      setModalError(result.message || "Failed to book appointment.");
+    const loaded = await loadRazorpay();
+    if (!loaded) {
+      setBookingLoading(false);
+      setModalError("Could not load the payment gateway. Check your internet connection and try again.");
       return;
     }
-    closeModal();
-    setNotice(result.message || "Appointment request sent for approval.");
-    fetchHistory();
+
+    const stamp = Date.now();
+    const meta = {
+      payment_id: `BOOK-${stamp}`,
+      order_id: `ORD-${stamp}`,
+      source: "PATIENT",
+      category: "APPOINTMENT_BOOKING",
+      amount: BOOKING_FEE,
+      currency: "INR",
+      hospital_name: hospitalName,
+      booking: {
+        patientEmail: user.email,
+        doctorEmail: selectedDoctor.email,
+        department: selectedDepartment.name,
+        hospitalName,
+        appointmentDate,
+        appointmentTime,
+        symptoms: symptoms.trim(),
+      },
+    };
+    const orderRes = await createRazorpayOrder(token, meta);
+    if (!orderRes.success) {
+      setBookingLoading(false);
+      setModalError(orderRes.message || "Could not start the payment.");
+      return;
+    }
+
+    const { razorpay_key_id: key, razorpay_order: rpOrder } = orderRes.data || {};
+    const rz = new window.Razorpay({
+      key,
+      amount: rpOrder?.amount,
+      currency: rpOrder?.currency || "INR",
+      name: hospitalName,
+      description: `Appointment with ${selectedDoctor.name || "doctor"} on ${appointmentDate}`,
+      order_id: rpOrder?.id,
+      prefill: { email: user?.email, name: user?.name, contact: user?.contactNo || "" },
+      theme: { color: "#3399cc" },
+      handler: async (resp) => {
+        const verifyRes = await verifyRazorpayPayment(token, {
+          ...meta,
+          razorpay_order_id: resp.razorpay_order_id,
+          razorpay_payment_id: resp.razorpay_payment_id,
+          razorpay_signature: resp.razorpay_signature,
+        });
+        setBookingLoading(false);
+        if (verifyRes.success) {
+          closeModal();
+          setNotice(verifyRes.message || "Payment successful. Your appointment is booked.");
+          fetchHistory();
+        } else {
+          setModalError(`Payment could not be verified: ${verifyRes.message}. If money was deducted, contact the hospital.`);
+        }
+      },
+      modal: {
+        ondismiss: () => {
+          setBookingLoading(false);
+          setModalError("Payment cancelled — your appointment was not booked.");
+        },
+      },
+    });
+    rz.on("payment.failed", (resp) => {
+      setBookingLoading(false);
+      setModalError(`Payment failed: ${resp?.error?.description || "please try again"}. Your appointment was not booked.`);
+    });
+    rz.open();
   };
 
-  const prescriptionFor = (appt) => prescriptions.find((p) => p.appointmentId === appt._id);
-
   return (
-    <div className="flex h-screen bg-gradient-to-br from-blue-50 to-green-50">
+    <div className="flex h-screen pt-16 overflow-hidden bg-gray-50 dark:bg-gray-900">
       <Slidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <div className="flex-1 p-8 overflow-y-auto mt-16">
+      <div className="flex-1 p-6 overflow-y-auto">
         <h2 className="text-3xl font-bold flex items-center mb-6 text-blue-700">
           <FiCalendar className="mr-2 text-green-600" /> Book Appointments
         </h2>
 
-        {/* Hospital selection / display */}
-        <div className="mb-4 p-4 bg-white rounded-lg shadow-lg flex flex-wrap gap-4 items-center justify-between border-l-4 border-blue-500">
-          <div>
-            <h3 className="text-lg font-bold text-blue-700">{hospital?.name || hospitalName || "Select a hospital"}</h3>
-            {hospital?.description && <p className="text-sm text-gray-600">{hospital.description}</p>}
-            {hospital?.address && <p className="text-xs text-gray-500 mt-1">{hospital.address}</p>}
-          </div>
-          {hospitals.length > 0 && (
-            <select
-              value={hospitalName}
-              onChange={(e) => setHospitalName(e.target.value)}
-              className="p-2 border border-gray-300 rounded-lg"
-            >
-              <option value="">Choose hospital</option>
-              {hospitals.map((h) => (
-                <option key={h.id} value={h.name}>{h.name}</option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        {/* Contact hospital */}
-        {hospital?.contactNo && (
-          <div className="w-full flex justify-between items-center border-b border-blue-200 pb-4 mb-6">
-            <span className="text-lg font-semibold text-gray-700">Need help? Contact the hospital</span>
-            <a
-              className="px-4 py-2 flex items-center bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-lg hover:from-blue-600 hover:to-green-600 transition-all"
-              href={`tel:${hospital.contactNo}`}
-            >
-              <FiPhoneCall className="mr-2" /> {hospital.contactNo}
-            </a>
-          </div>
-        )}
+        <p className="mb-6 text-gray-600">
+          Booking at <span className="font-semibold text-blue-700">{hospitalName || "—"}</span>
+          {" "}· choose a department, then a doctor.
+        </p>
 
         {notice && (
           <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6">
@@ -329,7 +371,7 @@ function Appointment() {
 
         {!hospitalName && !hospitalsLoading && (
           <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
-            <p className="text-red-700">No hospital selected. Choose a hospital to see its departments.</p>
+            <p className="text-red-700">Your account is not linked to a hospital. Please log in again and select your hospital.</p>
           </div>
         )}
 
@@ -553,7 +595,7 @@ function Appointment() {
                   <div className="flex items-center justify-between p-4 bg-green-50">
                     <div>
                       <p className="text-gray-700 font-medium">Appointment Booking Fee</p>
-                      <p className="text-xs text-gray-500 mt-1">You can pay online after booking from your appointment list.</p>
+                      <p className="text-xs text-gray-500 mt-1">Pay now to book. Your appointment is booked only after the payment succeeds.</p>
                     </div>
                     <div className="text-xl font-bold text-green-700">₹{BOOKING_FEE}</div>
                   </div>
@@ -578,7 +620,7 @@ function Appointment() {
                     onClick={handleBook}
                     disabled={bookingLoading}
                   >
-                    {bookingLoading ? "Processing..." : "Confirm Appointment"}
+                    {bookingLoading ? "Processing payment..." : `Pay ₹${BOOKING_FEE} & Book`}
                   </button>
                 </div>
               </div>
@@ -586,13 +628,19 @@ function Appointment() {
           </div>
         )}
 
+        {/* Appointment charts (all of this patient's appointments at this hospital) */}
+        <div className="mt-12">
+          <AppointmentCharts appointments={previousAppointments} loading={historyLoading} />
+        </div>
+
         {/* Appointment history (all statuses) */}
-        <div className="mt-12 w-full bg-white p-6 rounded-lg shadow-lg border border-blue-100">
-          <h2 className="text-2xl font-bold mb-4 text-blue-700">My Appointments</h2>
+        <div className="mt-6 w-full bg-white p-6 rounded-lg shadow-lg border border-blue-100">
+          <h2 className="text-2xl font-bold mb-1 text-blue-700">My Appointments</h2>
+          <p className="text-sm text-gray-500 mb-4">Last 30 days and upcoming. Prescriptions and payments are on your Home page.</p>
           {historyError && <p className="text-red-600 text-sm mb-3">{historyError}</p>}
           {historyLoading ? (
             <p className="text-gray-500 text-center py-6">Loading...</p>
-          ) : previousAppointments.length > 0 ? (
+          ) : recentAppointments.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
@@ -602,10 +650,11 @@ function Appointment() {
                     <th className="border border-blue-200 p-3 text-left text-gray-700">Date &amp; Time</th>
                     <th className="border border-blue-200 p-3 text-left text-gray-700">Status</th>
                     <th className="border border-blue-200 p-3 text-left text-gray-700">Payment</th>
+                    <th className="border border-blue-200 p-3 text-left text-gray-700">Prescription</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {previousAppointments.map((appointment) => {
+                  {recentAppointments.map((appointment) => {
                     const rescheduled =
                       appointment.acceptedDate &&
                       (appointment.acceptedDate !== appointment.appointmentDate ||
@@ -650,6 +699,15 @@ function Appointment() {
                             <span className="text-gray-400">-</span>
                           )}
                         </td>
+                        <td className="border border-blue-200 p-3 text-sm">
+                          {prescriptionsByAppt[appointment._id] ? (
+                            <PrescriptionActions prescriptionId={prescriptionsByAppt[appointment._id]} showEmail={false} />
+                          ) : appointment.status === "completed" ? (
+                            <span className="text-gray-400">Not issued</span>
+                          ) : (
+                            <span className="text-gray-400">After visit</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -657,71 +715,10 @@ function Appointment() {
               </table>
             </div>
           ) : (
-            <p className="text-gray-500 text-center py-6">No appointments found.</p>
+            <p className="text-gray-500 text-center py-6">No appointments in the last 30 days.</p>
           )}
         </div>
 
-        {/* Prescription history */}
-        <div className="mt-8 w-full bg-white p-6 rounded-lg shadow-lg border border-green-100">
-          <h2 className="text-2xl font-bold mb-4 text-green-700">My Prescriptions</h2>
-          {historyLoading ? (
-            <p className="text-gray-500 text-center py-6">Loading...</p>
-          ) : prescriptions.length === 0 ? (
-            <p className="text-gray-500 text-center py-6">No prescriptions yet.</p>
-          ) : (
-            <div className="space-y-4">
-              {prescriptions.map((p) => {
-                const appt = previousAppointments.find((a) => a._id === p.appointmentId);
-                return (
-                  <div key={p._id} className="border border-green-100 rounded-lg p-4">
-                    <div className="flex flex-wrap justify-between gap-2 mb-2">
-                      <p className="font-semibold text-gray-800">
-                        Dr. {p.doctor?.name} · {p.department} ({p.hospitalName})
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ""}
-                        {appt ? ` · appointment ${appt.acceptedDate || appt.appointmentDate}` : ""}
-                      </p>
-                    </div>
-                    <table className="w-full text-sm border-collapse mb-2">
-                      <thead>
-                        <tr className="bg-gray-50">
-                          <th className="border p-2 text-left">Medicine</th>
-                          <th className="border p-2 text-left">Dosage</th>
-                          <th className="border p-2 text-left">Duration</th>
-                          <th className="border p-2 text-left">Qty</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(p.medicines || []).map((m, i) => (
-                          <tr key={`${m.medicineId}-${i}`}>
-                            <td className="border p-2">{m.name}</td>
-                            <td className="border p-2">{[m.dosage, m.frequency].filter(Boolean).join(" · ")}</td>
-                            <td className="border p-2">{m.duration}</td>
-                            <td className="border p-2">{m.quantity}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {p.suggestions && (
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                        <strong>Advice:</strong> {p.suggestions}
-                      </p>
-                    )}
-                    {p.reports?.reportType && p.reports.reportType !== "none" && (
-                      <p className="text-sm text-gray-700"><strong>Report:</strong> {p.reports.reportType}</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {previousAppointments.some((a) => a.status === "completed" && !prescriptionFor(a)) && (
-            <p className="text-xs text-gray-400 mt-3">
-              Some completed appointments have no prescription on record.
-            </p>
-          )}
-        </div>
       </div>
     </div>
   );
