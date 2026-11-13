@@ -92,6 +92,8 @@ export const ORDERS = {
 export const PAYMENTS = {
     RAZORPAY_ORDER:  `${API_BASE}/payments/razorpay/order/`,
     RAZORPAY_VERIFY: `${API_BASE}/payments/razorpay/verify/`,
+    INVOICES:        `${API_BASE}/payments/invoices/`,
+    INVOICE_CASH:    `${API_BASE}/payments/invoices/cash/`,
 };
 
 // ─────────────────────────────────────────────────────────────

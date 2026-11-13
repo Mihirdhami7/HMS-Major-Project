@@ -80,3 +80,21 @@ export const verifyRazorpayPayment = (token, data) =>
             headers: authHeaders(token),
         })
     );
+
+/** Billing history of the admin's hospital. range: today | 7d | 30d | all */
+export const getInvoices = (token, range = "all") =>
+    handleRequest(() =>
+        apiClient.get(PAYMENTS.INVOICES, {
+            headers: authHeaders(token),
+            params: { range },
+        })
+    );
+
+/** Record a cash medicine bill: { prescriptionId, items: [{ medicineId, quantity }] } (priced on the server). */
+export const payCashInvoice = (token, data) =>
+    handleRequest(() =>
+        apiClient.post(PAYMENTS.INVOICE_CASH, data, {
+            headers: authHeaders(token),
+        })
+    );
+

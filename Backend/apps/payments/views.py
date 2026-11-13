@@ -38,6 +38,7 @@ from backend.db import (
 )
 from .models import PaymentCategory
 from .serializers import PaymentSerializer, RazorpayVerifySerializer
+from .invoices import InvoiceError, create_invoice, load_prescription_for_admin, price_items
 
 logger = logging.getLogger(__name__)
 
@@ -147,15 +148,17 @@ class RazorpayOrderCreateAPIView(APIView):
         elif category == PaymentCategory.PRESCRIPTION_INVOICE.value:
             if not is_admin:
                 return _error("Only hospital staff can collect a medicine bill.", status.HTTP_403_FORBIDDEN)
-            presc = prescriptions_collection.find_one({"_id": _oid(data.get("order_id"))}) if _oid(data.get("order_id")) else None
-            if not presc:
-                return _error("Prescription not found.", status.HTTP_404_NOT_FOUND)
-            if role != "superadmin" and presc.get("hospitalName") != user_hospital:
-                return _error("This prescription belongs to another hospital.", status.HTTP_403_FORBIDDEN)
-            if presc.get("invoiceId"):
-                return _error("This prescription is already billed.")
             try:
-                amount = Decimal(str(data["amount"]))
+                presc = load_prescription_for_admin(data.get("order_id"), request.user)
+                if data.get("items"):
+                    # dispensed cart items, priced from the hospital's products
+                    items, priced_amount = price_items(presc.get("hospitalName"), data["items"])
+                    amount = Decimal(str(priced_amount))
+                    record["items"] = items
+                else:
+                    amount = Decimal(str(data["amount"]))
+            except InvoiceError as exc:
+                return _error(exc.message, exc.code)
             except (InvalidOperation, KeyError):
                 return _error("Invalid amount.")
             if amount <= 0 or amount > MAX_INVOICE_AMOUNT:
@@ -343,34 +346,15 @@ class RazorpayPaymentVerifyAPIView(APIView):
                 ))
 
             elif category == PaymentCategory.PRESCRIPTION_INVOICE.value:
-                invoice_id = record["invoice_id"]
-                presc = prescriptions_collection.find_one({"_id": ObjectId(record["prescription_id"])}) or {}
-                invoices_collection.update_one({"invoiceId": invoice_id}, {"$setOnInsert": {
-                    "invoiceId": invoice_id,
-                    "prescriptionId": record["prescription_id"],
-                    "patient": {"patientId": record.get("patient_id"), "name": record.get("patient_name"),
-                                "email": record.get("patient_email")},
-                    "hospitalName": record.get("hospital_name"),
-                    "medicines": presc.get("medicines", []),
-                    "totalAmount": record["amount"],
-                    "paymentId": payment_id,
-                    "paymentMethod": "online",
-                    "status": "paid",
-                    "createdAt": paid_at,
-                    "updatedAt": paid_at,
-                }}, upsert=True)
-                prescriptions_collection.update_one(
-                    {"_id": ObjectId(record["prescription_id"])},
-                    {"$set": {"invoiceId": invoice_id, "status": "invoiced", "invoicedAt": paid_at, "updatedAt": paid_at}},
-                )
-                if record.get("patient_email"):
-                    notifications_collection.insert_one(NotificationDocument.create(
-                        user_email=record["patient_email"],
-                        title="Medicine Bill Paid",
-                        message=f"Your medicine bill of ₹{record['amount']:.0f} has been paid.",
-                        notification_type="payment",
-                        reference_id=record["prescription_id"],
-                    ))
+                presc = prescriptions_collection.find_one({"_id": ObjectId(record["prescription_id"])})
+                if presc:
+                    items = record.get("items") or [
+                        {"medicineId": m.get("medicineId"), "name": m.get("name"), "quantity": int(m.get("quantity") or 1),
+                         "price": float(m.get("price") or 0), "total": float(m.get("price") or 0) * int(m.get("quantity") or 1)}
+                        for m in presc.get("medicines", []) if m.get("medicineId")
+                    ]
+                    create_invoice(presc, items, record["amount"], "online", payment_id=payment_id,
+                                   created_by=record.get("created_by"))
             # SUPPLIER_PURCHASE: the SUCCESS payment record is used by "complete order".
             return record.get("appointment_id")
         except Exception as exc:  # payment is already recorded as SUCCESS; log the follow-up failure

@@ -42,6 +42,9 @@ class PaymentSerializer(serializers.Serializer):
     # new appointment to create AFTER the payment succeeds (pay-first booking)
     booking = serializers.DictField(required=False)
 
+    # medicine bill: dispensed items [{medicineId, quantity}] (priced on the server)
+    items = serializers.ListField(child=serializers.DictField(), required=False)
+
     # read-only timestamps
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
