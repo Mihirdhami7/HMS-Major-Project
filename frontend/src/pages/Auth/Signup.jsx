@@ -44,9 +44,8 @@ const EMPTY_FORM = {
 export default function Signup() {
   const navigate = useNavigate();
   const [step, setStep] = useState("registration"); // registration, verification
-  // Real hospitals from the backend. The list endpoint currently requires a login, so on this
-  // public page `available` is false and the user types the hospital name instead.
-  const { hospitals, available: hospitalsAvailable, loading: hospitalsLoading } = useHospitals();
+  // Real hospitals from the backend (public endpoint). The user selects, never types.
+  const { hospitals, loading: hospitalsLoading } = useHospitals();
   const [otp, setOtp] = useState("");
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
@@ -362,24 +361,24 @@ export default function Signup() {
             {needsHospital && (
               <div>
                 <label className="block text-gray-700">Hospital</label>
-                {hospitalsAvailable && hospitals.length > 0 ? (
-                  <select name="hospitalName" value={formData.hospitalName} onChange={handleChange} className={inputClass}>
-                    <option value="">Select a hospital</option>
-                    {hospitals.map((h) => (
-                      <option key={h.id} value={h.name}>
-                        {h.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    name="hospitalName"
-                    type="text"
-                    placeholder={hospitalsLoading ? "Loading hospitals..." : "Enter your hospital name"}
-                    value={formData.hospitalName}
-                    onChange={handleChange}
-                    className={inputClass}
-                  />
+                <select
+                  name="hospitalName"
+                  value={formData.hospitalName}
+                  onChange={handleChange}
+                  className={inputClass}
+                  disabled={hospitalsLoading || hospitals.length === 0}
+                >
+                  <option value="">{hospitalsLoading ? "Loading hospitals..." : "Select a hospital"}</option>
+                  {hospitals.map((h) => (
+                    <option key={h.id} value={h.name}>
+                      {h.name}
+                    </option>
+                  ))}
+                </select>
+                {formData.userType === "Patient" && formData.hospitalName && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    This account will belong to {formData.hospitalName}. You can register the same email again for another hospital.
+                  </p>
                 )}
                 {errors.hospitalName && <p className="text-red-500 text-sm">{errors.hospitalName}</p>}
               </div>

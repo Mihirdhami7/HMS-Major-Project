@@ -52,6 +52,18 @@ export const loginUser = (loginData) =>
         apiClient.post(ACCOUNTS.LOGIN, loginData)
     );
 
+/** Forgot password step 1: email a 6-digit reset code. */
+export const requestPasswordReset = (email) =>
+    handleRequest(() =>
+        apiClient.post(ACCOUNTS.PASSWORD_RESET_REQUEST, { email })
+    );
+
+/** Forgot password step 2: code from the email + new password. */
+export const confirmPasswordReset = (email, otp, newPassword) =>
+    handleRequest(() =>
+        apiClient.post(ACCOUNTS.PASSWORD_RESET_CONFIRM, { email, otp, newPassword })
+    );
+
 // ─────────────────────────────────────────────────────────────
 // AUTHENTICATED — token required
 // ─────────────────────────────────────────────────────────────

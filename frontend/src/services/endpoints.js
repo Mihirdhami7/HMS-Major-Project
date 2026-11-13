@@ -18,6 +18,8 @@ export const ACCOUNTS = {
     VERIFY:          `${API_BASE}/accounts/verify/`,
     PROFILE_ME:      `${API_BASE}/accounts/profile/me/`,
     PROFILE_UPDATE:  `${API_BASE}/accounts/profile/me/update/`,
+    PASSWORD_RESET_REQUEST: `${API_BASE}/accounts/password-reset/request/`,
+    PASSWORD_RESET_CONFIRM: `${API_BASE}/accounts/password-reset/confirm/`,
     /** @param {string} email */
     COMPANY_NAME:    (email) => `${API_BASE}/accounts/get_company_name/${email}/`,
 };
@@ -36,6 +38,10 @@ export const APPOINTMENTS = {
     PRESCRIPTIONS_PENDING:  `${API_BASE}/appointments/prescriptions/pending/`,
     PRESCRIPTIONS_MY:       `${API_BASE}/appointments/prescriptions/my/`,
     PRESCRIPTIONS_ALL:      `${API_BASE}/appointments/prescriptions/all/`,
+    /** @param {string} prescriptionId */
+    PRESCRIPTION_PDF:       (prescriptionId) => `${API_BASE}/appointments/prescriptions/${prescriptionId}/pdf/`,
+    /** @param {string} prescriptionId */
+    PRESCRIPTION_EMAIL:     (prescriptionId) => `${API_BASE}/appointments/prescriptions/${prescriptionId}/email/`,
     /** @param {string} hospitalName */
     HOSPITAL_MEDICINES:     (hospitalName) => `${API_BASE}/appointments/get-hospital-medicines/${hospitalName}/`,
     HOSPITAL_MEDICINES_SELF:`${API_BASE}/appointments/get-hospital-medicines/`,
@@ -75,6 +81,9 @@ export const ORDERS = {
     ORDER_COMPLETE:         (orderId) => `${API_BASE}/orders/orders/complete/${orderId}/`,
     SUPPLIER_PRODUCTS:      `${API_BASE}/orders/supplier-products/`,
     SUPPLIER_ORDERS:        `${API_BASE}/orders/supplier-orders/`,
+    MEDICINE_REQUESTS:      `${API_BASE}/orders/medicine-requests/`,
+    /** @param {string} requestId */
+    MEDICINE_REQUEST:       (requestId) => `${API_BASE}/orders/medicine-requests/${requestId}/`,
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -112,4 +121,21 @@ export const USERS = {
     PATIENT_BY_DEPARTMENT:  (hospitalName, departmentName) => `${API_BASE}/users/patients/${hospitalName}/department/${departmentName}/`,
     /** @param {string} patientId */
     PATIENT_DETAIL:         (patientId) => `${API_BASE}/users/patients/${patientId}/`,
+};
+
+// ─────────────────────────────────────────────────────────────
+// NOTIFICATIONS  →  /api/notifications/
+// ─────────────────────────────────────────────────────────────
+export const NOTIFICATIONS = {
+    LIST:      `${API_BASE}/notifications/`,
+    MARK_READ: `${API_BASE}/notifications/read/`,
+};
+
+// ─────────────────────────────────────────────────────────────
+// DISEASES (health info catalogue)  →  /api/diseases/
+// ─────────────────────────────────────────────────────────────
+export const DISEASES = {
+    LIST_CREATE: `${API_BASE}/diseases/`,
+    /** @param {string} diseaseId */
+    DETAIL:      (diseaseId) => `${API_BASE}/diseases/${diseaseId}/`,
 };

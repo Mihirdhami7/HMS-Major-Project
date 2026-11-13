@@ -12,9 +12,9 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
-  // Real hospital list from the backend. While the backend requires a login for this
-  // list, `available` is false and the user types the hospital name instead.
-  const { hospitals, available: hospitalsAvailable, loading: hospitalsLoading } = useHospitals();
+  // Real hospital list from the backend (public endpoint). The user only selects, never types.
+  const { hospitals, loading: hospitalsLoading, error: hospitalsError } = useHospitals();
+  const notice = location.state?.notice;
 
   const [formData, setFormData] = useState({
     email: "",
@@ -26,6 +26,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const needsHospital = roleNeedsHospital(formData.category);
+  const selectedHospital = hospitals.find((h) => h.name === formData.hospitalName);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -77,6 +78,12 @@ export default function Login() {
           Welcome to <span className="text-blue-600">EasyTreat</span> 🏥
         </h2>
 
+        {notice && !error && (
+          <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6">
+            <p className="text-green-700">{notice}</p>
+          </div>
+        )}
+
         {error && (
           <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
             <p className="text-red-700">{error}</p>
@@ -126,34 +133,44 @@ export default function Login() {
           {needsHospital && (
             <div>
               <label htmlFor="hospitalName" className="block text-sm font-medium text-gray-700 mb-1">Hospital</label>
-              {hospitalsAvailable && hospitals.length > 0 ? (
-                <select
-                  id="hospitalName"
-                  name="hospitalName"
-                  value={formData.hospitalName}
-                  onChange={handleChange}
-                  className={inputClass}
-                  required
-                >
-                  <option value="">Select Hospital</option>
-                  {hospitals.map((h) => (
-                    <option key={h.id} value={h.name}>{h.name}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  id="hospitalName"
-                  name="hospitalName"
-                  type="text"
-                  placeholder={hospitalsLoading ? "Loading hospitals..." : "Enter your hospital name"}
-                  value={formData.hospitalName}
-                  onChange={handleChange}
-                  className={inputClass}
-                  required
-                />
+              <select
+                id="hospitalName"
+                name="hospitalName"
+                value={formData.hospitalName}
+                onChange={handleChange}
+                className={inputClass}
+                required
+                disabled={hospitalsLoading || hospitals.length === 0}
+              >
+                <option value="">
+                  {hospitalsLoading ? "Loading hospitals..." : hospitals.length ? "Select Hospital" : "No hospitals available"}
+                </option>
+                {hospitals.map((h) => (
+                  <option key={h.id} value={h.name}>{h.name}</option>
+                ))}
+              </select>
+              {hospitalsError && !hospitalsLoading && (
+                <p className="mt-1 text-sm text-red-600">Could not load hospitals: {hospitalsError}</p>
+              )}
+              {selectedHospital && (
+                <div className="mt-2 rounded-md bg-blue-50 border border-blue-100 p-3 text-sm text-gray-700">
+                  {selectedHospital.address && <p>📍 {selectedHospital.address}</p>}
+                  {selectedHospital.contactNo && <p>📞 {selectedHospital.contactNo}</p>}
+                  {formData.category === "Patient" && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Your patient account belongs to this hospital. To use another hospital, log in with (or register) an account for that hospital.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           )}
+
+          <div className="-mt-3 text-right">
+            <Link to="/forgot-password" className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+              Forgot password?
+            </Link>
+          </div>
 
           <button
             type="submit"

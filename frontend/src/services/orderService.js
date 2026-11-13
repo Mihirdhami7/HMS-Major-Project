@@ -166,3 +166,33 @@ export const getSupplierOrders = (token) =>
             headers: authHeaders(token),
         })
     );
+
+// ─────────────────────────────────────────────────────────────
+// MEDICINE REQUESTS (doctor asks pharmacy to stock a medicine)
+// ─────────────────────────────────────────────────────────────
+
+/** Doctor: request a medicine that is not in the hospital inventory. */
+export const createMedicineRequest = (token, data) =>
+    handleRequest(() =>
+        apiClient.post(ORDERS.MEDICINE_REQUESTS, data, {
+            headers: authHeaders(token),
+        })
+    );
+
+/** Doctor: own requests. Admin: hospital requests. params: { status } */
+export const listMedicineRequests = (token, params = {}) =>
+    handleRequest(() =>
+        apiClient.get(ORDERS.MEDICINE_REQUESTS, {
+            headers: authHeaders(token),
+            params,
+        })
+    );
+
+/** Admin: set status open | ordered | done | rejected */
+export const updateMedicineRequest = (token, requestId, status) =>
+    handleRequest(() =>
+        apiClient.patch(ORDERS.MEDICINE_REQUEST(requestId), { status }, {
+            headers: authHeaders(token),
+        })
+    );
+

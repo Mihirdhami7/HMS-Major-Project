@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { FiHome, FiUsers, FiUserPlus, FiFileText, FiCalendar, FiUser, FiPackage} from "react-icons/fi";
 import PropTypes from "prop-types";
 import { useAuthStorage } from "../hooks/useAuthStorage";
@@ -14,11 +14,13 @@ const slidebars = {
     { icon: FiUsers, label: "GiveMedicine", value: "givemedicine" }, 
   ],
   doctor: [
+    { icon: FiHome, label: "Home", value: "home" },
     { icon: FiCalendar, label: "Appointments", value: "appointments" },
     { icon: FiPackage, label: "Medical Products", value: "medical_products" },
     { icon: FiUser, label: "Profile", value: "profile" },
   ],
   patient: [
+    { icon: FiHome, label: "Home", value: "home" },
     { icon: FiCalendar, label: "Appointments", value: "appointments" },
     { icon: FiFileText, label: "Disease", value: "disease" },
     { icon: FiUser, label: "Profile", value: "profile" },
@@ -37,6 +39,10 @@ const slidebars = {
 
 // Generate Navigation Link Based on User Type
 const getLinkPath = (userType, value) => {
+  // "home" = the role's landing dashboard (e.g. /patient)
+  if (value === "home") {
+    return `/${userType.toLowerCase()}`;
+  }
   // Special case for profile links - remove email param
   if (value === "profile") {
     return `/${userType.toLowerCase()}/profile`;
@@ -48,6 +54,7 @@ const getLinkPath = (userType, value) => {
 function Slidebar({ activeTab = "dashboard", setActiveTab = () => {}, userType: userTypeProp }) {
   const { userType: authUserType, isAuthenticated } = useAuthStorage();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   // Logged-in role is the source of truth; the prop is only a fallback hint.
   const userType = authUserType || userTypeProp || null;
@@ -57,7 +64,7 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {}, userType: 
   // If not authenticated or userType not loaded yet, show minimal sidebar
   if (!isAuthenticated || !userType) {
     return (
-      <aside className="w-64 h-screen bg-white shadow-md dark:bg-gray-800 flex flex-col items-center justify-center">
+      <aside className="w-64 shrink-0 h-screen bg-white shadow-md dark:bg-gray-800 flex flex-col items-center justify-center">
         <p className="text-gray-500">Loading...</p>
       </aside>
     );
@@ -68,8 +75,8 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {}, userType: 
   const handleNavigation = (path, value) => {
     // Prevent default navigation
     const allowedPaths = {
-      doctor: ['appointments', 'medical_products','profile',],
-      patient: ['appointments', 'disease', 'profile'],
+      doctor: ['home', 'appointments', 'medical_products','profile',],
+      patient: ['home', 'appointments', 'disease', 'profile'],
       admin: ['dashboard', 'newRegister', 'product', 'department', 'givemedicine'],
       supplier: ['suppdashboard', 'suppproduct', 'profile'],
       superadmin: ['dashboard', 'hospitals', 'reports']
@@ -87,8 +94,12 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {}, userType: 
   
 
 
+  // Highlight the item matching the current URL; fall back to the page's activeTab.
+  const currentPath = pathname.replace(/\/$/, "");
+  const urlMatchesItem = navItems.some((n) => getLinkPath(currentUserType, n.value) === currentPath);
+
   return (
-    <aside className="w-64 h-screen bg-white shadow-md dark:bg-gray-800 flex flex-col">
+    <aside className="w-64 shrink-0 h-screen bg-white shadow-md dark:bg-gray-800 flex flex-col">
       {/* Sidebar Header */}
       <div className="p-4">
         <h2 className="text-2xl font-bold text-blue-600 dark:text-blue-400">
@@ -100,11 +111,12 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {}, userType: 
       <nav className="mt-4 flex-1">
         {navItems.map((item) => {
           const linkPath = getLinkPath(currentUserType, item.value);
+          const isActive = urlMatchesItem ? currentPath === linkPath : activeTab === item.value;
           return (
             <div
               key={item.value}
               className={`flex items-center px-4 py-3 text-gray-700 dark:text-gray-300 cursor-pointer ${
-                activeTab === item.value
+                isActive
                   ? "bg-blue-100 dark:bg-blue-900 border-r-4 border-blue-600"
                   : "hover:bg-gray-100 dark:hover:bg-gray-700"
               }`}

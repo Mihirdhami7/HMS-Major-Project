@@ -1,5 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  // Theme follows the header toggle (adds/removes "dark" on <html>), not the OS setting.
+  darkMode: "class",
   content: ["./src/**/*.{js,jsx,ts,tsx}", "./public/index.html"], // Add paths to your template files
   theme: {
     extend: {

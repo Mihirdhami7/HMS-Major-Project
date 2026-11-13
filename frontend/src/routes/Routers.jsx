@@ -3,6 +3,7 @@ import ProtectedRoute from '../components/ProtectedRoute'
 import Home from "../pages/Home/Home"
 import Login from "../pages/Auth/Login"
 import SignUp from "../pages/Auth/Signup"
+import ForgotPassword from "../pages/Auth/ForgotPassword"
 
 import PatientSection from "../pages/Patients/PatientSection"
 import Appointment from "../pages/Patients/Appointments"
@@ -41,6 +42,7 @@ const Routers = () => {
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<SignUp />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
 
             {/* Protected Routes */}
                 {/* Doctor Routes */}

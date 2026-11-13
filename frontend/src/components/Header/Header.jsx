@@ -2,9 +2,15 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import { FiMenu, FiX, FiMoon, FiSun, FiBell, FiUser, FiLogOut } from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext";
+import { useNotifications, timeAgo } from "../../hooks/useNotifications";
+import { homeForRole } from "../../constants/roles";
 
 export default function Header() {
-  const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { user, token, isAuthenticated, isLoading, logout } = useAuth();
+  const {
+    items: notifications, unread: unreadCount, fresh, clearFresh,
+    markRead, canAskPermission, askPermission,
+  } = useNotifications(isAuthenticated ? token : null);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -57,18 +63,29 @@ export default function Header() {
   }, []);
 
 
-  // ── Current notifications (sample) ──────────────────────────
-  const sampleNotifications = [
-    { id: 1, message: "New appointment request", time: "5 min ago", unread: true },
-    { id: 2, message: "Prescription updated", time: "1 hour ago", unread: true },
-    { id: 3, message: "Reminder: Follow-up appointment", time: "2 hours ago", unread: false },
-  ];
+  // ── Notifications: auto-hide the "new notification" popup ──────────
+  useEffect(() => {
+    if (!fresh.length) return undefined;
+    const t = setTimeout(clearFresh, 6000);
+    return () => clearTimeout(t);
+  }, [fresh, clearFresh]);
 
-  const unreadCount = sampleNotifications.filter((n) => n.unread).length;
+  // Where a notification should take the user
+  const notificationTarget = (n) => {
+    const home = homeForRole(user?.userType);
+    if (n.type === "appointment") return home === "/admin" ? "/admin/newRegister" : `${home}/appointments`;
+    return home;
+  };
+
+  const openNotification = (n) => {
+    if (!n.read) markRead([n.id]);
+    setShowNotifications(false);
+    navigate(notificationTarget(n));
+  };
 
   return (
     <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 fixed w-full z-50 h-16">
-      <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between">
+      <div className="w-full px-4 sm:px-6 h-full flex items-center justify-between">
 
         {/* ── Logo ── */}
         <Link
@@ -91,8 +108,8 @@ export default function Header() {
               >
                 <FiBell className="w-5 h-5" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 rounded-full text-[11px] text-white flex items-center justify-center font-bold">
-                    {unreadCount}
+                  <span className="absolute top-0 right-0 min-w-5 h-5 px-1 bg-red-500 rounded-full text-[11px] text-white flex items-center justify-center font-bold">
+                    {unreadCount > 9 ? "9+" : unreadCount}
                   </span>
                 )}
               </button>
@@ -100,16 +117,39 @@ export default function Header() {
               {/* Notification Dropdown */}
               {showNotifications && (
                 <div className="absolute right-0 top-11 w-96 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl overflow-hidden z-50">
-                  <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                  <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                     <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notifications</h2>
+                    {unreadCount > 0 && (
+                      <button onClick={() => markRead()} className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                        Mark all read
+                      </button>
+                    )}
                   </div>
+                  {canAskPermission && (
+                    <button
+                      onClick={askPermission}
+                      className="w-full px-4 py-2 text-left text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-gray-700"
+                    >
+                      🔔 Enable desktop alerts for new notifications
+                    </button>
+                  )}
                   <div className="max-h-96 overflow-y-auto">
-                    {sampleNotifications.length > 0 ? (
-                      sampleNotifications.map((notif) => (
-                        <div key={notif.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                          <p className="text-sm text-gray-800 dark:text-gray-200">{notif.message}</p>
-                          <p className="text-xs text-gray-400 mt-1">{notif.time}</p>
-                        </div>
+                    {notifications.length > 0 ? (
+                      notifications.map((notif) => (
+                        <button
+                          key={notif.id}
+                          onClick={() => openNotification(notif)}
+                          className={`w-full text-left px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex gap-3 ${
+                            notif.read ? "" : "bg-blue-50/60 dark:bg-gray-700/60"
+                          }`}
+                        >
+                          <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${notif.read ? "bg-transparent" : "bg-blue-500"}`} />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-gray-900 dark:text-gray-100">{notif.title}</span>
+                            <span className="block text-sm text-gray-600 dark:text-gray-300">{notif.message}</span>
+                            <span className="block text-xs text-gray-400 mt-1">{timeAgo(notif.createdAt)}</span>
+                          </span>
+                        </button>
                       ))
                     ) : (
                       <div className="px-4 py-8 text-center text-gray-500">
@@ -136,11 +176,11 @@ export default function Header() {
                 className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               >
                 <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center text-xs font-semibold text-green-700 dark:text-green-300">
-                  {user?.email?.slice(0, 2).toUpperCase() || "U"}
+                  {(user?.name || user?.email || "U").slice(0, 2).toUpperCase()}
                 </div>
                 <div className="hidden sm:block text-left">
                   <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                    {user?.email?.split("@")[0]}
+                    {user?.name || user?.email?.split("@")[0]}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
                     {user?.userType}
@@ -235,6 +275,25 @@ export default function Header() {
           </button>
         </div>
       </div>
+
+      {/* New notification popup (push-style) */}
+      {fresh.length > 0 && (
+        <div className="fixed top-20 right-4 z-[60] w-80 space-y-2">
+          {fresh.slice(0, 3).map((n) => (
+            <button
+              key={n.id}
+              onClick={() => {
+                clearFresh();
+                openNotification(n);
+              }}
+              className="w-full text-left bg-white dark:bg-gray-800 border-l-4 border-blue-500 shadow-xl rounded-lg px-4 py-3"
+            >
+              <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100">🔔 {n.title}</span>
+              <span className="block text-xs text-gray-600 dark:text-gray-300 mt-0.5">{n.message}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Mobile Menu */}
       {isMenuOpen && isAuthenticated && (
