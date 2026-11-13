@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
-import { FiMenu, FiX, FiMoon, FiSun, FiBell, FiUser, FiLogOut } from "react-icons/fi";
+import { FiMenu, FiX, FiMoon, FiSun, FiBell, FiUser, FiLogOut, FiGrid } from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext";
 import { useNotifications, timeAgo } from "../../hooks/useNotifications";
 import { homeForRole } from "../../constants/roles";
@@ -205,6 +205,15 @@ export default function Header() {
 
                   {/* Menu Items */}
                   <div className="py-2">
+                    {/* Dashboard (role home) */}
+                    <Link
+                      to={homeForRole(user?.userType)}
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      onClick={() => setShowDropdown(false)}
+                    >
+                      <FiGrid className="w-4 h-4" />
+                      Dashboard
+                    </Link>
                     {/* Profile */}
                     <Link
                       to={getProfileLink()}
@@ -298,6 +307,13 @@ export default function Header() {
       {/* Mobile Menu */}
       {isMenuOpen && isAuthenticated && (
         <div className="md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-4 py-3 space-y-2">
+          <Link
+            to={homeForRole(user?.userType)}
+            className="block px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            onClick={() => setIsMenuOpen(false)}
+          >
+            Dashboard
+          </Link>
           <Link
             to={getProfileLink()}
             className="block px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
