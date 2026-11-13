@@ -10,6 +10,7 @@ A full-featured Hospital Management System (HMS) designed to streamline healthca
 - 📦 Inventory and Supply Chain Management
 - 📁 Patient Report and History Tracking
 - 🧾 Razorpay Integration for Payments
+- 📷 QR Code Support for Patient/Prescription/Medicine Identification
 - 📊 Super Admin Dashboard with Hospital Analytics
 
 ---
@@ -18,6 +19,8 @@ A full-featured Hospital Management System (HMS) designed to streamline healthca
 
 **Frontend**:  
 - React.js  
+- Tailwind CSS / Bootstrap  
+- Axios  
 
 **Backend**:  
 - Django 5.x  
@@ -29,3 +32,16 @@ A full-featured Hospital Management System (HMS) designed to streamline healthca
 
 **Payment Integration**:  
 - Razorpay  
+
+## 📂 Project Structure
+
+```bash
+├── backend/
+│   ├── manage.py
+│   ├── hms/ (main Django project)
+│   ├── api/ (custom apps for auth, appointment, etc.)
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   └── package.json
