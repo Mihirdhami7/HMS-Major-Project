@@ -25,7 +25,6 @@ import AdminSection from "../pages/Admin/AdminSection"
 import Department from "../pages/Admin/Department"
 
 import SupplierSection from "../pages/Supplier/SupplierSection"
-import SuppDashboard from "../pages/Supplier/SupplierDashboard"
 import SuppProducts from "../pages/Supplier/SupplierProducts"
 
 import SuperAdminSection from "../pages/SuperAdmin/SuperAdminSection"
@@ -72,7 +71,7 @@ const Routers = () => {
 
                 {/* Supplier Routes */}
                 <Route path="/supplier" element={<ProtectedRoute requiredRole="Supplier"><SupplierSection /></ProtectedRoute>} />
-                <Route path="/supplier/suppdashboard" element={<ProtectedRoute requiredRole="Supplier"><SuppDashboard /></ProtectedRoute>} />
+                <Route path="/supplier/suppdashboard" element={<Navigate to="/supplier" replace />} />
                 <Route path="/supplier/suppproduct" element={<ProtectedRoute requiredRole="Supplier"><SuppProducts /></ProtectedRoute>} />
                 <Route path="/supplier/profile" element={<ProtectedRoute requiredRole="Supplier"><Profiile /></ProtectedRoute>} />
 

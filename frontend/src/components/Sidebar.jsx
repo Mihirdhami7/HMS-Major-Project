@@ -27,8 +27,8 @@ const slidebars = {
     { icon: FiUser, label: "Profile", value: "profile" },
   ],
   supplier: [
-    { icon: FiCalendar, label: "Dashboard", value: "suppdashboard" },
-    { icon: FiFileText, label: "Products", value: "suppproduct" },
+    { icon: FiHome, label: "Dashboard", value: "home" },
+    { icon: FiPackage, label: "Products", value: "suppproduct" },
     { icon: FiUser, label: "Profile", value: "profile" },
   ],
   superadmin: [
@@ -79,7 +79,7 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {}, userType: 
       doctor: ['home', 'appointments', 'medical_products','profile',],
       patient: ['home', 'appointments', 'disease', 'profile'],
       admin: ['home', 'reception', 'product', 'department', 'givemedicine', 'profile'],
-      supplier: ['suppdashboard', 'suppproduct', 'profile'],
+      supplier: ['home', 'suppproduct', 'profile'],
       superadmin: ['dashboard', 'hospitals', 'reports']
     };
 
