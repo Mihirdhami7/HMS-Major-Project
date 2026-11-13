@@ -1,5 +1,7 @@
 from django.urls import path
 
+from .medicine_requests import MedicineRequestListCreateView, MedicineRequestUpdateView
+
 from .views import (
     ProductListView, ProductCreateView, ApproveProductView,
     UnApprovedProductListView,
@@ -22,6 +24,9 @@ urlpatterns = [
     # Supplier-specific Endpoints
     path('supplier-products/', SupplierProductsView.as_view(), name='supplier-products'),
     path('supplier-orders/', SupplierOrdersView.as_view(), name='supplier-orders'),
+    # Doctor -> pharmacy requests for medicines not in stock
+    path('medicine-requests/', MedicineRequestListCreateView.as_view(), name='medicine-request-list-create'),
+    path('medicine-requests/<str:request_id>/', MedicineRequestUpdateView.as_view(), name='medicine-request-update'),
     
     
     
