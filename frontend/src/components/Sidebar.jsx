@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { FiHome, FiUsers, FiUserPlus, FiFileText, FiCalendar, FiUser, FiPackage} from "react-icons/fi";
+import { FiHome, FiUsers, FiUserPlus, FiFileText, FiCalendar, FiUser, FiPackage, FiTruck } from "react-icons/fi";
 import PropTypes from "prop-types";
 import { useAuthStorage } from "../hooks/useAuthStorage";
 
@@ -29,6 +29,7 @@ const slidebars = {
   supplier: [
     { icon: FiHome, label: "Dashboard", value: "home" },
     { icon: FiPackage, label: "Products", value: "suppproduct" },
+    { icon: FiTruck, label: "Orders", value: "orders" },
     { icon: FiUser, label: "Profile", value: "profile" },
   ],
   superadmin: [
@@ -79,7 +80,7 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {}, userType: 
       doctor: ['home', 'appointments', 'medical_products','profile',],
       patient: ['home', 'appointments', 'disease', 'profile'],
       admin: ['home', 'reception', 'product', 'department', 'givemedicine', 'profile'],
-      supplier: ['home', 'suppproduct', 'profile'],
+      supplier: ['home', 'suppproduct', 'orders', 'profile'],
       superadmin: ['dashboard', 'hospitals', 'reports']
     };
 
