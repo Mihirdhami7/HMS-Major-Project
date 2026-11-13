@@ -1,5 +1,5 @@
 from pymongo import MongoClient
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random
 import string
 import hashlib
@@ -38,6 +38,8 @@ appointments_collection = db["appointments"]
 orders_collection = db["orders"]
 products_collection = db["products"]
 temp_products_collection = db["temp_products"]
+diseases_collection = db["diseases"]
+medicine_requests_collection = db["medicine_requests"]
 
 
 def ensure_indexes():
@@ -61,6 +63,10 @@ def ensure_indexes():
 
         products_collection.create_index([("hospitalName", 1), ("is_approved", 1)])
         orders_collection.create_index([("hospitalName", 1), ("status", 1)])
+        notifications_collection.create_index([("userEmail", 1), ("createdAt", -1)])
+        diseases_collection.create_index([("department", 1), ("name", 1)])
+        payments_collection.create_index("razorpay_order_id", unique=True, sparse=True)
+        medicine_requests_collection.create_index([("hospitalName", 1), ("status", 1), ("createdAt", -1)])
     except Exception as exc:
         # Keep app startup resilient even if index creation fails.
         logger.warning("Mongo index initialization skipped/failed: %s", exc)
@@ -82,10 +88,10 @@ def generate_session_id(email):
 
 def clear_expired_sessions():
     """Remove expired sessions"""
-    now = datetime.now()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)  # stored dates are naive UTC
     sessions_collection.delete_many({"expires_at": {"$lt": now}})
 
 def clear_expired_otps():
     """Remove expired OTPs"""
-    now = datetime.now()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)  # stored dates are naive UTC
     otp_collection.delete_many({"expires_at": {"$lt": now}})
