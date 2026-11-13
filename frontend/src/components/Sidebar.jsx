@@ -7,11 +7,12 @@ import { useAuthStorage } from "../hooks/useAuthStorage";
 // Sidebar Navigation Items for Different User Types
 const slidebars = {
   admin: [
-    { icon: FiHome, label: "Dashboard", value: "dashboard" },
+    { icon: FiHome, label: "Dashboard", value: "home" },
     { icon: FiUserPlus, label: "New Register", value: "newRegister" },
     { icon: FiUserPlus, label: "Products", value: "product" },
     { icon: FiUsers, label: "Departments", value: "department" }, 
     { icon: FiUsers, label: "GiveMedicine", value: "givemedicine" }, 
+    { icon: FiUser, label: "Profile", value: "profile" },
   ],
   doctor: [
     { icon: FiHome, label: "Home", value: "home" },
@@ -77,7 +78,7 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {}, userType: 
     const allowedPaths = {
       doctor: ['home', 'appointments', 'medical_products','profile',],
       patient: ['home', 'appointments', 'disease', 'profile'],
-      admin: ['dashboard', 'newRegister', 'product', 'department', 'givemedicine'],
+      admin: ['home', 'newRegister', 'product', 'department', 'givemedicine', 'profile'],
       supplier: ['suppdashboard', 'suppproduct', 'profile'],
       superadmin: ['dashboard', 'hospitals', 'reports']
     };
