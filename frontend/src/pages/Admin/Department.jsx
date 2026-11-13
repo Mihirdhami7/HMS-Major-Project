@@ -72,11 +72,11 @@ const DepartmentManagement = () => {
     if (departmentsError) setError(departmentsError);
   }, [departmentsError]);
 
-  // Keep the selected department in sync after a reload
+  // Keep the selected department in sync after a reload; default to the first department.
   useEffect(() => {
     setSelectedDepartment((current) => {
-      if (!current) return current;
-      return departments.find((d) => d.id === current.id) || null;
+      const still = current && departments.find((d) => d.id === current.id);
+      return still || departments[0] || null;
     });
   }, [departments]);
 
