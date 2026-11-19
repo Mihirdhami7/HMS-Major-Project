@@ -43,6 +43,7 @@ const Routers = () => {
             <Route path="/login" element={<Login />} />
             {/* super admin: email + password only, not linked from the site */}
             <Route path="/superadmin/login" element={<SuperAdminLogin />} />
+            <Route path="/super-admin/login" element={<Navigate to="/superadmin/login" replace />} />
             <Route path="/register" element={<SignUp />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
 
