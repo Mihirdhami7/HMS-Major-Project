@@ -74,6 +74,7 @@ export default function Header() {
   const notificationTarget = (n) => {
     const home = homeForRole(user?.userType);
     if (n.type === "appointment") return home === "/admin" ? "/admin/reception" : `${home}/appointments`;
+    if (n.type === "order") return home === "/admin" ? "/admin/product" : home === "/supplier" ? "/supplier/orders" : home;
     return home;
   };
 

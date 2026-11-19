@@ -11,6 +11,7 @@
  *   POST   /api/orders/orders/create/                               Admin
  *   POST   /api/orders/orders/fulfill/<orderId>/                    Supplier
  *   POST   /api/orders/orders/complete/<orderId>/                   Admin
+ *   POST   /api/orders/orders/cancel/<orderId>/                     Admin | Supplier
  *   GET    /api/orders/supplier-products/                           Supplier
  *   GET    /api/orders/supplier-orders/                             Supplier
  */
@@ -99,10 +100,10 @@ export const listOrders = (token, params = {}) =>
     );
 
 /**
- * Create a stock request / order.
+ * Place a purchase cart. The server creates ONE order per supplier and prices it from the products.
  * Accessible by: Admin.
  * @param {string} token
- * @param {{ productId: string, quantity: number, supplier_company: string, [key: string]: any }} data
+ * @param {{ items: {product_id: string, quantity: number}[], notes?: string }} data
  */
 export const createOrder = (token, data) =>
     handleRequest(() =>
@@ -112,11 +113,11 @@ export const createOrder = (token, data) =>
     );
 
 /**
- * Fulfill an order (supplier ships the stock).
+ * Fulfil a whole order (supplier ships the stock).
  * Accessible by: Supplier.
  * @param {string} token
  * @param {string} orderId
- * @param {{ hospitalName: string, quantity_fulfilled: number, price_per_strip: number, expiry_date?: string, fulfillment_notes?: string }} data
+ * @param {{ items: {product_id: string, quantity_fulfilled: number, price_per_strip: number, expiry_date?: string}[], notes?: string }} data
  */
 export const fulfillOrder = (token, orderId, data) =>
     handleRequest(() =>
@@ -135,6 +136,19 @@ export const fulfillOrder = (token, orderId, data) =>
 export const completeOrder = (token, orderId, data) =>
     handleRequest(() =>
         apiClient.post(ORDERS.ORDER_COMPLETE(orderId), data, {
+            headers: authHeaders(token),
+        })
+    );
+
+/**
+ * Cancel (admin) or decline (supplier) an order that is not fulfilled yet.
+ * @param {string} token
+ * @param {string} orderId
+ * @param {string} [reason]
+ */
+export const cancelOrder = (token, orderId, reason = "") =>
+    handleRequest(() =>
+        apiClient.post(ORDERS.ORDER_CANCEL(orderId), { reason }, {
             headers: authHeaders(token),
         })
     );

@@ -18,9 +18,21 @@ export const orderDate = (order) => {
   return date && !Number.isNaN(date.getTime()) ? date : null;
 };
 
-// Value of an order: what was fulfilled (or ordered, before fulfilment) times the unit price.
-export const orderQty = (o) => o.quantity_fulfilled || o.quantity_ordered || 0;
-export const orderAmount = (o) => orderQty(o) * (Number(o.price_per_strip) || 0);
+// Orders are batches (one supplier, many items). The server sends the totals:
+// total_amount = delivered value once fulfilled, otherwise the ordered estimate.
+export const orderQty = (o) => o.total_quantity_fulfilled || o.total_quantity_ordered || 0;
+export const orderAmount = (o) => Number(o.total_amount) || 0;
+export const orderTitle = (o) => {
+  const items = o.items || [];
+  if (!items.length) return "—";
+  return items.length === 1 ? items[0].product_name : `${items[0].product_name} +${items.length - 1} more`;
+};
+export const STATUS_LABELS = {
+  requested: "New",
+  processing: "Awaiting payment",
+  completed: "Paid",
+  cancelled: "Cancelled",
+};
 
 export const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 export const capitalize = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : "");

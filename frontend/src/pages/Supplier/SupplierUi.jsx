@@ -1,6 +1,6 @@
 // Small presentational pieces shared by the supplier pages.
 import PropTypes from "prop-types";
-import { STATUS_STYLES, capitalize } from "./supplierUtils";
+import { STATUS_STYLES, STATUS_LABELS, capitalize } from "./supplierUtils";
 
 export function StatCard({ icon, label, value, sub, onClick, active = false }) {
   return (
@@ -64,7 +64,7 @@ export function OrderStatus({ status }) {
   const s = status || "requested";
   return (
     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[s] || STATUS_STYLES.requested}`}>
-      {capitalize(s)}
+      {STATUS_LABELS[s] || capitalize(s)}
     </span>
   );
 }

@@ -6,7 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import { pickList } from "../../services/apiClient";
 import { getSupplierProducts, getSupplierOrders } from "../../services/orderService";
 import { StatCard, Card, Empty, OrderStatus } from "./SupplierUi";
-import { LOW_STOCK, getId, orderDate, orderAmount, orderQty, money, isLowStock, sortByNewest, PAGE_FRAME } from "./supplierUtils";
+import { LOW_STOCK, getId, orderDate, orderAmount, orderQty, orderTitle, money, isLowStock, sortByNewest, PAGE_FRAME } from "./supplierUtils";
 
 /** Supplier home: welcome, key numbers, what needs attention and the latest orders. Details live on Products / Orders. */
 function SupplierSection() {
@@ -133,9 +133,9 @@ function SupplierSection() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-gray-500 border-b border-gray-200">
-                        <th className="py-2 pr-3 font-medium">Product</th>
+                        <th className="py-2 pr-3 font-medium">Order</th>
                         <th className="py-2 pr-3 font-medium">Hospital</th>
-                        <th className="py-2 pr-3 font-medium">Qty</th>
+                        <th className="py-2 pr-3 font-medium">Strips</th>
                         <th className="py-2 pr-3 font-medium">Amount</th>
                         <th className="py-2 pr-3 font-medium">Date</th>
                         <th className="py-2 font-medium">Status</th>
@@ -144,7 +144,7 @@ function SupplierSection() {
                     <tbody>
                       {recentOrders.map((o, i) => (
                         <tr key={getId(o) || i} className="border-b border-gray-100 last:border-0">
-                          <td className="py-2.5 pr-3 text-gray-800">{o.product_name}</td>
+                          <td className="py-2.5 pr-3"><p className="text-gray-800 font-medium">{o.orderNumber}</p><p className="text-xs text-gray-500">{orderTitle(o)}</p></td>
                           <td className="py-2.5 pr-3 text-gray-700">{o.hospitalName}</td>
                           <td className="py-2.5 pr-3 text-gray-700">{orderQty(o)}</td>
                           <td className="py-2.5 pr-3 text-gray-700">{money(orderAmount(o))}</td>

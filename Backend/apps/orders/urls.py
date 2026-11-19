@@ -7,7 +7,7 @@ from .views import (
     UnApprovedProductListView,
     OrderListView, OrderCreateView,
     SupplierProductsView, SupplierOrdersView,
-    FulfillOrderView, CompleteOrderView
+    FulfillOrderView, CompleteOrderView, CancelOrderView
 )
 
 urlpatterns = [
@@ -21,6 +21,7 @@ urlpatterns = [
     path('orders/create/', OrderCreateView.as_view(), name='order-create'),
     path('orders/fulfill/<str:order_id>/', FulfillOrderView.as_view(), name='fulfill-order'),
     path('orders/complete/<str:order_id>/', CompleteOrderView.as_view(), name='complete-order'),
+    path('orders/cancel/<str:order_id>/', CancelOrderView.as_view(), name='cancel-order'),
     # Supplier-specific Endpoints
     path('supplier-products/', SupplierProductsView.as_view(), name='supplier-products'),
     path('supplier-orders/', SupplierOrdersView.as_view(), name='supplier-orders'),

@@ -79,6 +79,7 @@ export const ORDERS = {
     ORDER_FULFILL:          (orderId) => `${API_BASE}/orders/orders/fulfill/${orderId}/`,
     /** @param {string} orderId */
     ORDER_COMPLETE:         (orderId) => `${API_BASE}/orders/orders/complete/${orderId}/`,
+    ORDER_CANCEL:           (orderId) => `${API_BASE}/orders/orders/cancel/${orderId}/`,
     SUPPLIER_PRODUCTS:      `${API_BASE}/orders/supplier-products/`,
     SUPPLIER_ORDERS:        `${API_BASE}/orders/supplier-orders/`,
     MEDICINE_REQUESTS:      `${API_BASE}/orders/medicine-requests/`,

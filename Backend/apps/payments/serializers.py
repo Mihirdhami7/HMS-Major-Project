@@ -86,12 +86,9 @@ class PaymentSerializer(serializers.Serializer):
                     "For supplier purchase payments, source must be SUPPLIER."
                 )
 
+            # amount and items are taken from the stored purchase order on the server
             if not attrs.get("purchase_order_id"):
                 raise serializers.ValidationError("purchase_order_id is required for SUPPLIER_PURCHASE payments.")
-            if not attrs.get("supplier_id"):
-                raise serializers.ValidationError("supplier_id is required for SUPPLIER_PURCHASE payments.")
-            if attrs.get("quantity") in (None, 0):
-                raise serializers.ValidationError("quantity is required and must be >= 1 for SUPPLIER_PURCHASE.")
 
         return attrs
 

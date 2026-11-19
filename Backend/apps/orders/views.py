@@ -7,12 +7,14 @@ from rest_framework.response import Response
 from rest_framework import generics, status, exceptions
 from rest_framework.permissions import IsAuthenticated
 
-from backend.db import (products_collection, orders_collection, users_collection, payments_collection)
+from backend.db import products_collection, orders_collection, users_collection
 
-from .serializers import (
-    ProductSerializer, OrderSerializer,
+from .serializers import ProductSerializer
+from .models import ProductDocument
+from .purchase_orders import (
+    OrderError, cancel_order, complete_purchase_order, create_orders, fulfil_order, list_orders,
+    reconcile_paid_orders, serialize_order, successful_payment_for,
 )
-from .models import ProductDocument, OrderDocument
 from apps.accounts.permissions import IsAdmin, IsSupplier, IsSuperAdmin
 from apps.accounts.authentication import JWTAuthentication
 
@@ -56,6 +58,8 @@ class ProductListView(generics.ListAPIView):
         products = list(products_collection.find({"hospitalName": hospital_name, "is_approved": True}))
         for product in products:
             product["_id"] = str(product["_id"])
+            # status always follows the stock (Out of Stock <= 0 < Low Stock < 40 <= In Stock)
+            product["status"] = ProductDocument._calculate_status(int(product.get("stock") or 0))
         return products
 
     def list(self, request, *args, **kwargs):
@@ -108,32 +112,32 @@ class ProductCreateView(generics.CreateAPIView):
         }, status=status.HTTP_201_CREATED)
 
 
-class OrderCreateView(generics.CreateAPIView):
+class OrderCreateView(APIView):
     """
-    POST /api/orders/create/
-    Create a new stock request (Hospital Admins only)
+    POST /api/orders/orders/create/   (Hospital Admins only)
+    { items: [{product_id, quantity}], notes }  -> one purchase order per supplier.
+    Old single-product payload { product_id, quantity } is still accepted.
     """
-    serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
     authentication_classes = [JWTAuthentication]
 
-    def create(self, request, *args, **kwargs):
-        admin_hospital = str(getattr(request.user, "hospitalName", "") or "").strip()
-        data = request.data.copy()
-        if admin_hospital:
-            data["hospitalName"] = admin_hospital
-
-        serializer = self.get_serializer(data=data)
-        if not serializer.is_valid():
-            return Response({
-                "status": "error",
-                "errors": serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-        self.perform_create(serializer)
+    def post(self, request):
+        hospital = str(getattr(request.user, "hospitalName", "") or "").strip()
+        if not hospital:
+            return Response({"status": "error", "message": "No hospital is linked to this admin account."},
+                            status=status.HTTP_403_FORBIDDEN)
+        items = request.data.get("items")
+        if not items and request.data.get("product_id"):
+            items = [{"product_id": request.data.get("product_id"), "quantity": request.data.get("quantity")}]
+        try:
+            orders = create_orders(hospital, items, request.data.get("notes"), getattr(request.user, "email", None))
+        except OrderError as exc:
+            return Response({"status": "error", "message": exc.message}, status=exc.code)
+        suppliers = ", ".join(o["supplier_company"] for o in orders)
         return Response({
             "status": "success",
-            "message": "Stock request created successfully",
-            "order": serializer.data
+            "message": f"{len(orders)} order(s) sent to {suppliers}.",
+            "orders": orders,
         }, status=status.HTTP_201_CREATED)
 
 class UnApprovedProductListView(generics.ListAPIView):
@@ -153,6 +157,8 @@ class UnApprovedProductListView(generics.ListAPIView):
         products = list(products_collection.find(query))
         for product in products:
             product["_id"] = str(product["_id"])
+            # status always follows the stock (Out of Stock <= 0 < Low Stock < 40 <= In Stock)
+            product["status"] = ProductDocument._calculate_status(int(product.get("stock") or 0))
         return products
 
     def list(self, request, *args, **kwargs):
@@ -232,54 +238,37 @@ class ApproveProductView(APIView):
                 "message": str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-class OrderListView(generics.ListAPIView):
+class OrderListView(APIView):
     """
-    GET /api/orders/list/?hospitalName=Zydus
-    GET /api/orders/list/?supplier_company=MedPlus
+    GET /api/orders/orders/
+    Admin -> own hospital, Supplier -> own company, SuperAdmin -> ?hospitalName= &supplier_company=
     """
-    serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
 
-    def get_queryset(self):
-        query = {}
-        user = self.request.user
+    def get(self, request):
+        user = request.user
         user_type = str(getattr(user, "userType", "") or "").strip().lower()
-
+        query = {}
         if user_type == "supplier":
-            supplier_company = _get_supplier_company_from_user(user)
-            if not supplier_company:
-                return []
-            query["supplier_company"] = supplier_company
+            company = _get_supplier_company_from_user(user)
+            if not company:
+                return Response({"status": "success", "count": 0, "orders": []})
+            query["supplier_company"] = company
         elif user_type == "admin":
-            admin_hospital = str(getattr(user, "hospitalName", "") or "").strip()
-            if not admin_hospital:
-                return []
-            query["hospitalName"] = admin_hospital
+            hospital = str(getattr(user, "hospitalName", "") or "").strip()
+            if not hospital:
+                return Response({"status": "success", "count": 0, "orders": []})
+            query["hospitalName"] = hospital
         elif _is_super_admin(user):
-            hospital_name = self.request.query_params.get('hospitalName') or self.request.query_params.get('hospital_name')
-            supplier_company = self.request.query_params.get('supplier_company')
-            if hospital_name:
-                query["hospitalName"] = hospital_name
-            if supplier_company:
-                query["supplier_company"] = supplier_company
+            for key in ("hospitalName", "supplier_company"):
+                if request.query_params.get(key):
+                    query[key] = request.query_params[key]
         else:
-            return []
-
-        orders = list(orders_collection.find(query))
-        for order in orders:
-            order["_id"] = str(order["_id"])
-        return orders
-
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        return Response({
-            "status": "success",
-            "count": len(queryset),
-            "orders": queryset
-        }, status=status.HTTP_200_OK)
-
-
+            return Response({"status": "success", "count": 0, "orders": []})
+        reconcile_paid_orders(query)
+        orders = list_orders(query)
+        return Response({"status": "success", "count": len(orders), "orders": orders}, status=status.HTTP_200_OK)
 
 
 # NEW DRF API
@@ -298,6 +287,8 @@ class SupplierProductsView(generics.ListAPIView):
         products = list(products_collection.find({"supplier_company": supplier_company}))
         for product in products:
             product["_id"] = str(product["_id"])
+            # status always follows the stock (Out of Stock <= 0 < Low Stock < 40 <= In Stock)
+            product["status"] = ProductDocument._calculate_status(int(product.get("stock") or 0))
         return products
 
     def list(self, request, *args, **kwargs):
@@ -315,235 +306,86 @@ class SupplierProductsView(generics.ListAPIView):
         }, status=status.HTTP_200_OK)
 
 
-class SupplierOrdersView(generics.ListAPIView):
-    """
-    GET /api/orders/supplier-orders/?supplier_company=MedPlus
-    List all orders for a specific supplier (Suppliers only)
-    """
-    serializer_class = OrderSerializer
+class SupplierOrdersView(APIView):
+    """GET /api/orders/supplier-orders/  -> purchase orders for the supplier's company (Suppliers only)"""
     permission_classes = [IsAuthenticated, IsSupplier]
     authentication_classes = [JWTAuthentication]
 
-    def get_queryset(self):
-        supplier_company = _get_supplier_company_from_user(self.request.user)
-        if not supplier_company:
-            return []
-        orders = list(orders_collection.find({"supplier_company": supplier_company}))
-        for order in orders:
-            order["_id"] = str(order["_id"])
-        return orders
-
-    def list(self, request, *args, **kwargs):
-        supplier_company = _get_supplier_company_from_user(request.user)
-        if not supplier_company:
-            return Response({
-                "status": "error",
-                "message": "Supplier profile/company not found"
-            }, status=status.HTTP_403_FORBIDDEN)
-        queryset = self.get_queryset()
-        return Response({
-            "status": "success",
-            "count": len(queryset),
-            "orders": queryset
-        }, status=status.HTTP_200_OK)
+    def get(self, request):
+        company = _get_supplier_company_from_user(request.user)
+        if not company:
+            return Response({"status": "error", "message": "Supplier profile/company not found"},
+                            status=status.HTTP_403_FORBIDDEN)
+        reconcile_paid_orders({"supplier_company": company})
+        orders = list_orders({"supplier_company": company})
+        return Response({"status": "success", "count": len(orders), "orders": orders}, status=status.HTTP_200_OK)
 
 
 class FulfillOrderView(APIView):
     """
-    POST /api/orders/<order_id>/fulfill/
-    Fulfill a stock request (Suppliers only)
+    POST /api/orders/orders/fulfill/<order_id>/   (Suppliers only)
+    { items: [{product_id, quantity_fulfilled, price_per_strip, expiry_date}], notes }
     """
     permission_classes = [IsAuthenticated, IsSupplier]
     authentication_classes = [JWTAuthentication]
 
     def post(self, request, order_id):
-        order_oid = _parse_object_id(order_id, "orderId")
+        company = _get_supplier_company_from_user(request.user)
+        if not company:
+            return Response({"status": "error", "message": "Supplier profile/company not found"},
+                            status=status.HTTP_403_FORBIDDEN)
         try:
-            supplier_company = _get_supplier_company_from_user(request.user)
-            if not supplier_company:
-                return Response({
-                    "status": "error",
-                    "message": "Supplier profile/company not found"
-                }, status=status.HTTP_403_FORBIDDEN)
+            order = fulfil_order(order_id, company, request.data)
+        except OrderError as exc:
+            return Response({"status": "error", "message": exc.message}, status=exc.code)
+        return Response({"status": "success",
+                         "message": f"{order['orderNumber']} fulfilled. The hospital can now pay ₹{order['total_amount']:.2f}.",
+                         "order": order}, status=status.HTTP_200_OK)
 
-            # Validate required fields
-            hospital_name = request.data.get("hospitalName") or request.data.get("hospital_name")
-            quantity_fulfilled = request.data.get("quantity_fulfilled")
-            price_per_strip = request.data.get("price_per_strip")
-            
-            if not all([hospital_name, quantity_fulfilled, price_per_strip]):
-                return Response({
-                    "status": "error",
-                    "message": "hospitalName, quantity_fulfilled, and price_per_strip are required"
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            try:
-                quantity_fulfilled = int(quantity_fulfilled)
-                price_per_strip = float(price_per_strip)
-            except (ValueError, TypeError):
-                return Response({
-                    "status": "error",
-                    "message": "quantity_fulfilled must be integer, price_per_strip must be float"
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            if quantity_fulfilled <= 0 or price_per_strip <= 0:
-                return Response({
-                    "status": "error",
-                    "message": "quantity_fulfilled and price_per_strip must be greater than 0"
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            expiry_date = request.data.get("expiry_date")
-            fulfillment_notes = request.data.get("fulfillment_notes", "")
 
-            order_doc = orders_collection.find_one({"_id": order_oid})
-            if not order_doc:
-                return Response({
-                    "status": "error",
-                    "message": "Order not found"
-                }, status=status.HTTP_404_NOT_FOUND)
-            if order_doc.get("supplier_company") != supplier_company:
-                return Response({
-                    "status": "error",
-                    "message": "You can only fulfill your own supplier orders"
-                }, status=status.HTTP_403_FORBIDDEN)
-            if hospital_name and order_doc.get("hospitalName") != hospital_name:
-                return Response({
-                    "status": "error",
-                    "message": "hospitalName does not match order hospital"
-                }, status=status.HTTP_400_BAD_REQUEST)
-            hospital_name = order_doc.get("hospitalName")
-            
-            total_price = quantity_fulfilled * price_per_strip
-            
-            update_data = OrderDocument.update(
-                quantity_fulfilled=quantity_fulfilled,
-                price_per_strip=price_per_strip,
-                expiry_date=expiry_date,
-                notes=fulfillment_notes,
-                status="processing"
-            )
-            
-            result = orders_collection.update_one(
-                {"_id": order_oid, "hospitalName": hospital_name},
-                {"$set": update_data}
-            )
-            
-            if result.matched_count == 0:
-                return Response({
-                    "status": "error",
-                    "message": "Order not found for this hospital"
-                }, status=status.HTTP_404_NOT_FOUND)
-            
-            return Response({
-                "status": "success",
-                "message": "Order fulfilled successfully",
-                "order_id": order_id,
-                "hospitalName": hospital_name,
-                "quantity_fulfilled": quantity_fulfilled,
-                "total_price": total_price
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            return Response({
-                "status": "error",
-                "message": str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+class CancelOrderView(APIView):
+    """POST /api/orders/orders/cancel/<order_id>/  { reason }  -> admin cancels / supplier declines a requested order"""
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def post(self, request, order_id):
+        role = str(getattr(request.user, "userType", "") or "").strip().lower()
+        if role not in ("admin", "supplier"):
+            return Response({"status": "error", "message": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        company = _get_supplier_company_from_user(request.user) if role == "supplier" else None
+        try:
+            order = cancel_order(order_id, request.user, role, company, request.data.get("reason"))
+        except OrderError as exc:
+            return Response({"status": "error", "message": exc.message}, status=exc.code)
+        word = "declined" if role == "supplier" else "cancelled"
+        return Response({"status": "success", "message": f"{order['orderNumber']} {word}.", "order": order},
+                        status=status.HTTP_200_OK)
+
 
 class CompleteOrderView(APIView):
     """
-    POST /api/orders/<order_id>/complete/
-    Mark order as completed after payment (Admins only)
+    POST /api/orders/orders/complete/<order_id>/   (Admins only)
+    Orders are completed automatically when the Razorpay payment is verified. This endpoint only
+    re-checks: if a successful payment exists for the order, the order is completed (stock added).
     """
     permission_classes = [IsAuthenticated, IsAdmin]
     authentication_classes = [JWTAuthentication]
 
     def post(self, request, order_id):
         order_oid = _parse_object_id(order_id, "orderId")
-        try:
-            hospital_name = request.data.get('hospitalName') or request.data.get('hospital_name')
-            payment_id = request.data.get('payment_id')
-            
-            if not hospital_name:
-                return Response({
-                    "status": "error",
-                    "message": "hospitalName is required"
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            if not payment_id:
-                return Response({
-                    "status": "error",
-                    "message": "payment id is required"
-                }, status=status.HTTP_400_BAD_REQUEST)
-
-            order_doc = orders_collection.find_one({"_id": order_oid})
-            if not order_doc:
-                return Response({
-                    "status": "error",
-                    "message": "Order not found"
-                }, status=status.HTTP_404_NOT_FOUND)
-
-            admin_hospital = str(getattr(request.user, "hospitalName", "") or "").strip()
-            order_hospital = str(order_doc.get("hospitalName", "") or "").strip()
-            if admin_hospital and order_hospital and admin_hospital != order_hospital:
-                return Response({
-                    "status": "error",
-                    "message": "You can only complete orders for your own hospital"
-                }, status=status.HTTP_403_FORBIDDEN)
-            if hospital_name and str(hospital_name).strip() != order_hospital:
-                return Response({
-                    "status": "error",
-                    "message": "hospitalName does not match order hospital"
-                }, status=status.HTTP_400_BAD_REQUEST)
-
-            payment_query = {
-                "$or": [
-                    {"payment_id": payment_id},
-                    {"paymentId": payment_id},
-                    {"razorpay_payment_id": payment_id},
-                ]
-            }
-            if ObjectId.is_valid(str(payment_id)):
-                payment_query["$or"].append({"_id": ObjectId(str(payment_id))})
-
-            payment = payments_collection.find_one(payment_query)
-            if not payment:
-                return Response({
-                    "status": "error",
-                    "message": "Payment not found"
-                }, status=status.HTTP_404_NOT_FOUND)
-
-            payment_status = str(payment.get("status", "") or "").strip().upper()
-            if payment_status and payment_status not in {"SUCCESS", "COMPLETED", "PAID"}:
-                return Response({
-                    "status": "error",
-                    "message": "Payment is not in a successful state"
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            update_data = OrderDocument.update(status="completed")
-            update_data["payment_id"] = payment_id
-            
-            result = orders_collection.update_one(
-                {"_id": order_oid, "hospitalName": order_hospital},
-                {"$set": update_data}
-            )
-            
-            if result.matched_count == 0:
-                return Response({
-                    "status": "error",
-                    "message": "Order not found for this hospital"
-                }, status=status.HTTP_404_NOT_FOUND)
-            
-            return Response({
-                "status": "success",
-                "message": "Order marked as completed",
-                "order_id": order_id,
-                "hospitalName": order_hospital,
-                "payment_id": payment_id
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            return Response({
-                "status": "error",
-                "message": str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        order = orders_collection.find_one({"_id": order_oid})
+        if not order:
+            return Response({"status": "error", "message": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
+        if order.get("hospitalName") != getattr(request.user, "hospitalName", None):
+            return Response({"status": "error", "message": "You can only complete orders for your own hospital"},
+                            status=status.HTTP_403_FORBIDDEN)
+        if order.get("status") == "completed":
+            return Response({"status": "success", "message": "Order already completed.",
+                             "order": serialize_order(order)}, status=status.HTTP_200_OK)
+        payment = successful_payment_for(order_oid)
+        if not payment:
+            return Response({"status": "error", "message": "No successful payment found for this order."},
+                            status=status.HTTP_404_NOT_FOUND)
+        order = complete_purchase_order(order_oid, payment)
+        return Response({"status": "success", "message": "Order marked as completed",
+                         "order": serialize_order(order)}, status=status.HTTP_200_OK)

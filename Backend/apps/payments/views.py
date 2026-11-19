@@ -10,7 +10,8 @@ Flow:
        APPOINTMENT_BOOKING  -> new booking: the appointment is CREATED now (pay first, then booked);
                                existing unpaid appointment: payment added to appointment.payments
        PRESCRIPTION_INVOICE -> invoice saved, prescription marked invoiced
-       SUPPLIER_PURCHASE    -> payment record is what "complete order" looks up
+       SUPPLIER_PURCHASE    -> whole purchase order (one supplier, many items) completed and its
+                               delivered stock added to the hospital products
 
 The amount sent by the browser is never trusted for appointment / supplier payments.
 """
@@ -39,6 +40,9 @@ from backend.db import (
 from .models import PaymentCategory
 from .serializers import PaymentSerializer, RazorpayVerifySerializer
 from .invoices import InvoiceError, create_invoice, load_prescription_for_admin, price_items
+from apps.orders.purchase_orders import (
+    OrderError, complete_purchase_order, order_number, order_totals, payable_amount, successful_payment_for,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -182,18 +186,28 @@ class RazorpayOrderCreateAPIView(APIView):
             if role != "superadmin" and order.get("hospitalName") != user_hospital:
                 return _error("This order belongs to another hospital.", status.HTTP_403_FORBIDDEN)
             if order.get("status") == "completed":
-                return _error("This order is already completed.")
-            qty = int(order.get("quantity_fulfilled") or order.get("quantity_ordered") or 0)
-            amount = Decimal(str(order.get("price_per_strip") or 0)) * qty
-            if amount <= 0:
-                return _error("The supplier has not fulfilled this order yet.")
+                return _error("This order is already paid and completed.")
+            # Already paid but not completed (e.g. an older payment) -> complete it, never charge twice.
+            paid = successful_payment_for(order["_id"])
+            if paid:
+                complete_purchase_order(order["_id"], paid)
+                return Response({"status": "success", "already_paid": True,
+                                 "message": f"{order_number(order)} was already paid. It is now completed and the stock was added."},
+                                status=status.HTTP_200_OK)
+            try:
+                amount = Decimal(str(payable_amount(order)))
+            except OrderError as exc:
+                return _error(exc.message, exc.code)
+            totals = order_totals(order)
             record.update({
                 "purchase_order_id": str(order["_id"]),
+                "order_number": order_number(order),
                 "company_name": order.get("supplier_company"),
-                "product_name": order.get("product_name"),
-                "quantity": qty,
+                "product_name": ", ".join(i.get("product_name") or "" for i in totals["items"])[:200],
+                "quantity": totals["fulfilled_qty"],
+                "item_count": len(totals["items"]),
                 "hospital_name": order.get("hospitalName"),
-                "description": f"Stock purchase - {order.get('product_name')} x {qty}",
+                "description": f"Stock purchase {order_number(order)} - {order.get('supplier_company')} ({len(totals['items'])} items)",
             })
         else:
             return _error("Unknown payment category.")
@@ -295,8 +309,10 @@ class RazorpayPaymentVerifyAPIView(APIView):
                              "payment_id": payment_id, "appointment_id": latest.get("appointment_id")},
                             status=status.HTTP_200_OK)
 
-        appointment_id = self._apply_effect(record, payment_id, paid_at)
+        appointment_id = self._apply_effect(record, payment_id, paid_at, rp_payment.get("method"))
         message = "Payment successful."
+        if record["category"] == PaymentCategory.SUPPLIER_PURCHASE.value:
+            message = f"Payment successful. {record.get('order_number', 'The order')} is completed and the stock was added to your inventory."
         if record.get("booking"):
             message = ("Payment successful. Your appointment is booked and waiting for the doctor's approval."
                        if appointment_id else
@@ -306,11 +322,12 @@ class RazorpayPaymentVerifyAPIView(APIView):
                          "category": record["category"]}, status=status.HTTP_200_OK)
 
     @staticmethod
-    def _apply_effect(record, payment_id, paid_at):
+    def _apply_effect(record, payment_id, paid_at, method=None):
         category = record["category"]
         try:
             if category == PaymentCategory.APPOINTMENT_BOOKING.value and record.get("booking"):
-                entry = AppointmentDocument.add_payment(payment_id, record["amount"], "consultation", "completed")
+                entry = AppointmentDocument.add_payment(payment_id, record["amount"], "consultation", "completed",
+                                                        method=method)
                 booking = record["booking"]
                 patient = users_collection.find_one({"email": record["patient_email"], "userType": "Patient",
                                                      "hospitalName": booking["hospitalName"]})
@@ -332,7 +349,8 @@ class RazorpayPaymentVerifyAPIView(APIView):
                 return appointment_id
 
             if category == PaymentCategory.APPOINTMENT_BOOKING.value:
-                entry = AppointmentDocument.add_payment(payment_id, record["amount"], "consultation", "completed")
+                entry = AppointmentDocument.add_payment(payment_id, record["amount"], "consultation", "completed",
+                                                        method=method)
                 appointments_collection.update_one(
                     {"_id": ObjectId(record["appointment_id"]), "payments.paymentId": {"$ne": payment_id}},
                     {"$push": {"payments": entry}, "$set": {"updatedAt": paid_at}},
@@ -355,7 +373,9 @@ class RazorpayPaymentVerifyAPIView(APIView):
                     ]
                     create_invoice(presc, items, record["amount"], "online", payment_id=payment_id,
                                    created_by=record.get("created_by"))
-            # SUPPLIER_PURCHASE: the SUCCESS payment record is used by "complete order".
+            elif category == PaymentCategory.SUPPLIER_PURCHASE.value:
+                complete_purchase_order(record["purchase_order_id"], {
+                    **record, "razorpay_payment_id": payment_id, "method": method, "paid_at": paid_at})
             return record.get("appointment_id")
         except Exception as exc:  # payment is already recorded as SUCCESS; log the follow-up failure
             logger.error("Payment %s succeeded but follow-up update failed: %s", payment_id, exc, exc_info=True)
