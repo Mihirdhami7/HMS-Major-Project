@@ -548,9 +548,17 @@ class GetUserProfileAPIView(generics.RetrieveAPIView):
         user_doc["_id"] = str(user_doc["_id"])
         user_doc.pop("hpassword", None)
         user_doc.pop("password", None)
-        
+
+        # doctors: department + roles come from the staff record (where admins assign them)
+        if user_doc.get("userType") == "Doctor":
+            staff = staff_collection.find_one({"email": user_doc.get("email"), "role": "Doctor",
+                                               "hospitalName": user_doc.get("hospitalName")}) or {}
+            user_doc["department"] = staff.get("department") or user_doc.get("department")
+            user_doc["roles"] = staff.get("roles") or []
+            user_doc["isDepartmentHead"] = "Department Head" in user_doc["roles"]
+
         return user_doc
-    
+
     def retrieve(self, request, *args, **kwargs):
         """Return all stored data for the user"""
         try:

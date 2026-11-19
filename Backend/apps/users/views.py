@@ -6,7 +6,11 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from backend.db import users_collection, staff_collection, departments_collection, hospitals_collection, sessions_collection
+from backend.db import (
+    users_collection, staff_collection, departments_collection, hospitals_collection, sessions_collection,
+    notifications_collection,
+)
+from apps.appointments.models import NotificationDocument
 from apps.accounts.authentication import JWTAuthentication
 from .models import StaffDocument
 from .serializers import PatientCreateSerializer, DoctorStaffSerializer, DoctorApprovalSerializer, DoctorRejectSerializer
@@ -201,15 +205,24 @@ class DoctorDetailAPIView(APIView):
             return Response({"status": "error", "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+HEAD_ROLE = "Department Head"
+# A doctor has at most one position, and may additionally be the head of their department.
+DOCTOR_POSITIONS = ["Senior Consultant", "Consultant", "Resident Doctor", "Specialist"]
+DOCTOR_ROLES = [HEAD_ROLE] + DOCTOR_POSITIONS
+
+
 class DoctorRoleAPIView(APIView):
     """
-    PUT /api/users/doctors/id/<doctor_id>/role/ - Assign roles to doctor
+    PUT /api/users/doctors/id/<doctor_id>/role/ - Assign roles to a doctor
+    { roles: ["Department Head"?, <one position>?] }
+    - only known roles, at most one position
+    - one Department Head per department: the previous head loses the role
+    - the department's headOfDepartment follows the head (cleared when the head role is removed)
     """
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdminOrIsSameHospitalAdmin]
 
     def put(self, request, doctor_id):
-        """Assign doctor roles."""
         if not ObjectId.is_valid(doctor_id):
             return Response({"status": "error", "message": "Invalid doctor ID"}, status=status.HTTP_400_BAD_REQUEST)
         try:
@@ -219,33 +232,75 @@ class DoctorRoleAPIView(APIView):
 
             user_type = str(getattr(request.user, "userType", "") or "").strip().lower()
             user_hospital = str(getattr(request.user, "hospitalName", "") or "").strip()
-            doctor_hospital = str(doctor.get("hospitalName", "") or "").strip()
-            if user_type != "superadmin" and user_hospital != doctor_hospital:
+            hospital = str(doctor.get("hospitalName", "") or "").strip()
+            if user_type != "superadmin" and user_hospital != hospital:
                 return Response({"status": "error", "message": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
 
             roles = request.data.get("roles", [])
-            if not isinstance(roles, list):
-                return Response({"status": "error", "message": "'roles' must be a list"}, status=status.HTTP_400_BAD_REQUEST)
-            result = staff_collection.update_one(
-                {"_id": ObjectId(doctor_id), "role": "Doctor"},
-                {"$set": {"roles": roles, "updated_at": datetime.now()}}
-            )
-            if result.matched_count == 0:
-                return Response({"status": "error", "message": "Doctor not found"}, status=status.HTTP_404_NOT_FOUND)
-            # Sync department head when applicable
-            if "Department Head" in roles:
-                if doctor and doctor.get("department"):
-                    departments_collection.update_many(
-                        {
-                            "hospitalName": doctor.get("hospitalName"),
-                            "name": doctor["department"],
-                        },
-                        {"$set": {"headOfDepartment": doctor.get("name")}, "$unset": {"Head of Department": ""}}
-                    )
-            return Response({"status": "success", "message": "Doctor roles updated successfully"}, status=status.HTTP_200_OK)
+            if not isinstance(roles, list) or not all(isinstance(r, str) for r in roles):
+                return Response({"status": "error", "message": "'roles' must be a list of role names"},
+                                status=status.HTTP_400_BAD_REQUEST)
+            roles = list(dict.fromkeys(r.strip() for r in roles if r.strip()))  # trim + de-duplicate
+            unknown = [r for r in roles if r not in DOCTOR_ROLES]
+            if unknown:
+                return Response({"status": "error", "message": f"Unknown role: {', '.join(unknown)}"},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if len([r for r in roles if r in DOCTOR_POSITIONS]) > 1:
+                return Response({"status": "error", "message": "A doctor can have only one position."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            is_head = HEAD_ROLE in roles
+            department = doctor.get("department")
+            if is_head and not department:
+                return Response({"status": "error", "message": "Assign the doctor to a department first."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            roles.sort(key=DOCTOR_ROLES.index)  # head first, then the position
+
+            now = datetime.now()
+            staff_collection.update_one({"_id": doctor["_id"]}, {"$set": {"roles": roles, "updated_at": now}})
+
+            dept_filter = {"hospitalName": hospital, "name": department}
+            replaced = None
+            if is_head:
+                # one head per department
+                previous = staff_collection.find_one({"_id": {"$ne": doctor["_id"]}, "role": "Doctor",
+                                                      "hospitalName": hospital, "department": department,
+                                                      "roles": HEAD_ROLE})
+                if previous:
+                    replaced = previous.get("name")
+                    staff_collection.update_many(
+                        {"_id": {"$ne": doctor["_id"]}, "role": "Doctor", "hospitalName": hospital,
+                         "department": department, "roles": HEAD_ROLE},
+                        {"$pull": {"roles": HEAD_ROLE}, "$set": {"updated_at": now}})
+                    _notify(previous.get("email"), "Department Head changed",
+                            f"{doctor.get('name')} is now the Department Head of {department}.")
+                departments_collection.update_many(dept_filter, {
+                    "$set": {"headOfDepartment": doctor.get("name"), "headOfDepartmentEmail": doctor.get("email")},
+                    "$unset": {"Head of Department": ""}})
+            elif department:
+                # head role removed from the current head -> department has no head
+                departments_collection.update_many(
+                    {**dept_filter, "$or": [{"headOfDepartmentEmail": doctor.get("email")},
+                                            {"headOfDepartment": doctor.get("name")}]},
+                    {"$set": {"headOfDepartment": "", "headOfDepartmentEmail": ""}})
+
+            _notify(doctor.get("email"), "Your role was updated",
+                    f"Your role in {department or hospital}: {', '.join(roles) if roles else 'no special role'}.")
+            message = "Doctor roles updated successfully"
+            if is_head:
+                message = f"{doctor.get('name')} is now the Department Head of {department}." + (
+                    f" {replaced} is no longer the head." if replaced else "")
+            return Response({"status": "success", "message": message, "roles": roles,
+                             "headOfDepartment": doctor.get("name") if is_head else None},
+                            status=status.HTTP_200_OK)
         except Exception as e:
             logger.error("DoctorRoleAPIView.put: %s", e, exc_info=True)
             return Response({"status": "error", "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _notify(email, title, message):
+    if email:
+        notifications_collection.insert_one(NotificationDocument.create(
+            user_email=email, title=title, message=message, notification_type="general"))
 
 
 class DoctorPendingListAPIView(APIView):

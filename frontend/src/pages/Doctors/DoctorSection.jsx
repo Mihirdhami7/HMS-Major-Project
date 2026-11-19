@@ -112,9 +112,18 @@ function DoctorSection() {
                 {stats.pending > 0 && ` ${stats.pending} request${stats.pending === 1 ? "" : "s"} waiting for your approval.`}
               </p>
             </div>
-            {specialization && (
-              <span className="hidden sm:inline-block px-4 py-1.5 rounded-full bg-white/25 text-sm font-medium">{specialization}</span>
-            )}
+            <div className="hidden sm:flex flex-col items-end gap-1.5">
+              {specialization && (
+                <span className="px-4 py-1.5 rounded-full bg-white/25 text-sm font-medium">{specialization}</span>
+              )}
+              {/* department + roles assigned by the hospital admin */}
+              {(profile?.department || (profile?.roles || []).length > 0) && (
+                <span className="text-xs text-white/90">
+                  {profile?.department}
+                  {(profile?.roles || []).length > 0 && ` · ${profile.roles.map((r) => (r === "Department Head" ? "⭐ Department Head" : r)).join(" · ")}`}
+                </span>
+              )}
+            </div>
           </div>
 
           {error && (

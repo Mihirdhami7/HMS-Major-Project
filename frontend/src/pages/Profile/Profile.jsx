@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
 import { FiUser, FiMail, FiPhone, FiCalendar, FiMapPin, FiEdit, FiSave, FiX, FiFileText, FiPackage, FiCheck, FiCamera } from "react-icons/fi";
-import { MdOutlineSchool, MdOutlineMedicalServices } from "react-icons/md";
+import { MdOutlineSchool, MdOutlineMedicalServices, MdOutlineApartment, MdOutlineBadge } from "react-icons/md";
 import Slidebar from "../../components/Sidebar";
 import { getUserProfile, updateUserProfile } from "../../services/authService";
 import { getMyPrescriptions, getMyAppointments } from "../../services/appointmentsService";
@@ -399,6 +399,21 @@ function Profile() {
                                 value={userData.doctorSpecialization}
                                 editing={isEditing}
                                 input={<input type="text" name="doctorSpecialization" value={editableData.doctorSpecialization || ""} onChange={handleInputChange} className={inputClass} />}
+                            />
+                            {/* department and role are assigned by the hospital admin (read-only here) */}
+                            <Field icon={MdOutlineApartment} label="Department" value={userData.department} />
+                            <Field
+                                icon={MdOutlineBadge}
+                                label="Role (assigned by hospital admin)"
+                                value={(userData.roles || []).length ? (
+                                    <span className="flex flex-wrap gap-1.5 mt-0.5">
+                                        {userData.roles.map((role) => (
+                                            <span key={role} className={`px-2 py-0.5 rounded-full text-xs font-medium ${role === "Department Head" ? "bg-yellow-100 text-yellow-800" : "bg-blue-50 text-blue-700"}`}>
+                                                {role === "Department Head" ? "⭐ " : ""}{role}
+                                            </span>
+                                        ))}
+                                    </span>
+                                ) : "No role assigned"}
                             />
                         </div>
                     </div>

@@ -19,14 +19,13 @@ import {
   deleteDepartment,
 } from "../../services/hospitalService";
 
-// Available roles for doctors
-const AVAILABLE_ROLES = [
-  "Department Head",
-  "Senior Consultant",
-  "Consultant",
-  "Resident Doctor",
-  "Specialist"
-];
+// Doctor roles: one Department Head per department, plus at most one position per doctor.
+const HEAD_ROLE = "Department Head";
+const POSITIONS = ["Senior Consultant", "Consultant", "Resident Doctor", "Specialist"];
+const AVAILABLE_ROLES = [HEAD_ROLE, ...POSITIONS];
+
+const roleBadge = (role) =>
+  role === HEAD_ROLE ? "bg-yellow-100 text-yellow-800 border border-yellow-300" : "bg-blue-50 text-blue-700 border border-blue-100";
 
 const DepartmentManagement = () => {
   const { token, user } = useAuth();
@@ -48,6 +47,12 @@ const DepartmentManagement = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  // assign-role dialog
+  const [roleDoctor, setRoleDoctor] = useState(null);
+  const [roleForm, setRoleForm] = useState({ head: false, position: "" });
+  const [roleError, setRoleError] = useState("");
+  const [roleSaving, setRoleSaving] = useState(false);
 
   // Form data states
   const [editData, setEditData] = useState({
@@ -210,43 +215,44 @@ const DepartmentManagement = () => {
     setSuccess("Doctor deleted successfully");
   };
 
-  const handleAssignRole = async (doctor) => {
-    const isAddingHeadRole = !doctor.roles?.includes("Department Head") &&
-      window.confirm(`Make ${doctor.name} the Department Head?`);
+  // positions offered in this department (department's own list, or all positions)
+  const departmentPositions = (() => {
+    const own = (selectedDepartment?.roles || []).filter((r) => POSITIONS.includes(r));
+    return own.length ? own : POSITIONS;
+  })();
+  const currentHead = doctors.find((d) => (d.roles || []).includes(HEAD_ROLE));
 
-    let updatedRoles = [...(doctor.roles || [])];
-    if (isAddingHeadRole) {
-      if (!updatedRoles.includes("Department Head")) {
-        updatedRoles.push("Department Head");
-      }
-    } else if (doctor.roles?.includes("Department Head") &&
-              window.confirm(`Remove ${doctor.name} from Department Head role?`)) {
-      updatedRoles = updatedRoles.filter(role => role !== "Department Head");
-    } else {
-      const roleChoices = selectedDepartment?.roles?.length ? selectedDepartment.roles : availableRoles;
-      const roleInput = prompt(
-        `Enter role names separated by commas:\n${roleChoices.map((r, i) => `${i + 1}. ${r}`).join("\n")}`,
-        (doctor.roles || []).join(", ")
-      );
-      if (roleInput === null) return; // User canceled
-      updatedRoles = roleInput.split(",")
-        .map(r => r.trim())
-        .filter(r => roleChoices.includes(r));
-    }
+  const openRoleDialog = (doctor) => {
+    const roles = doctor.roles || [];
+    setRoleDoctor(doctor);
+    setRoleForm({ head: roles.includes(HEAD_ROLE), position: roles.find((r) => POSITIONS.includes(r)) || "" });
+    setRoleError("");
+  };
 
-    setLoading(true);
-    setError("");
-    const result = await assignDoctorRoles(token, doctor._id, updatedRoles);
-    setLoading(false);
+  const saveRoles = async () => {
+    const roles = [roleForm.head ? HEAD_ROLE : null, roleForm.position || null].filter(Boolean);
+    setRoleSaving(true);
+    setRoleError("");
+    const result = await assignDoctorRoles(token, roleDoctor._id, roles);
+    setRoleSaving(false);
     if (!result.success) {
-      setError(result.message);
+      setRoleError(result.message);
       return;
     }
-    setDoctors(doctors.map(doc =>
-      doc._id === doctor._id ? { ...doc, roles: updatedRoles } : doc
-    ));
-    setSuccess("Doctor roles updated successfully");
-    if (updatedRoles.includes("Department Head")) reloadDepartments();
+    const saved = result.data?.roles || roles;
+    // one head per department: the previous head loses the role
+    setDoctors((prev) => prev.map((doc) => {
+      if (doc._id === roleDoctor._id) return { ...doc, roles: saved };
+      if (roleForm.head) return { ...doc, roles: (doc.roles || []).filter((r) => r !== HEAD_ROLE) };
+      return doc;
+    }));
+    const wasHead = (roleDoctor.roles || []).includes(HEAD_ROLE);
+    if (roleForm.head || wasHead) {
+      setSelectedDepartment((dep) => dep && ({ ...dep, headOfDepartment: roleForm.head ? roleDoctor.name : "" }));
+      reloadDepartments();
+    }
+    setSuccess(result.data?.message || result.message || "Doctor roles updated successfully");
+    setRoleDoctor(null);
   };
 
   const handleApproveDoctor = async (doctor) => {
@@ -464,7 +470,9 @@ const DepartmentManagement = () => {
                     <h4 className="font-medium text-gray-700 mb-2">Description:</h4>
                     <p className="text-gray-600 bg-blue-50 p-4 rounded-lg">{selectedDepartment.description || "No description"}</p>
                     <h4 className="font-medium text-gray-700 mb-2">Department Head:</h4>
-                    <p className="text-gray-600 bg-blue-50 p-4 rounded-lg">{selectedDepartment.headOfDepartment || "Not assigned"}</p>
+                    <p className="text-gray-600 bg-blue-50 p-4 rounded-lg">
+                      {currentHead ? `⭐ ${currentHead.name}` : selectedDepartment.headOfDepartment || "Not assigned — use “Assign role” on a doctor below"}
+                    </p>
                     <div>
                       <h4 className="font-medium text-gray-700 mb-2">Available Roles:</h4>
                       <div className="flex flex-wrap gap-2">
@@ -489,6 +497,7 @@ const DepartmentManagement = () => {
                 <div className="mt-6">
                   <div className="flex justify-between items-center mb-4">
                     <h4 className="font-semibold text-green-600">Department Doctors</h4>
+                    <span className="text-xs text-gray-500">{doctors.length} doctor{doctors.length === 1 ? "" : "s"} · head shown first</span>
                   </div>
 
                   <div className="space-y-4">
@@ -497,10 +506,12 @@ const DepartmentManagement = () => {
                   ) : doctors.length === 0 ? (
                     <p className="text-center text-gray-500 py-8">No doctors assigned to this department</p>
                   ) : (
-                    doctors.map(doctor => (
+                    [...doctors]
+                      .sort((a, b) => Number((b.roles || []).includes(HEAD_ROLE)) - Number((a.roles || []).includes(HEAD_ROLE)))
+                      .map(doctor => (
                       <div
                         key={doctor._id}
-                        className="p-4 border rounded-lg hover:bg-gradient-to-r hover:from-blue-50 hover:to-green-50 transition-colors"
+                        className={`p-4 border rounded-lg hover:bg-gradient-to-r hover:from-blue-50 hover:to-green-50 transition-colors ${(doctor.roles || []).includes(HEAD_ROLE) ? "border-yellow-300 bg-yellow-50/40" : ""}`}
                       >
                         <div className="flex justify-between items-start">
                           <div>
@@ -509,15 +520,25 @@ const DepartmentManagement = () => {
                             <p className="text-sm text-gray-600">
                               {doctor.qualification || "—"} • {doctor.specialization || "—"}
                             </p>
-                            <p className="text-sm text-green-600 font-semibold">⭐ {doctor.rating || "Not Rated"}{doctor.roles?.length ? ` • ${doctor.roles.join(", ")}` : ""}</p>
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {(doctor.roles || []).length ? (
+                                doctor.roles.map((role) => (
+                                  <span key={role} className={`px-2 py-0.5 rounded-full text-xs font-medium ${roleBadge(role)}`}>
+                                    {role === HEAD_ROLE ? "⭐ " : ""}{role}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-xs text-gray-400">No role assigned</span>
+                              )}
+                            </div>
                           </div>
                           <div className="flex space-x-2">
                             <button
-                              onClick={() => handleAssignRole(doctor)}
-                              className="p-2 text-green-600 hover:bg-green-50 rounded-full"
-                              title="Assign Role"
+                              onClick={() => openRoleDialog(doctor)}
+                              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg"
+                              title="Assign role"
                             >
-                              <MdMedicalServices size={18} />
+                              <MdMedicalServices size={16} /> Assign role
                             </button>
                             <button
                               onClick={() => handleDeleteDoctor(doctor._id)}
@@ -644,6 +665,71 @@ const DepartmentManagement = () => {
             </div>
         </div>
         
+        {/* Assign Role Modal */}
+        {roleDoctor && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+              <div className="bg-gradient-to-r from-blue-500 to-green-500 px-6 py-4 text-white flex justify-between items-start">
+                <div>
+                  <h3 className="text-lg font-bold">Assign role</h3>
+                  <p className="text-sm text-white/90">{roleDoctor.name} · {selectedDepartment?.name}</p>
+                </div>
+                <button onClick={() => setRoleDoctor(null)} className="hover:bg-white/20 rounded-full p-1"><FiX size={20} /></button>
+              </div>
+              <div className="p-6 space-y-5">
+                <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer ${roleForm.head ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}>
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4"
+                    checked={roleForm.head}
+                    onChange={(e) => setRoleForm({ ...roleForm, head: e.target.checked })}
+                  />
+                  <span>
+                    <span className="block font-medium text-gray-800">⭐ Department Head</span>
+                    <span className="block text-xs text-gray-500">
+                      {currentHead && currentHead._id !== roleDoctor._id
+                        ? roleForm.head
+                          ? `${currentHead.name} will no longer be the head.`
+                          : `Current head: ${currentHead.name}`
+                        : "One head per department."}
+                    </span>
+                  </span>
+                </label>
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">Position</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {["", ...departmentPositions].map((position) => (
+                      <label
+                        key={position || "none"}
+                        className={`flex items-center gap-2 p-2.5 rounded-lg border text-sm cursor-pointer ${roleForm.position === position ? "border-blue-400 bg-blue-50 text-blue-800" : "border-gray-200 text-gray-700"}`}
+                      >
+                        <input
+                          type="radio"
+                          name="position"
+                          checked={roleForm.position === position}
+                          onChange={() => setRoleForm({ ...roleForm, position })}
+                        />
+                        {position || "No position"}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {roleError && <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm">{roleError}</div>}
+              </div>
+              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+                <button onClick={() => setRoleDoctor(null)} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Cancel</button>
+                <button
+                  onClick={saveRoles}
+                  disabled={roleSaving}
+                  className="px-4 py-2 rounded-lg text-white bg-gradient-to-r from-blue-600 to-green-500 hover:from-blue-700 hover:to-green-600 disabled:opacity-60 flex items-center"
+                >
+                  <FiCheck className="mr-2" /> {roleSaving ? "Saving..." : "Save role"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Add Department Modal */}
         {showAddDepartment && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
