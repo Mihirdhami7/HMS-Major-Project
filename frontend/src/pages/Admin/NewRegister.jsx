@@ -12,7 +12,31 @@ import {
   approveAppointment,
   bookAppointment,
 } from "../../services/appointmentsService";
+import { createRazorpayOrder, verifyRazorpayPayment } from "../../services/paymentService";
 import { doctorName } from "../../utils/format";
+
+// Booking fee shown at the desk. The backend decides the real amount (APPOINTMENT_BOOKING_FEE).
+const BOOKING_FEE = 100;
+const RAZORPAY_SRC = "https://checkout.razorpay.com/v1/checkout.js";
+
+// Load the Razorpay checkout script once, only when an online payment is started.
+const loadRazorpay = () =>
+  new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement("script");
+    script.src = RAZORPAY_SRC;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+
+// Booking fee status of an appointment: { paid, label }
+const feeInfo = (appt) => {
+  const paid = (appt.payments || []).find((p) => ["completed", "success", "paid"].includes(String(p.status || "").toLowerCase()));
+  if (!paid) return { paid: false, label: "Unpaid" };
+  const method = String(paid.method || "online").toLowerCase();
+  return { paid: true, label: method === "cash" ? "Paid · cash" : `Paid · ${method === "online" ? "online" : method}` };
+};
 
 const todayISO = () => new Date().toISOString().split("T")[0];
 const nowHHMM = () => new Date().toLocaleTimeString("en-US", { hour12: false }).slice(0, 5);
@@ -29,6 +53,7 @@ const emptyAppointment = () => ({
   symptoms: "",
   appointmentDate: todayISO(),
   appointmentTime: nowHHMM(),
+  paymentMode: "cash", // cash collected at the desk | online (Razorpay test checkout)
 });
 
 const STATUS_STYLES = {
@@ -70,6 +95,17 @@ function Message({ error, success }) {
 }
 
 Message.propTypes = { error: PropTypes.string, success: PropTypes.string };
+
+function FeeBadge({ appt }) {
+  const fee = feeInfo(appt);
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${fee.paid ? "bg-green-100 text-green-700" : "bg-red-50 text-red-600"}`}>
+      {fee.label}
+    </span>
+  );
+}
+
+FeeBadge.propTypes = { appt: PropTypes.object.isRequired };
 
 function StatusBadge({ status }) {
   return (
@@ -285,9 +321,7 @@ const NewRegister = () => {
       setNewMsg({ error: "No hospital is linked to this admin account." });
       return;
     }
-    setLoading(true);
-    setNewMsg({});
-    const result = await bookAppointment(token, {
+    const booking = {
       patientEmail: d.patientInfo.email || d.patientEmail,
       doctorEmail: d.doctorEmail,
       department: d.department,
@@ -295,16 +329,82 @@ const NewRegister = () => {
       appointmentDate: d.appointmentDate,
       appointmentTime: d.appointmentTime,
       symptoms: d.symptoms || "",
-    });
-    setLoading(false);
-    if (result.success) {
+    };
+    const booked = (message) => {
       setShowNewAppointmentDialog(false);
       setNewAppointmentData(emptyAppointment());
-      setPageMsg({ success: result.message || "Appointment created successfully!" });
+      setPageMsg({ success: message });
       fetchAppointments();
-    } else {
-      setNewMsg({ error: result.message });
+    };
+    setLoading(true);
+    setNewMsg({});
+
+    if (d.paymentMode === "cash") {
+      const result = await bookAppointment(token, { ...booking, paymentMethod: "cash" });
+      setLoading(false);
+      if (result.success) booked(result.message || "Appointment confirmed. Cash payment recorded.");
+      else setNewMsg({ error: result.message });
+      return;
     }
+
+    // Online: Razorpay test checkout (QR / UPI / card / netbanking). No real money in test mode.
+    const loaded = await loadRazorpay();
+    if (!loaded || !window.Razorpay) {
+      setLoading(false);
+      setNewMsg({ error: "Could not load the payment gateway. Check your internet connection or take cash." });
+      return;
+    }
+    const stamp = Date.now();
+    const meta = {
+      payment_id: `DESK-${stamp}`,
+      order_id: `ORD-${stamp}`,
+      source: "PATIENT",
+      category: "APPOINTMENT_BOOKING",
+      amount: BOOKING_FEE,
+      currency: "INR",
+      hospital_name: hospitalName,
+      booking,
+    };
+    const orderRes = await createRazorpayOrder(token, meta);
+    if (!orderRes.success) {
+      setLoading(false);
+      setNewMsg({ error: orderRes.message || "Could not start the payment." });
+      return;
+    }
+    const { razorpay_key_id: key, razorpay_order: rpOrder } = orderRes.data || {};
+    const patient = d.patientInfo;
+    const checkout = new window.Razorpay({
+      key,
+      amount: rpOrder?.amount,
+      currency: rpOrder?.currency || "INR",
+      name: hospitalName,
+      description: `Booking fee · ${patient.name} on ${d.appointmentDate}`,
+      order_id: rpOrder?.id,
+      prefill: { email: patient.email, name: patient.name, contact: patient.contactNo || "" },
+      theme: { color: "#3399cc" },
+      handler: async (resp) => {
+        const verifyRes = await verifyRazorpayPayment(token, {
+          ...meta,
+          razorpay_order_id: resp.razorpay_order_id,
+          razorpay_payment_id: resp.razorpay_payment_id,
+          razorpay_signature: resp.razorpay_signature,
+        });
+        setLoading(false);
+        if (verifyRes.success) booked("Payment received online. The appointment is confirmed.");
+        else setNewMsg({ error: `Payment could not be verified: ${verifyRes.message}` });
+      },
+      modal: {
+        ondismiss: () => {
+          setLoading(false);
+          setNewMsg({ error: "Payment cancelled — the appointment was not created. Try again or take cash." });
+        },
+      },
+    });
+    checkout.on("payment.failed", (resp) => {
+      setLoading(false);
+      setNewMsg({ error: `Payment failed: ${resp?.error?.description || "please try again"}. The appointment was not created.` });
+    });
+    checkout.open();
   };
 
   return (
@@ -433,6 +533,7 @@ const NewRegister = () => {
                             <th className="py-2 pr-3 font-medium">Doctor</th>
                             <th className="py-2 pr-3 font-medium">Date</th>
                             <th className="py-2 pr-3 font-medium">Status</th>
+                            <th className="py-2 pr-3 font-medium">Fee</th>
                             <th className="py-2 font-medium text-right">Details</th>
                           </tr>
                         </thead>
@@ -443,6 +544,7 @@ const NewRegister = () => {
                               <td className="py-2 pr-3 text-gray-700">{doctorName(appt.doctor?.name)}</td>
                               <td className="py-2 pr-3 text-gray-700 whitespace-nowrap">{apptDate(appt)} {apptTime(appt)}</td>
                               <td className="py-2 pr-3"><StatusBadge status={appt.status} /></td>
+                              <td className="py-2 pr-3"><FeeBadge appt={appt} /></td>
                               <td className="py-2 text-right">
                                 <button onClick={() => setSelectedAppointment(appt)} className="text-xs font-semibold text-blue-700 hover:underline">
                                   View
@@ -527,6 +629,10 @@ const NewRegister = () => {
                   <span className="text-gray-800 text-right">{v}</span>
                 </div>
               ))}
+              <div className="flex justify-between gap-4 border-b border-gray-100 pb-2">
+                <span className="text-gray-500">Booking fee</span>
+                <FeeBadge appt={selectedAppointment} />
+              </div>
               <div className="flex justify-between gap-4">
                 <span className="text-gray-500">Status</span>
                 <StatusBadge status={selectedAppointment.status} />
@@ -646,7 +752,7 @@ const NewRegister = () => {
             <div className="bg-gradient-to-r from-blue-500 to-green-500 px-6 py-4 text-white flex justify-between items-start">
               <div>
                 <h3 className="text-lg font-bold">Schedule New Appointment</h3>
-                <p className="text-sm text-white/90">Booked by reception — confirmed immediately</p>
+                <p className="text-sm text-white/90">Booked by reception — confirmed as soon as the fee is paid</p>
               </div>
               <button onClick={() => setShowNewAppointmentDialog(false)} className="hover:bg-white/20 rounded-full p-1"><FiX size={20} /></button>
             </div>
@@ -742,10 +848,36 @@ const NewRegister = () => {
                   <textarea
                     value={newAppointmentData.symptoms || ""}
                     onChange={(e) => setNewAppointmentData((prev) => ({ ...prev, symptoms: e.target.value }))}
-                    rows={5}
+                    rows={2}
                     className={`${inputClass} resize-none`}
                     placeholder="Symptoms or notes"
                   />
+                </div>
+                <div>
+                  <label className={labelClass}>Booking fee · ₹{BOOKING_FEE}</label>
+                  <div className="space-y-2">
+                    {[
+                      ["cash", "💵 Cash collected at desk", "Marked as paid now"],
+                      ["online", "📱 Pay online now", "Opens Razorpay: QR / UPI / card / netbanking (test mode)"],
+                    ].map(([mode, title, sub]) => (
+                      <label
+                        key={mode}
+                        className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer ${newAppointmentData.paymentMode === mode ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentMode"
+                          className="mt-1"
+                          checked={newAppointmentData.paymentMode === mode}
+                          onChange={() => setNewAppointmentData((prev) => ({ ...prev, paymentMode: mode }))}
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-gray-800">{title}</span>
+                          <span className="block text-xs text-gray-500">{sub}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -759,7 +891,9 @@ const NewRegister = () => {
                   disabled={loading || !newAppointmentData.patientInfo || !newAppointmentData.department || !newAppointmentData.doctorEmail}
                   className="px-5 py-2 rounded-lg text-white bg-green-600 hover:bg-green-700 disabled:opacity-60"
                 >
-                  {loading ? "Creating..." : "Create Appointment"}
+                  {loading
+                    ? newAppointmentData.paymentMode === "online" ? "Waiting for payment..." : "Creating..."
+                    : newAppointmentData.paymentMode === "online" ? `Pay ₹${BOOKING_FEE} & Book` : `Book · Cash ₹${BOOKING_FEE} received`}
                 </button>
               </div>
             </div>

@@ -19,6 +19,7 @@ from .serializers import (
 )
 from .models import AppointmentDocument, PrescriptionDocument, NotificationDocument
 from .prescription_pdf import build_prescription_pdf, email_prescription_async, pdf_filename
+from django.conf import settings
 from django.http import HttpResponse
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,8 @@ def prepare_booking(data, user_email, user_type, login_hospital):
                 status.HTTP_403_FORBIDDEN,
             )
         data["patientEmail"] = user_email
+    elif str(user_type or "").lower() == "admin" and data["hospitalName"] != login_hospital:
+        raise BookingError("You can only book appointments at your own hospital.", status.HTTP_403_FORBIDDEN)
 
     # a patient has one account per hospital
     patient = users_collection.find_one({
@@ -288,10 +291,21 @@ class BookAppointmentAPIView(generics.CreateAPIView):
             data, patient, doctor = prepare_booking(
                 data, user_email, user_type, getattr(request.user, 'hospitalName', None)
             )
+            # Reception: the booking fee is either collected in cash here, or paid online through
+            # Razorpay (then the appointment is created by apps/payments/views.py after verification).
+            payments = None
+            paid_cash = user_type == "Admin" and str(request.data.get("paymentMethod", "")).lower() == "cash"
+            if paid_cash:
+                payments = [AppointmentDocument.add_payment(
+                    f"CASH-{datetime.utcnow():%Y%m%d%H%M%S%f}", float(settings.APPOINTMENT_BOOKING_FEE),
+                    "consultation", "completed", method="cash", collected_by=user_email,
+                )]
             created_appointment = create_booking(
-                data, patient, doctor, booked_by=user_email, admin_booking=(user_type == "Admin")
+                data, patient, doctor, booked_by=user_email, admin_booking=(user_type == "Admin"), payments=payments
             )
             message = "Appointment confirmed successfully" if user_type == "Admin" else "Appointment booked successfully. Pending approval."
+            if paid_cash:
+                message = f"Appointment confirmed. Cash payment of ₹{float(settings.APPOINTMENT_BOOKING_FEE):.0f} recorded."
             return Response({
                 "status": "success",
                 "message": message,

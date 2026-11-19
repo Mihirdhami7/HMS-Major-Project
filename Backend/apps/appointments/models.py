@@ -136,16 +136,23 @@ class AppointmentDocument:
         payment_id: str,
         amount: float,
         payment_type: str = "consultation",
-        status: str = "completed"
+        status: str = "completed",
+        method: Optional[str] = None,
+        collected_by: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Create payment entry to be added to payments array"""
-        return {
+        """Create payment entry to be added to payments array.
+        method: "cash" (collected at the reception desk) or the Razorpay method (upi, card, netbanking, ...)."""
+        entry = {
             "paymentId": payment_id,
             "amount": amount,
             "paymentType": payment_type,
             "paymentDate": datetime.utcnow(),
-            "status": status
+            "status": status,
+            "method": method or "online",
         }
+        if collected_by:
+            entry["collectedBy"] = collected_by
+        return entry
 
 
 class PrescriptionDocument:

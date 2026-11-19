@@ -297,7 +297,7 @@ function AdminSection() {
             <StatCard icon="📅" label="Today's Appointments" value={v(stats.today)} sub={`${stats.upcoming} upcoming approved`} onClick={() => navigate("/admin/reception")} />
             <StatCard icon="⏳" label="Pending Requests" value={v(stats.pending)} sub="Waiting for doctor approval" onClick={() => navigate("/admin/reception")} />
             <StatCard icon="💊" label="To Dispense" value={v(data.prescriptions.length)} sub="Prescriptions not billed yet" onClick={() => navigate("/admin/givemedicine")} />
-            <StatCard icon="💰" label="Booking Fees" value={loading ? "…" : `₹${stats.feesTotal.toLocaleString("en-IN")}`} sub={`${stats.fees.length} online payments`} />
+            <StatCard icon="💰" label="Booking Fees" value={loading ? "…" : `₹${stats.feesTotal.toLocaleString("en-IN")}`} sub={`${stats.fees.filter((p) => String(p.method || "").toLowerCase() !== "cash").length} online · ${stats.fees.filter((p) => String(p.method || "").toLowerCase() === "cash").length} cash`} />
             <StatCard icon="🧑‍⚕️" label="Doctors" value={v(data.doctors.length)} sub={`${data.pendingDoctors.length} awaiting approval`} onClick={() => navigate("/admin/department")} />
             <StatCard icon="🧑‍🤝‍🧑" label="Patients" value={v(data.patients.length)} sub="Registered at this hospital" />
             <StatCard icon="📦" label="Products" value={v(data.products.length)} sub={`${stats.lowStock.length} medicines low on stock`} onClick={() => navigate("/admin/product")} />
@@ -456,9 +456,9 @@ function AdminSection() {
               )}
             </Card>
 
-            <Card title="Booking fees collected" subtitle="Online payments, last 6 months">
+            <Card title="Booking fees collected" subtitle="Online and cash, last 6 months">
               {stats.fees.length === 0 ? (
-                <Empty text={loading ? "Loading…" : "No online payments yet."} />
+                <Empty text={loading ? "Loading…" : "No booking fees collected yet."} />
               ) : (
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={feesByMonth}>
