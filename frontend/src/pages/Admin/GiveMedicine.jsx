@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import PropTypes from 'prop-types';
-import { FiClipboard, FiShoppingCart, FiCreditCard, FiRefreshCw, FiSearch, FiDollarSign } from 'react-icons/fi';
+import { FiClipboard, FiShoppingCart, FiCreditCard, FiRefreshCw, FiSearch, FiDollarSign, FiTrash2 } from 'react-icons/fi';
 import { MdClose } from 'react-icons/md';
 import Slidebar from "../../components/Sidebar";
 import { useAuth } from '../../context/AuthContext';
@@ -33,6 +33,7 @@ const getId = (doc) => doc?._id || doc?.id;
 const money = (value) => Number(value || 0).toFixed(2);
 const rupees = (value) => `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const isOutside = (m) => m?.outside || !m?.medicineId;
+const normName = (n) => String(n || "").trim().toLowerCase();
 const formatDateTime = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "-");
 const RANGES = [
     { key: "today", label: "Today" },
@@ -150,6 +151,7 @@ const Givemedicine = () => {
     const handlePrescriptionClick = async (prescription) => {
         setSelectedPrescription(prescription);
         setSelectedMedicines([]);
+        setCartNotice(null);
         setPaymentMessage(null);
         setSearchTerm('');
         await fetchAvailableMedicines();
@@ -157,19 +159,48 @@ const Givemedicine = () => {
 
     const addToCart = (medicine, quantity = 1) => {
         const price = parseFloat(medicine.price_per_strip) || 0;
-        setSelectedMedicines(prev => [...prev, { ...medicine, quantity, total: quantity * price }]);
+        setSelectedMedicines(prev => (prev.some((m) => getId(m) === getId(medicine))
+            ? prev
+            : [...prev, { ...medicine, quantity, total: quantity * price }]));
     };
 
-    // Put every prescribed medicine that is in stock into the cart with the prescribed quantity.
+    // Pharmacy product for a prescribed medicine: same product id, else same name in this hospital's stock.
+    const stockFor = (item) =>
+        availableMedicines.find((m) => getId(m) === item.medicineId) ||
+        availableMedicines.find((m) => normName(m.product_name) === normName(item.name));
+
+    const prescribedQty = (item, product) => {
+        const qty = parseInt(item.quantity, 10) || 1;
+        return Math.max(1, Math.min(qty, Number(product.stock) || 1));
+    };
+
+    // Add one prescribed medicine with the prescribed quantity (or set that quantity if it is already in the cart).
+    const addPrescribedItem = (item) => {
+        const product = stockFor(item);
+        if (!product) return false;
+        const qty = prescribedQty(item, product);
+        const price = parseFloat(product.price_per_strip) || 0;
+        setSelectedMedicines((prev) => (prev.some((m) => getId(m) === getId(product))
+            ? prev.map((m) => (getId(m) === getId(product) ? { ...m, quantity: qty, total: qty * price } : m))
+            : [...prev, { ...product, quantity: qty, total: qty * price }]));
+        return true;
+    };
+
+    // Put every prescribed medicine that is in stock into the cart, and say what could not be added.
     const addPrescribedToCart = () => {
-        const prescribed = (selectedPrescription?.medicines || []).filter((m) => !isOutside(m));
-        prescribed.forEach((item) => {
-            const match = availableMedicines.find((m) => getId(m) === item.medicineId);
-            if (match && !selectedMedicines.find((m) => getId(m) === getId(match))) {
-                const qty = Math.min(parseInt(item.quantity) || 1, match.stock || 1);
-                addToCart(match, qty);
-            }
+        const added = [];
+        const missing = [];
+        const outside = [];
+        (selectedPrescription?.medicines || []).forEach((item) => {
+            if (item.outside) outside.push(item.name);
+            else if (addPrescribedItem(item)) added.push(item.name);
+            else missing.push(item.name);
         });
+        const parts = [];
+        if (added.length) parts.push(`Added to cart: ${added.join(", ")}.`);
+        if (missing.length) parts.push(`Not in pharmacy stock: ${missing.join(", ")}.`);
+        if (outside.length) parts.push(`Patient buys outside: ${outside.join(", ")}.`);
+        setCartNotice({ ok: added.length > 0, text: parts.join(" ") || "Nothing to add." });
     };
 
     const updateQuantity = (medicineId, quantity) => {
@@ -180,6 +211,8 @@ const Givemedicine = () => {
                 : med
         ));
     };
+
+    const [cartNotice, setCartNotice] = useState(null);
 
     const removeFromCart = (medicineId) => {
         setSelectedMedicines(prev => prev.filter(med => getId(med) !== medicineId));
@@ -537,7 +570,7 @@ const Givemedicine = () => {
                                                 <div key={medicine.medicineId || index} className="bg-blue-50 p-3 rounded-lg">
                                                     <p className="font-medium text-blue-700">
                                                         {medicine.name}
-                                                        {isOutside(medicine) && (
+                                                        {medicine.outside && (
                                                             <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800">Buy outside</span>
                                                         )}
                                                     </p>
@@ -547,19 +580,40 @@ const Givemedicine = () => {
                                                         {medicine.frequency ? ` · ${medicine.frequency}` : ''}
                                                         {medicine.duration ? ` · ${medicine.duration}` : ''}
                                                     </p>
+                                                    {!medicine.outside && (() => {
+                                                        const product = stockFor(medicine);
+                                                        if (!product) return <p className="text-xs text-red-600 mt-1">Not in pharmacy stock</p>;
+                                                        const inCart = selectedMedicines.some((m) => getId(m) === getId(product));
+                                                        return (
+                                                            <div className="flex items-center justify-between mt-1.5">
+                                                                <span className="text-xs text-green-700">In stock {product.stock} · {rupees(product.price_per_strip)}</span>
+                                                                <button
+                                                                    onClick={() => addPrescribedItem(medicine)}
+                                                                    className={`text-xs font-semibold px-2.5 py-1 rounded-lg ${inCart ? "bg-green-100 text-green-700" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+                                                                >
+                                                                    {inCart ? "In cart ✓" : "Add"}
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                             ))
                                         ) : (
                                             <p className="text-gray-500 text-sm">No medicines prescribed.</p>
                                         )}
                                     </div>
-                                    {selectedPrescription.medicines?.some((m) => !isOutside(m)) && availableMedicines.length > 0 && (
+                                    {selectedPrescription.medicines?.some((m) => !m.outside) && (
                                         <button
                                             onClick={addPrescribedToCart}
                                             className="mt-4 w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 text-sm font-medium"
                                         >
-                                            Add prescribed medicines to cart
+                                            Add all prescribed medicines to cart
                                         </button>
+                                    )}
+                                    {cartNotice && (
+                                        <p className={`mt-2 text-xs p-2 rounded-lg ${cartNotice.ok ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-800"}`}>
+                                            {cartNotice.text}
+                                        </p>
                                     )}
                                     {selectedPrescription.suggestions && (
                                         <p className="mt-4 text-xs text-gray-500"><span className="font-medium text-gray-700">Advice:</span> {selectedPrescription.suggestions}</p>
@@ -629,8 +683,12 @@ const Givemedicine = () => {
                                                             className="w-16 p-1.5 border border-gray-300 rounded-lg text-sm"
                                                         />
                                                         <p className="w-20 text-right font-semibold text-gray-800 text-sm">{rupees(medicine.total)}</p>
-                                                        <button onClick={() => removeFromCart(getId(medicine))} className="text-red-500 hover:text-red-700">
-                                                            <MdClose />
+                                                        <button
+                                                            onClick={() => removeFromCart(getId(medicine))}
+                                                            className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-full"
+                                                            title="Remove"
+                                                        >
+                                                            <FiTrash2 />
                                                         </button>
                                                     </div>
                                                 ))}
