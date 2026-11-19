@@ -7,6 +7,15 @@ import { LOGIN_ROLES, homeForRole, roleNeedsHospital } from "../../constants/rol
 
 const inputClass =
   "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500";
+const errorInputClass =
+  "w-full p-3 border-2 border-red-400 bg-red-50 rounded-md focus:ring-2 focus:ring-red-400 focus:border-red-400";
+
+// Which inputs to highlight for each kind of login error (field comes from the backend).
+const FIELDS_FOR_ERROR = {
+  credentials: ["email", "password"],
+  role: ["category"],
+  hospital: ["hospitalName"],
+};
 
 export default function Login() {
   const navigate = useNavigate();
@@ -23,13 +32,21 @@ export default function Login() {
     hospitalName: "",
   });
   const [error, setError] = useState(null);
+  const [errorField, setErrorField] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  const fieldClass = (name) => ((FIELDS_FOR_ERROR[errorField] || []).includes(name) ? errorInputClass : inputClass);
 
   const needsHospital = roleNeedsHospital(formData.category);
   const selectedHospital = hospitals.find((h) => h.name === formData.hospitalName);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    // editing the highlighted input clears its error
+    if ((FIELDS_FOR_ERROR[errorField] || []).includes(name)) {
+      setErrorField(null);
+      setError(null);
+    }
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -39,8 +56,14 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    setErrorField(null);
+    if (needsHospital && !formData.hospitalName) {
+      setError("Please select the proper hospital.");
+      setErrorField("hospital");
+      return;
+    }
+    setLoading(true);
 
     const loginData = {
       email: formData.email.trim().toLowerCase(),
@@ -54,6 +77,7 @@ export default function Login() {
 
     if (!result.success) {
       setError(result.message || "Login failed");
+      setErrorField(result.error?.field || null);
       return;
     }
 
@@ -102,7 +126,7 @@ export default function Login() {
               value={formData.email}
               onChange={handleChange}
               required
-              className={inputClass}
+              className={fieldClass("email")}
             />
           </div>
 
@@ -117,13 +141,13 @@ export default function Login() {
               value={formData.password}
               onChange={handleChange}
               required
-              className={inputClass}
+              className={fieldClass("password")}
             />
           </div>
 
           <div>
             <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">User Type</label>
-            <select id="category" name="category" value={formData.category} onChange={handleChange} className={inputClass}>
+            <select id="category" name="category" value={formData.category} onChange={handleChange} className={fieldClass("category")}>
               {LOGIN_ROLES.map((role) => (
                 <option key={role} value={role}>{role}</option>
               ))}
@@ -138,8 +162,7 @@ export default function Login() {
                 name="hospitalName"
                 value={formData.hospitalName}
                 onChange={handleChange}
-                className={inputClass}
-                required
+                className={fieldClass("hospitalName")}
                 disabled={hospitalsLoading || hospitals.length === 0}
               >
                 <option value="">

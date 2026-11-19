@@ -367,27 +367,19 @@ class LoginAPIView(generics.CreateAPIView):
                     return Response({"status": "error", "message": "Invalid credentials for SuperAdmin"}, status=status.HTTP_401_UNAUTHORIZED)
                 category = "superAdmin"  # For token payload
             else:
-                if category == "Doctor":
-                    staff_user = staff_collection.find_one({"email": email, "userType": "Doctor", "hospitalName": hospital_name})
-                    if staff_user:
-                        user = users_collection.find_one({"email": email})
-                    else:
-                        user = users_collection.find_one({"email": email, "userType": "Doctor", "hospitalName": hospital_name})
-                elif category == "Supplier":
-                    user = users_collection.find_one({"email": email, "userType": "Supplier"})
-                else:
-                    user = users_collection.find_one({"email": email, "userType": category, "hospitalName": hospital_name})
+                # Check in order: email + password -> role -> hospital, with a clear message for each.
+                # Role / hospital messages are only given once the password is proven correct, so the
+                # form cannot be used to discover which emails or roles exist.
+                user, error = self._find_login_user(email, password, category, hospital_name)
+                if error:
+                    return Response({"status": "error", "message": error[0], "field": error[1]}, status=error[2])
 
             if not user:
-                return Response({"status": "error", "message": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+                return Response({"status": "error", "message": "Invalid credentials. Please check your email and password.",
+                                 "field": "credentials"}, status=status.HTTP_401_UNAUTHORIZED)
             if not user.get("is_active", False):
-                return Response({"status": "error", "message": "Account not activated"}, status=status.HTTP_403_FORBIDDEN)
-
-            # Skip password check for bypass emails, validate password for all others
-            if email not in bypass_emails:
-                stored = user.get("hpassword", "")
-                if not stored or not bcrypt.checkpw(password.encode("utf-8"), stored.encode("utf-8")):
-                    return Response({"status": "error", "message": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+                return Response({"status": "error", "message": "Your account is not activated yet. Please contact the hospital.",
+                                 "field": "account"}, status=status.HTTP_403_FORBIDDEN)
 
             # Aware UTC datetime: a naive utcnow().timestamp() is read as LOCAL time on non-UTC machines
             exp = datetime.now(timezone.utc) + timedelta(hours=4)
@@ -424,6 +416,41 @@ class LoginAPIView(generics.CreateAPIView):
             }, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"status": "error", "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @staticmethod
+    def _find_login_user(email, password, category, hospital_name):
+        """
+        Returns (user, None) or (None, (message, field, http_status)).
+        field tells the login page which input to highlight: credentials | role | hospital.
+        """
+        def password_ok(u):
+            stored = u.get("hpassword", "")
+            try:
+                return bool(stored) and bcrypt.checkpw(password.encode("utf-8"), stored.encode("utf-8"))
+            except ValueError:  # malformed hash
+                return False
+
+        # every account with this email whose password matches (one email can have one account per hospital)
+        matches = [u for u in users_collection.find({"email": email}) if password_ok(u)]
+        if not matches:
+            return None, ("Invalid credentials. Please check your email and password.", "credentials",
+                          status.HTTP_401_UNAUTHORIZED)
+
+        role_matches = [u for u in matches if str(u.get("userType", "")).lower() == str(category or "").lower()]
+        if not role_matches:
+            return None, ("Please select the proper role.", "role", status.HTTP_401_UNAUTHORIZED)
+
+        if category == "Supplier":
+            return role_matches[0], None
+
+        for u in role_matches:
+            if u.get("hospitalName") == hospital_name:
+                return u, None
+            # doctors can also be linked to a hospital through the staff list
+            if category == "Doctor" and staff_collection.find_one(
+                    {"email": email, "userType": "Doctor", "hospitalName": hospital_name}):
+                return u, None
+        return None, ("Please select the proper hospital.", "hospital", status.HTTP_401_UNAUTHORIZED)
 
 
 class LogoutAPIView(generics.CreateAPIView):
