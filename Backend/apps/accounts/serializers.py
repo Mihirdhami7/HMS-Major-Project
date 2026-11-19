@@ -1,5 +1,8 @@
+import re
 from datetime import datetime
 from rest_framework import serializers
+
+from backend.db import users_collection
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
@@ -31,9 +34,13 @@ class RegisterSerializer(serializers.Serializer):
     name = serializers.CharField(required=True, max_length=100)
     password = serializers.CharField(required=True, min_length=6, write_only=True)
     contactNo = serializers.CharField(required=True, max_length=15)
+    # Public sign-up: patients, doctors and suppliers. Hospital admins are created only by the
+    # super admin (Super Admin -> Hospitals) and set their password through an email link.
+    # Suppliers can sign up here or be added by the super admin (Super Admin -> Suppliers).
     userType = serializers.ChoiceField(
-        choices=["Patient", "Doctor", "Admin", "Supplier"],
-        default="Patient"
+        choices=["Patient", "Doctor", "Supplier"],
+        default="Patient",
+        error_messages={"invalid_choice": "Only patients, doctors and suppliers can sign up. Hospital admins are added by the super admin."},
     )
     
     # Optional common fields
@@ -119,6 +126,12 @@ class RegisterSerializer(serializers.Serializer):
             for field, error_msg in required_fields.items():
                 if not data.get(field):
                     errors[field] = error_msg
+
+            # one supplier account per company (the super admin can also create it)
+            company = str(data.get('companyName') or '').strip()
+            if company and users_collection.find_one({
+                    'userType': 'Supplier', 'companyName': {'$regex': f'^{re.escape(company)}$', '$options': 'i'}}):
+                errors['companyName'] = 'This company already has a supplier account. Ask the platform super admin for access.'
             
             # Check file upload
             if not request or 'companyLicense' not in request.FILES:
