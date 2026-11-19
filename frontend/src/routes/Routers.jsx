@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from '../components/ProtectedRoute'
 import Home from "../pages/Home/Home"
 import Login from "../pages/Auth/Login"
+import SuperAdminLogin from "../pages/Auth/SuperAdminLogin"
 import SignUp from "../pages/Auth/Signup"
 import ForgotPassword from "../pages/Auth/ForgotPassword"
 
@@ -40,6 +41,8 @@ const Routers = () => {
             {/* Public Routes */}
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
+            {/* super admin: email + password only, not linked from the site */}
+            <Route path="/superadmin/login" element={<SuperAdminLogin />} />
             <Route path="/register" element={<SignUp />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
 

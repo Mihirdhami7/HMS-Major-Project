@@ -353,26 +353,17 @@ class LoginAPIView(generics.CreateAPIView):
         email = serializer.validated_data.get("email")
         password = serializer.validated_data.get("password")
         category = serializer.validated_data.get("category")
-        hospital_name = serializer.validated_data.get("hospitalName", "")
-        
-        # List of emails that bypass password check
-        bypass_emails = ["21it402@bvmengineering.ac.in"]
-        
+        hospital_name = serializer.validated_data.get("hospitalName") or ""
+
         try:
-            # Lookup user similar to prior logic
-            user = None
-            if email == "21it402@bvmengineering.ac.in":
-                user = users_collection.find_one({"email": email})
-                if not user:
-                    return Response({"status": "error", "message": "Invalid credentials for SuperAdmin"}, status=status.HTTP_401_UNAUTHORIZED)
-                category = "superAdmin"  # For token payload
-            else:
-                # Check in order: email + password -> role -> hospital, with a clear message for each.
-                # Role / hospital messages are only given once the password is proven correct, so the
-                # form cannot be used to discover which emails or roles exist.
-                user, error = self._find_login_user(email, password, category, hospital_name)
-                if error:
-                    return Response({"status": "error", "message": error[0], "field": error[1]}, status=error[2])
+            # Every account (super admin included) is checked the same way:
+            # email + password -> role -> hospital, with a clear message for each.
+            # Role / hospital messages are only given once the password is proven correct, so the
+            # form cannot be used to discover which emails or roles exist.
+            # A SuperAdmin needs no role or hospital: the correct email + password is enough.
+            user, error = self._find_login_user(email, password, category, hospital_name)
+            if error:
+                return Response({"status": "error", "message": error[0], "field": error[1]}, status=error[2])
 
             if not user:
                 return Response({"status": "error", "message": "Invalid credentials. Please check your email and password.",
@@ -385,7 +376,7 @@ class LoginAPIView(generics.CreateAPIView):
             exp = datetime.now(timezone.utc) + timedelta(hours=4)
             payload = {
                 "email": email,
-                "userType": category if email == "21it402@bvmengineering.ac.in" else user.get("userType"),
+                "userType": user.get("userType"),
                 "hospitalName": user.get("hospitalName"),
                 "exp": int(exp.timestamp())
             }
@@ -396,7 +387,7 @@ class LoginAPIView(generics.CreateAPIView):
             sessions_collection.insert_one({
                 "token": token_str,
                 "email": email,
-                "userType": category if email == "21it402@bvmengineering.ac.in" else user.get("userType"),
+                "userType": user.get("userType"),
                 "hospitalName": user.get("hospitalName"),
                 "expires_at": datetime.utcnow() + timedelta(hours=4),
                 "created_at": datetime.utcnow()
@@ -406,7 +397,7 @@ class LoginAPIView(generics.CreateAPIView):
                 "status": "success",
                 "message": "Login successful",
                 "userData": {
-                    "userType": category if email == "21it402@bvmengineering.ac.in" else user.get("userType"),
+                    "userType": user.get("userType"),
                     "email": email,
                     "hospitalName": user.get("hospitalName"),
                     "name": user.get("name"),
@@ -436,12 +427,24 @@ class LoginAPIView(generics.CreateAPIView):
             return None, ("Invalid credentials. Please check your email and password.", "credentials",
                           status.HTTP_401_UNAUTHORIZED)
 
+        # Super admin: logs in only through the separate super admin page (category "SuperAdmin"),
+        # with email + password and no role / hospital. Any other account trying that page gets the
+        # same "Invalid credentials" answer, so the page reveals nothing.
+        super_admin = next((u for u in matches if str(u.get("userType", "")).lower() == "superadmin"), None)
+        if str(category or "").lower() == "superadmin":
+            if super_admin:
+                return super_admin, None
+            return None, ("Invalid credentials. Please check your email and password.", "credentials",
+                          status.HTTP_401_UNAUTHORIZED)
+
         role_matches = [u for u in matches if str(u.get("userType", "")).lower() == str(category or "").lower()]
         if not role_matches:
             return None, ("Please select the proper role.", "role", status.HTTP_401_UNAUTHORIZED)
 
         if category == "Supplier":
             return role_matches[0], None
+        if not hospital_name:
+            return None, ("Please select the proper hospital.", "hospital", status.HTTP_401_UNAUTHORIZED)
 
         for u in role_matches:
             if u.get("hospitalName") == hospital_name:

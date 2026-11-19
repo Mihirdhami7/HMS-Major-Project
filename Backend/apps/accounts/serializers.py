@@ -202,28 +202,10 @@ class LoginSerializer(serializers.Serializer):
     def validate_email(self, value):
         return value.strip().lower()
 
-    def validate(self, data):
-        """Validate hospital requirement"""
-        email = data.get('email')
-        category = data.get('category')
-        
-        # Super admin and Supplier don't need hospital
-        if email == "21it402@bvmengineering.ac.in":
-            return data
-        
-        if not category:
-            raise serializers.ValidationError({
-                "category": "Category is required"
-            })
-        
-        if category == "Supplier":
-            return data
-        
-        if not data.get('hospitalName'):
-            raise serializers.ValidationError({
-                "hospitalName": "Hospital selection is required"
-            })
-        return data
+    # Role and hospital are checked in LoginAPIView after the password, so that a SuperAdmin
+    # (who has neither) can log in and every user gets one clear message per mistake.
+
+
 class LogoutSerializer(serializers.Serializer):
     
     """Logout serializer"""
