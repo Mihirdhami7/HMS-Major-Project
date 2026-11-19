@@ -245,13 +245,13 @@ export default function Header() {
             <div className="flex items-center gap-2.5">
               <Link
                 to="/login"
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                className="px-4 py-2 text-sm font-medium whitespace-nowrap text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
               >
                 Login
               </Link>
               <Link
                 to="/register"
-                className="px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                className="px-4 py-2 text-sm font-medium whitespace-nowrap text-white rounded-lg bg-gradient-to-r from-blue-600 to-green-500 hover:opacity-90 shadow-sm transition"
               >
                 Sign up
               </Link>

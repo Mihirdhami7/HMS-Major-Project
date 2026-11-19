@@ -1,14 +1,12 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { FiMail, FiLock, FiHome } from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext";
 import { loginUser } from "../../services/authService";
 import { useHospitals } from "../../hooks/useHospitals";
 import { LOGIN_ROLES, homeForRole, roleNeedsHospital } from "../../constants/roles";
-
-const inputClass =
-  "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500";
-const errorInputClass =
-  "w-full p-3 border-2 border-red-400 bg-red-50 rounded-md focus:ring-2 focus:ring-red-400 focus:border-red-400";
+import AuthLayout from "../../components/auth/AuthLayout";
+import { IconInput, PasswordInput, IconSelect, AuthMessage } from "../../components/auth/AuthFields";
 
 // Which inputs to highlight for each kind of login error (field comes from the backend).
 const FIELDS_FOR_ERROR = {
@@ -16,6 +14,8 @@ const FIELDS_FOR_ERROR = {
   role: ["category"],
   hospital: ["hospitalName"],
 };
+
+const ROLE_ICONS = { Patient: "🧑", Doctor: "🩺", Admin: "🏥", Supplier: "🚚" };
 
 export default function Login() {
   const navigate = useNavigate();
@@ -35,13 +35,12 @@ export default function Login() {
   const [errorField, setErrorField] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const fieldClass = (name) => ((FIELDS_FOR_ERROR[errorField] || []).includes(name) ? errorInputClass : inputClass);
+  const isInvalid = (name) => (FIELDS_FOR_ERROR[errorField] || []).includes(name);
 
   const needsHospital = roleNeedsHospital(formData.category);
   const selectedHospital = hospitals.find((h) => h.name === formData.hospitalName);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
+  const setField = (name, value) => {
     // editing the highlighted input clears its error
     if ((FIELDS_FOR_ERROR[errorField] || []).includes(name)) {
       setErrorField(null);
@@ -53,6 +52,7 @@ export default function Login() {
       ...(name === "category" && !roleNeedsHospital(value) ? { hospitalName: "" } : {}),
     }));
   };
+  const handleChange = (e) => setField(e.target.name, e.target.value);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -96,121 +96,100 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-green-50 flex items-center justify-center py-8">
-      <div className="bg-white shadow-2xl rounded-lg p-8 w-full max-w-md">
-        <h2 className="text-2xl font-bold text-gray-800 text-center mb-6">
-          Welcome to <span className="text-blue-600">EasyTreat</span> 🏥
-        </h2>
+    <AuthLayout
+      title={<>Welcome back <span aria-hidden>👋</span></>}
+      subtitle="Log in to EasyTreat to continue."
+      footer={<>Don&apos;t have an account?{" "}
+        <Link to="/register" className="text-blue-600 hover:text-blue-800 font-semibold">Create one</Link></>}
+    >
+      {notice && !error && <AuthMessage tone="success">{notice}</AuthMessage>}
+      {error && <AuthMessage tone="error">{error}</AuthMessage>}
 
-        {notice && !error && (
-          <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6">
-            <p className="text-green-700">{notice}</p>
-          </div>
-        )}
-
-        {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
-            <p className="text-red-700">{error}</p>
-          </div>
-        )}
-
-        <form className="mt-6 space-y-6" onSubmit={handleSubmit}>
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-            <input
-              id="email"
-              type="email"
-              name="email"
-              autoComplete="email"
-              placeholder="Enter your email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              className={fieldClass("email")}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              id="password"
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              placeholder="Enter your password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              className={fieldClass("password")}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">User Type</label>
-            <select id="category" name="category" value={formData.category} onChange={handleChange} className={fieldClass("category")}>
-              {LOGIN_ROLES.map((role) => (
-                <option key={role} value={role}>{role}</option>
-              ))}
-            </select>
-          </div>
-
-          {needsHospital && (
-            <div>
-              <label htmlFor="hospitalName" className="block text-sm font-medium text-gray-700 mb-1">Hospital</label>
-              <select
-                id="hospitalName"
-                name="hospitalName"
-                value={formData.hospitalName}
-                onChange={handleChange}
-                className={fieldClass("hospitalName")}
-                disabled={hospitalsLoading || hospitals.length === 0}
-              >
-                <option value="">
-                  {hospitalsLoading ? "Loading hospitals..." : hospitals.length ? "Select Hospital" : "No hospitals available"}
-                </option>
-                {hospitals.map((h) => (
-                  <option key={h.id} value={h.name}>{h.name}</option>
-                ))}
-              </select>
-              {hospitalsError && !hospitalsLoading && (
-                <p className="mt-1 text-sm text-red-600">Could not load hospitals: {hospitalsError}</p>
-              )}
-              {selectedHospital && (
-                <div className="mt-2 rounded-md bg-blue-50 border border-blue-100 p-3 text-sm text-gray-700">
-                  {selectedHospital.address && <p>📍 {selectedHospital.address}</p>}
-                  {selectedHospital.contactNo && <p>📞 {selectedHospital.contactNo}</p>}
-                  {formData.category === "Patient" && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      Your patient account belongs to this hospital. To use another hospital, log in with (or register) an account for that hospital.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="-mt-3 text-right">
-            <Link to="/forgot-password" className="text-sm text-blue-600 hover:text-blue-800 font-medium">
-              Forgot password?
-            </Link>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-gradient-to-r from-blue-500 to-green-500 text-white py-3 px-6 rounded-md hover:from-blue-600 hover:to-green-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:opacity-70"
+      <form className="space-y-5" onSubmit={handleSubmit}>
+        {/* Role */}
+        <div>
+          <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">I am a</p>
+          <div
+            role="radiogroup"
+            aria-label="User type"
+            className={`grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-xl ${isInvalid("category") ? "ring-2 ring-red-400 p-1" : ""}`}
           >
-            {loading ? "Logging in..." : "Login"}
-          </button>
-        </form>
+            {LOGIN_ROLES.map((role) => {
+              const active = formData.category === role;
+              return (
+                <button
+                  key={role}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  data-role={role}
+                  onClick={() => setField("category", role)}
+                  className={`flex flex-col items-center gap-1 py-2.5 rounded-xl border text-sm font-medium transition ${active
+                    ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm dark:bg-blue-900/40 dark:text-blue-200"
+                    : "border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"}`}
+                >
+                  <span className="text-lg" aria-hidden>{ROLE_ICONS[role] || "👤"}</span>
+                  {role}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-        <p className="mt-6 text-center text-gray-600">
-          Don&apos;t have an account?{" "}
-          <Link to="/register" className="text-blue-600 hover:text-blue-800 font-medium">
-            Register
-          </Link>
-        </p>
-      </div>
-    </div>
+        <IconInput
+          id="email" name="email" type="email" label="Email address" icon={FiMail}
+          autoComplete="email" placeholder="you@example.com" required
+          value={formData.email} onChange={handleChange} invalid={isInvalid("email")}
+        />
+
+        <div>
+          <PasswordInput
+            id="password" name="password" label="Password" icon={FiLock}
+            autoComplete="current-password" placeholder="Your password" required
+            value={formData.password} onChange={handleChange} invalid={isInvalid("password")}
+          />
+          <div className="mt-1.5 text-right">
+            <Link to="/forgot-password" className="text-xs text-blue-600 hover:text-blue-800 font-medium">Forgot password?</Link>
+          </div>
+        </div>
+
+        {needsHospital && (
+          <div>
+            <IconSelect
+              id="hospitalName" name="hospitalName" label="Hospital" icon={FiHome}
+              value={formData.hospitalName} onChange={handleChange} invalid={isInvalid("hospitalName")}
+              disabled={hospitalsLoading || hospitals.length === 0}
+              error={hospitalsError && !hospitalsLoading ? `Could not load hospitals: ${hospitalsError}` : null}
+            >
+              <option value="">
+                {hospitalsLoading ? "Loading hospitals..." : hospitals.length ? "Select your hospital" : "No hospitals available"}
+              </option>
+              {hospitals.map((h) => (
+                <option key={h.id} value={h.name}>{h.name}</option>
+              ))}
+            </IconSelect>
+            {selectedHospital && (
+              <div className="mt-2 rounded-xl bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800 p-3 text-xs text-gray-700 dark:text-gray-300 space-y-0.5">
+                {selectedHospital.address && <p>📍 {selectedHospital.address}</p>}
+                {selectedHospital.contactNo && <p>📞 {selectedHospital.contactNo}</p>}
+                {formData.category === "Patient" && (
+                  <p className="text-gray-500 dark:text-gray-400 pt-1">
+                    Your patient account belongs to this hospital. For another hospital, log in with (or create) an account there.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-gradient-to-r from-blue-600 to-green-500 text-white py-3 rounded-xl font-semibold shadow-sm hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-70"
+        >
+          {loading ? "Logging in..." : "Log in"}
+        </button>
+      </form>
+    </AuthLayout>
   );
 }
