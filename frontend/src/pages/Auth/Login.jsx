@@ -21,10 +21,11 @@ const ROLE_ICONS = { Patient: "🧑", Doctor: "🩺", Admin: "🏥", Supplier: "
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, authNotice } = useAuth();
   // Real hospital list from the backend (public endpoint). The user only selects, never types.
   const { hospitals, loading: hospitalsLoading, error: hospitalsError } = useHospitals();
-  const notice = location.state?.notice;
+  // why the user is here: a message from another page, or why the session ended
+  const notice = location.state?.notice || authNotice;
 
   const [formData, setFormData] = useState({
     email: "",

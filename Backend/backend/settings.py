@@ -185,6 +185,13 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
 SESSION_COOKIE_SAMESITE = 'Lax'  # Use 'None' if frontend and backend are on different domains
 SESSION_EXPIRY_HOURS = 4
+# Login session cookie (httpOnly: JavaScript cannot read it). One login per browser.
+# Local dev (localhost:5173 -> localhost:8000) is same-site, so Lax works over http.
+# Production with the site and the API on different domains needs AUTH_COOKIE_SAMESITE=None
+# and AUTH_COOKIE_SECURE=1 (https).
+AUTH_COOKIE_NAME = "hms_session"
+AUTH_COOKIE_SAMESITE = os.getenv("AUTH_COOKIE_SAMESITE", "Lax")
+AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "0").strip().lower() in ("1", "true", "yes", "on")
 
 # Gmail address / App Password / sender name come from the super admin Settings page (database)
 EMAIL_BACKEND = "backend.mail_backend.SettingsEmailBackend"

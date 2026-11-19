@@ -12,8 +12,10 @@ import axios from "axios";
 import { API_BASE } from "./endpoints";
 
 const apiClient = axios.create({
-    baseURL: API_BASE,
+    // no baseURL: every address in endpoints.js already starts with API_BASE
     timeout: 30000,
+    // send the httpOnly login session cookie (set by the server at login) with every request
+    withCredentials: true,
     headers: {
         "Content-Type": "application/json",
     },

@@ -81,6 +81,12 @@ export const verifyAuth = (token) =>
     );
 
 /**
+ * Who is logged in on this browser? The server reads its httpOnly session cookie.
+ * → data: { status: "success", access, userData } or { status: "none" }
+ */
+export const getSession = () => handleRequest(() => apiClient.get(ACCOUNTS.SESSION));
+
+/**
  * Logout — invalidates the session on the server.
  * @param {string} token
  */

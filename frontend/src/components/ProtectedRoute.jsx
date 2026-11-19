@@ -25,7 +25,9 @@ export const ProtectedRoute = ({ children, requiredRole = null }) => {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    // super admin pages have their own login page
+    const loginPage = location.pathname.startsWith("/superadmin") ? "/superadmin/login" : "/login";
+    return <Navigate to={loginPage} replace state={{ from: location.pathname }} />;
   }
 
   if (requiredRole && !isRole(user?.userType, requiredRole)) {

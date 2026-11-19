@@ -394,18 +394,15 @@ class LoginAPIView(generics.CreateAPIView):
                 "created_at": datetime.utcnow()
             })
 
-            return Response({
+            response = Response({
                 "status": "success",
                 "message": "Login successful",
-                "userData": {
-                    "userType": user.get("userType"),
-                    "email": email,
-                    "hospitalName": user.get("hospitalName"),
-                    "name": user.get("name"),
-                    "contactNo": str(user.get("contactNo") or ""),
-                },
+                "userData": _user_data(user),
                 "access": token_str
             }, status=status.HTTP_200_OK)
+            # the browser keeps the login in an httpOnly session cookie (one login per browser)
+            set_session_cookie(response, token_str)
+            return response
         except Exception as e:
             return Response({"status": "error", "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -457,6 +454,66 @@ class LoginAPIView(generics.CreateAPIView):
         return None, ("Please select the proper hospital.", "hospital", status.HTTP_401_UNAUTHORIZED)
 
 
+def _user_data(user):
+    """What the site needs to know about the logged-in account."""
+    return {
+        "userType": user.get("userType"),
+        "email": user.get("email"),
+        "hospitalName": user.get("hospitalName"),
+        "name": user.get("name"),
+        "contactNo": str(user.get("contactNo") or ""),
+    }
+
+
+def set_session_cookie(response, token):
+    response.set_cookie(
+        settings.AUTH_COOKIE_NAME, token,
+        max_age=settings.SESSION_EXPIRY_HOURS * 3600,
+        httponly=True, secure=settings.AUTH_COOKIE_SECURE, samesite=settings.AUTH_COOKIE_SAMESITE, path="/",
+    )
+
+
+def clear_session_cookie(response):
+    response.delete_cookie(settings.AUTH_COOKIE_NAME, path="/", samesite=settings.AUTH_COOKIE_SAMESITE)
+
+
+class SessionAPIView(APIView):
+    """
+    GET /api/accounts/session/  (no login needed)
+    Who is logged in on this browser? Reads the httpOnly session cookie and checks the server
+    session. Answers 200 either way: {status: "success", access, userData} or {status: "none"}.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        token = request.COOKIES.get(settings.AUTH_COOKIE_NAME)
+        none = Response({"status": "none"}, status=status.HTTP_200_OK)
+        if not token:
+            return none
+        session = sessions_collection.find_one({"token": token})
+        valid = bool(session) and (not session.get("expires_at") or session["expires_at"] > datetime.utcnow())
+        payload = None
+        if valid:
+            try:
+                payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            except jwt.PyJWTError:
+                valid = False
+        user = None
+        if valid:
+            query = {"email": payload.get("email"), "userType": payload.get("userType")}
+            if payload.get("hospitalName") and str(payload.get("userType")).lower() == "patient":
+                query["hospitalName"] = payload["hospitalName"]
+            user = users_collection.find_one(query)
+            valid = bool(user) and bool(user.get("is_active", False))
+        if not valid:
+            if session:
+                sessions_collection.delete_one({"token": token})
+            clear_session_cookie(none)
+            return none
+        return Response({"status": "success", "access": token, "userData": _user_data(user)}, status=status.HTTP_200_OK)
+
+
 class LogoutAPIView(generics.CreateAPIView):
     """
     User logout endpoint
@@ -472,9 +529,11 @@ class LogoutAPIView(generics.CreateAPIView):
         token = None
         if auth and auth.startswith("Bearer "):
             token = auth.split(" ", 1)[1].strip()
-        if token:
-            sessions_collection.delete_one({"token": token})
-        return Response({"status": "success", "message": "Logout successful"}, status=status.HTTP_200_OK)
+        for t in {token, request.COOKIES.get(settings.AUTH_COOKIE_NAME)} - {None, ""}:
+            sessions_collection.delete_one({"token": t})
+        response = Response({"status": "success", "message": "Logout successful"}, status=status.HTTP_200_OK)
+        clear_session_cookie(response)
+        return response
 
 
 

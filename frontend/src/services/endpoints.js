@@ -5,7 +5,9 @@
  * Falls back to localhost for local development.
  */
 
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000/api";
+// Default "/api": the site calls the API on its own address (dev: Vite proxy, production: Vercel
+// rewrite), so the httpOnly login session cookie is first-party.
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
 // ─────────────────────────────────────────────────────────────
 // ACCOUNTS  →  /api/accounts/
@@ -16,6 +18,8 @@ export const ACCOUNTS = {
     LOGIN:           `${API_BASE}/accounts/login/`,
     LOGOUT:          `${API_BASE}/accounts/logout/`,
     VERIFY:          `${API_BASE}/accounts/verify/`,
+    /** who is logged in on this browser (reads the httpOnly session cookie) */
+    SESSION:         `${API_BASE}/accounts/session/`,
     PROFILE_ME:      `${API_BASE}/accounts/profile/me/`,
     PROFILE_UPDATE:  `${API_BASE}/accounts/profile/me/update/`,
     PASSWORD_RESET_REQUEST: `${API_BASE}/accounts/password-reset/request/`,

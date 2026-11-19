@@ -17,7 +17,7 @@ const errorInputClass =
  */
 export default function SuperAdminLogin() {
   const navigate = useNavigate();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, authNotice } = useAuth();
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -58,6 +58,11 @@ export default function SuperAdminLogin() {
         </h2>
         <p className="text-sm text-gray-500 text-center mb-6">Manage all hospitals</p>
 
+        {authNotice && !error && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 mb-6">
+            <p className="text-yellow-800">{authNotice}</p>
+          </div>
+        )}
         {error && (
           <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
             <p className="text-red-700">{error}</p>

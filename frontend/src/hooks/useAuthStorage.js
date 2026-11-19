@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
  * Convenience wrapper so older components can keep their destructuring
  * without knowing about AuthContext directly.
  *
- * Data comes from AuthContext (React state, persisted per-tab in sessionStorage).
+ * Data comes from AuthContext (React state, server session, one login per browser).
  *
  * Usage:
  *   const { userType, email, name, hospitalName, token } = useAuthStorage();
