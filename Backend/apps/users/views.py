@@ -11,6 +11,10 @@ from backend.db import (
     notifications_collection,
 )
 from apps.appointments.models import NotificationDocument
+from apps.superadmin.invites import invite_user
+
+# Fields that must never be sent to the browser (password hash, codes, invitation token).
+HIDDEN_FIELDS = {"password": 0, "hpassword": 0, "otp": 0, "inviteTokenHash": 0, "inviteExpiresAt": 0}
 from apps.accounts.authentication import JWTAuthentication
 from .models import StaffDocument
 from .serializers import PatientCreateSerializer, DoctorStaffSerializer, DoctorApprovalSerializer, DoctorRejectSerializer
@@ -55,7 +59,7 @@ class DoctorListAPIView(APIView):
             if not is_admin_or_superadmin:
                 query["isApproved"] = True
             
-            doctors = list(staff_collection.find(query, {"password": 0, "otp": 0}))
+            doctors = list(staff_collection.find(query, HIDDEN_FIELDS))
             for doctor in doctors:
                 doctor["_id"] = str(doctor["_id"])
                 if "user_id" in doctor:
@@ -132,7 +136,7 @@ class DoctorDetailAPIView(APIView):
             return Response({"status": "error", "message": "Invalid doctor ID"}, status=status.HTTP_400_BAD_REQUEST)
         try:
             doctor = staff_collection.find_one(
-                {"_id": ObjectId(doctor_id), "role": "Doctor"}, {"password": 0, "otp": 0}
+                {"_id": ObjectId(doctor_id), "role": "Doctor"}, HIDDEN_FIELDS
             )
             if not doctor:
                 return Response({"status": "error", "message": "Doctor not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -320,7 +324,7 @@ class DoctorPendingListAPIView(APIView):
             if not hospitals_collection.find_one({"name": hospital_name}):
                 return Response({"status": "error", "message": f"Hospital '{hospital_name}' not found"}, status=status.HTTP_404_NOT_FOUND)
             query = {"userType": "Doctor", "isApproved": False, "hospitalName": hospital_name}
-            pending = list(users_collection.find(query, {"password": 0, "otp": 0}))
+            pending = list(users_collection.find(query, HIDDEN_FIELDS))
             for doctor in pending:
                 doctor["_id"] = str(doctor["_id"])
             return Response({
@@ -477,7 +481,7 @@ class DoctorByDepartmentAPIView(APIView):
             if not is_admin_or_superadmin:
                 query["isApproved"] = True
             
-            doctors = list(staff_collection.find(query, {"password": 0, "otp": 0}))
+            doctors = list(staff_collection.find(query, HIDDEN_FIELDS))
             for doctor in doctors:
                 doctor["_id"] = str(doctor["_id"])
                 if "user_id" in doctor:
@@ -514,7 +518,7 @@ class DoctorSearchAPIView(APIView):
             query = {"email": email, "role": "Doctor"}
             if hospital:
                 query["hospitalName"] = hospital
-            doctor = staff_collection.find_one(query, {"password": 0, "otp": 0})
+            doctor = staff_collection.find_one(query, HIDDEN_FIELDS)
             if not doctor:
                 return Response({"status": "error", "message": "Doctor not found"}, status=status.HTTP_404_NOT_FOUND)
             user_type = str(getattr(request.user, "userType", "") or "").strip().lower()
@@ -549,7 +553,7 @@ class PatientListAPIView(APIView):
             if not hospitals_collection.find_one({"name": hospital_name}):
                 return Response({"status": "error", "message": f"Hospital '{hospital_name}' not found"}, status=status.HTTP_404_NOT_FOUND)
             query = {"userType": "Patient", "hospitalName": hospital_name}
-            patients = list(users_collection.find(query, {"password": 0, "otp": 0}))
+            patients = list(users_collection.find(query, HIDDEN_FIELDS))
             for patient in patients:
                 patient["_id"] = str(patient["_id"])
             return Response({
@@ -575,8 +579,10 @@ class PatientListAPIView(APIView):
                 return Response({"status": "error", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
             data = serializer.validated_data
             email = data["email"].lower()
-            if users_collection.find_one({"email": email}):
-                return Response({"status": "error", "message": "Patient already exists"}, status=status.HTTP_400_BAD_REQUEST)
+            # one patient account per hospital (the same person may be a patient at another hospital)
+            if users_collection.find_one({"email": email, "userType": "Patient", "hospitalName": hospital_name}):
+                return Response({"status": "error", "message": "A patient with this email is already registered at this hospital."},
+                                status=status.HTTP_400_BAD_REQUEST)
             patient_doc = {
                 "email": email,
                 "name": data.get("name", ""),
@@ -586,13 +592,19 @@ class PatientListAPIView(APIView):
                 "dateOfBirth": data.get("dateOfBirth"),
                 "hospitalName": hospital_name,
                 "is_active": True,
-                "created_at": datetime.now()
+                "created_at": datetime.now(),
+                "createdBy": getattr(request.user, "email", None),
             }
             result = users_collection.insert_one(patient_doc)
+            patient_doc["_id"] = result.inserted_id
+            # no password yet: the patient gets an email link to set one, then can log in
+            invite = invite_user(patient_doc)
             return Response({
                 "status": "success",
-                "message": "Patient created successfully",
-                "patient_id": str(result.inserted_id)
+                "message": f"Patient registered. " + ("A set-password link was emailed to the patient."
+                                                       if invite["emailSent"] else "Email could not be sent — share the link below."),
+                "patient_id": str(result.inserted_id),
+                **invite,
             }, status=status.HTTP_201_CREATED)
         except Exception as e:
             logger.error("PatientListAPIView.post: %s", e, exc_info=True)
@@ -614,7 +626,7 @@ class PatientDetailAPIView(APIView):
             return Response({"status": "error", "message": "Invalid patient ID"}, status=status.HTTP_400_BAD_REQUEST)
         try:
             patient = users_collection.find_one(
-                {"_id": ObjectId(patient_id), "userType": "Patient"}, {"password": 0, "otp": 0}
+                {"_id": ObjectId(patient_id), "userType": "Patient"}, HIDDEN_FIELDS
             )
             if not patient:
                 return Response({"status": "error", "message": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -698,7 +710,7 @@ class PatientSearchAPIView(APIView):
             query = {"email": email, "userType": "Patient"}
             if hospital:
                 query["hospitalName"] = hospital
-            patient = users_collection.find_one(query, {"password": 0, "otp": 0})
+            patient = users_collection.find_one(query, HIDDEN_FIELDS)
             if not patient:
                 return Response({"status": "error", "message": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
             user_type = str(getattr(request.user, "userType", "") or "").strip().lower()
@@ -735,7 +747,7 @@ class PatientByDepartmentAPIView(APIView):
             }):
                 return Response({"status": "error", "message": f"Department '{department_name}' not found in hospital '{hospital_name}'"}, status=status.HTTP_404_NOT_FOUND)
             query = {"department": department_name, "userType": "Patient", "hospitalName": hospital_name}
-            patients = list(users_collection.find(query, {"password": 0, "otp": 0}))
+            patients = list(users_collection.find(query, HIDDEN_FIELDS))
             for patient in patients:
                 patient["_id"] = str(patient["_id"])
             return Response({

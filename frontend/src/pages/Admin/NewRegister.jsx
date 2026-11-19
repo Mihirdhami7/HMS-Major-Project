@@ -15,6 +15,7 @@ import {
 import { createRazorpayOrder, verifyRazorpayPayment } from "../../services/paymentService";
 import { doctorName } from "../../utils/format";
 import { usePublicSettings } from "../../hooks/usePublicSettings";
+import { InviteLinkBox } from "../SuperAdmin/SuperAdminUi";
 
 const RAZORPAY_SRC = "https://checkout.razorpay.com/v1/checkout.js";
 
@@ -129,6 +130,7 @@ const NewRegister = () => {
   const [formData, setFormData] = useState(emptyPatientForm);
   const [regMsg, setRegMsg] = useState({});
   const [regLoading, setRegLoading] = useState(false);
+  const [regInvite, setRegInvite] = useState(null); // set-password link of the new patient
 
   // Pending appointments + review
   const [pendingAppointments, setPendingAppointments] = useState([]);
@@ -164,6 +166,7 @@ const NewRegister = () => {
   const handlePatientSubmit = async (e) => {
     e.preventDefault();
     setRegMsg({});
+    setRegInvite(null);
     if (!hospitalName) {
       setRegMsg({ error: "No hospital is linked to this admin account." });
       return;
@@ -179,6 +182,10 @@ const NewRegister = () => {
     setRegLoading(false);
     if (result.success) {
       setRegMsg({ success: result.message || "Patient registered successfully!" });
+      // the patient sets a password through this link (also emailed), then can log in
+      if (result.data?.inviteLink) {
+        setRegInvite({ link: result.data.inviteLink, emailSent: !!result.data.emailSent, email: formData.email });
+      }
       setFormData(emptyPatientForm);
     } else {
       setRegMsg({ error: result.message });
@@ -593,6 +600,7 @@ const NewRegister = () => {
                   </div>
                 </div>
                 <Message {...regMsg} />
+                {regInvite && <InviteLinkBox {...regInvite} />}
                 <button
                   type="submit"
                   disabled={regLoading}

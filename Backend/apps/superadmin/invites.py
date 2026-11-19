@@ -1,6 +1,7 @@
 """
-Account invitations: the super admin creates a hospital admin or a supplier without a password;
-the person gets an email link to set their own password, then logs in normally.
+Account invitations: accounts created by someone else have no password — hospital admins and
+suppliers (created by the super admin) and patients (registered at a hospital's reception).
+The person gets an email link to set their own password, then logs in normally.
 
     create_invite(user_id)            -> link (the token is stored only as a SHA-256 hash, 3 days)
     send_invite_email(user, link)     -> True / False (False when the mailbox is not configured)
@@ -27,7 +28,7 @@ from backend.platform_settings import mail_configured
 
 logger = logging.getLogger(__name__)
 INVITE_DAYS = 3
-ROLE_LABEL = {"Admin": "hospital admin", "Supplier": "supplier"}
+ROLE_LABEL = {"Admin": "hospital admin", "Supplier": "supplier", "Patient": "patient"}
 
 
 def _hash(token):

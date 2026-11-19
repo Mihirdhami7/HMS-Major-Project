@@ -181,7 +181,8 @@ class ApproveProductView(APIView):
         product_oid = _parse_object_id(product_id, "productId")
         try:
             status_val = request.data.get("status")
-            user_id = request.data.get("approved_by", request.user.id if hasattr(request, 'user') else None)
+            # who approved: the logged-in admin's email (the JWT user object has no "id")
+            user_id = getattr(request.user, "email", None)
             
             if not status_val:
                 return Response({

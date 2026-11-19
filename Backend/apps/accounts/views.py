@@ -551,8 +551,8 @@ class GetUserProfileAPIView(generics.RetrieveAPIView):
         
         # Convert ObjectId to string and remove sensitive data
         user_doc["_id"] = str(user_doc["_id"])
-        user_doc.pop("hpassword", None)
-        user_doc.pop("password", None)
+        for secret in ("hpassword", "password", "inviteTokenHash", "inviteExpiresAt"):
+            user_doc.pop(secret, None)
 
         # doctors: department + roles come from the staff record (where admins assign them)
         if user_doc.get("userType") == "Doctor":
@@ -661,7 +661,8 @@ class UpdateUserProfileAPIView(generics.UpdateAPIView):
             
             # Remove sensitive data
             updated_user["_id"] = str(updated_user["_id"])
-            updated_user.pop("hpassword", None)
+            for secret in ("hpassword", "password", "inviteTokenHash", "inviteExpiresAt"):
+                updated_user.pop(secret, None)
             updated_user.pop("password", None)
             
             # Return all updated data
