@@ -84,6 +84,11 @@ const Products = () => {
   const [expanded, setExpanded] = useState(null);
   const [payingId, setPayingId] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
+  // new product review dialog
+  const [reviewProduct, setReviewProduct] = useState(null);
+  const [confirmReject, setConfirmReject] = useState(false);
+  const [deciding, setDeciding] = useState("");
+  const [reviewError, setReviewError] = useState("");
 
   const fetchProducts = useCallback(async () => {
     const result = await listProducts(token, hospitalName);
@@ -301,16 +306,33 @@ const Products = () => {
     fetchOrders();
   };
 
+  const openReview = (product) => {
+    setReviewProduct(product);
+    setConfirmReject(false);
+    setReviewError("");
+  };
+
   const handleApproveProduct = async (productId, status) => {
+    setDeciding(status);
+    setReviewError("");
     const result = await approveProduct(token, productId, { status });
+    setDeciding("");
     if (!result.success) {
-      setError(result.message);
+      setReviewError(result.message);
       return;
     }
     // Approved products move to the inventory; rejected ones are deleted by the backend.
+    const name = reviewProduct?.product_name || "Product";
     setNewProducts((prev) => prev.filter((p) => getId(p) !== productId));
+    setReviewProduct(null);
+    setNotice(status === "approved" ? `${name} approved and added to your inventory.` : `${name} rejected and removed.`);
     if (status === "approved") fetchProducts();
   };
+
+  // same product name already in this hospital's inventory (possible duplicate)
+  const sameNameInStock = reviewProduct
+    ? products.filter((p) => String(p.product_name || "").trim().toLowerCase() === String(reviewProduct.product_name || "").trim().toLowerCase())
+    : [];
 
   const v = (n) => (loading ? "…" : n);
 
@@ -634,7 +656,7 @@ const Products = () => {
 
           {/* ---------------- New products ---------------- */}
           {tab === "new" && (
-            <Card title="New products from suppliers" subtitle="Approve to add them to your inventory; rejected products are removed">
+            <Card title="New products from suppliers" subtitle="Open a product to review it, then approve it into your inventory or reject it">
               {newProducts.length === 0 ? (
                 <Empty text={loading ? "Loading…" : "No products waiting for approval."} />
               ) : (
@@ -647,25 +669,25 @@ const Products = () => {
                         <th className="py-2 pr-3 font-medium">Department</th>
                         <th className="py-2 pr-3 font-medium">Price / strip</th>
                         <th className="py-2 pr-3 font-medium">Stock</th>
-                        <th className="py-2 font-medium text-right">Decision</th>
+                        <th className="py-2 font-medium text-right">Review</th>
                       </tr>
                     </thead>
                     <tbody>
                       {newProducts.map((p) => (
-                        <tr key={getId(p)} className="border-b border-gray-100 last:border-0">
+                        <tr key={getId(p)} onClick={() => openReview(p)} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer">
                           <td className="py-2.5 pr-3">
                             <p className="font-medium text-gray-800">{p.product_name}</p>
-                            <p className="text-xs text-gray-500">{p.product_type}{p.description ? ` · ${p.description}` : ""}</p>
+                            <p className="text-xs text-gray-500">{p.product_type}</p>
                           </td>
                           <td className="py-2.5 pr-3 text-gray-700">{p.supplier_company}</td>
                           <td className="py-2.5 pr-3 text-gray-700">{p.department || "General"}</td>
                           <td className="py-2.5 pr-3 text-gray-700">₹{p.price_per_strip}</td>
                           <td className="py-2.5 pr-3 text-gray-700">{p.stock}</td>
                           <td className="py-2.5 text-right whitespace-nowrap">
-                            <span className="inline-flex gap-2">
-                              <button onClick={() => handleApproveProduct(getId(p), "approved")} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100">Approve</button>
-                              <button onClick={() => handleApproveProduct(getId(p), "rejected")} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">Reject</button>
-                            </span>
+                            <button onClick={(e) => { e.stopPropagation(); openReview(p); }}
+                              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100">
+                              View
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -677,6 +699,74 @@ const Products = () => {
           )}
         </div>
       </div>
+
+      {/* Review a new product */}
+      {reviewProduct && (
+        <Modal
+          title={reviewProduct.product_name}
+          subtitle={`${reviewProduct.product_type || "Product"} · from ${reviewProduct.supplier_company || "supplier"}`}
+          onClose={() => setReviewProduct(null)}
+          size="max-w-xl"
+          footer={confirmReject ? (
+            <>
+              <span className="mr-auto text-sm text-red-700 self-center">Reject and remove this product?</span>
+              <button onClick={() => setConfirmReject(false)} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Back</button>
+              <button onClick={() => handleApproveProduct(getId(reviewProduct), "rejected")} disabled={!!deciding}
+                className="px-4 py-2 rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60">
+                {deciding === "rejected" ? "Rejecting..." : "Yes, reject"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => setReviewProduct(null)} className="mr-auto px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Close</button>
+              <button onClick={() => setConfirmReject(true)} disabled={!!deciding}
+                className="px-4 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 font-medium disabled:opacity-60">
+                Reject
+              </button>
+              <button onClick={() => handleApproveProduct(getId(reviewProduct), "approved")} disabled={!!deciding}
+                className="px-4 py-2 rounded-lg text-white bg-green-600 hover:bg-green-700 font-medium disabled:opacity-60 inline-flex items-center gap-2">
+                <FiCheck /> {deciding === "approved" ? "Approving..." : "Approve"}
+              </button>
+            </>
+          )}
+        >
+          <div className="space-y-4 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {[
+                ["Supplier", reviewProduct.supplier_company || "—"],
+                ["Department", reviewProduct.department || "General"],
+                ["Type", reviewProduct.product_type || "—"],
+                ["Price / strip", `₹${reviewProduct.price_per_strip}`],
+                ["Stock offered", `${reviewProduct.stock ?? 0} strips`],
+                ["Stock value", money((Number(reviewProduct.stock) || 0) * (Number(reviewProduct.price_per_strip) || 0))],
+                ["Expiry date", reviewProduct.expiry_date ? formatDate(reviewProduct.expiry_date) : "—"],
+                ["Submitted", reviewProduct.created_at ? formatDate(reviewProduct.created_at) : "—"],
+                ["Hospital", reviewProduct.hospitalName || hospitalName],
+              ].map(([k, val]) => (
+                <div key={k} className="rounded-xl bg-gray-50 px-3 py-2">
+                  <p className="text-xs text-gray-500">{k}</p>
+                  <p className="font-medium text-gray-800 break-words">{val}</p>
+                </div>
+              ))}
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Description</p>
+              <p className="text-gray-700 rounded-xl border border-gray-100 p-3 min-h-[3rem]">{reviewProduct.description || "No description given."}</p>
+            </div>
+            {sameNameInStock.length > 0 && (
+              <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-yellow-800">
+                ⚠️ Your inventory already has <b>{reviewProduct.product_name}</b>
+                {" "}({sameNameInStock.map((x) => `${x.supplier_company}, ₹${x.price_per_strip}, stock ${x.stock}`).join("; ")}).
+                Approving adds it as a separate product.
+              </div>
+            )}
+            <p className="text-xs text-gray-500">
+              Approve: the product is added to your inventory and can be ordered and dispensed. Reject: the product is removed.
+            </p>
+            {reviewError && <div className="p-3 rounded-lg bg-red-50 text-red-700">{reviewError}</div>}
+          </div>
+        </Modal>
+      )}
 
       {cancelTarget && (
         <Modal
