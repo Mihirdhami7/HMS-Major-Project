@@ -8,6 +8,8 @@ import { registerUser, verifyEmail } from "../../services/authService";
 import { useHospitals } from "../../hooks/useHospitals";
 import AuthLayout from "../../components/auth/AuthLayout";
 import { IconInput, PasswordInput, IconSelect, FieldShell, AuthMessage } from "../../components/auth/AuthFields";
+import AlreadyLoggedIn from "../../components/auth/AlreadyLoggedIn";
+import { useAuth } from "../../context/AuthContext";
 
 // Roles offered on public signup. Hospital admins are added only by the super admin (email link);
 // suppliers can sign up here or be added by the super admin.
@@ -63,6 +65,7 @@ Section.propTypes = { title: PropTypes.string.isRequired, children: PropTypes.no
 
 export default function Signup() {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [step, setStep] = useState("registration"); // registration, verification
   // Real hospitals from the backend (public endpoint). The user selects, never types.
   const { hospitals, loading: hospitalsLoading } = useHospitals();
@@ -270,6 +273,15 @@ export default function Signup() {
             {submitting ? "Verifying..." : "Verify email"}
           </button>
         </form>
+      </AuthLayout>
+    );
+  }
+
+  // someone is logged in on this tab: log out first, then create a new account
+  if (isAuthenticated) {
+    return (
+      <AuthLayout title="Create your account" subtitle="Join EasyTreat as a patient, a doctor or a supplier.">
+        <AlreadyLoggedIn action="create a new account" />
       </AuthLayout>
     );
   }

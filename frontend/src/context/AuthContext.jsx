@@ -72,10 +72,12 @@ export const AuthProvider = ({ children }) => {
      */
     const login = useCallback((accessToken, userData) => {
         const normalized = normalizeUser(userData);
+        // a different account logged in on this tab -> end its session on the server
+        if (token && token !== accessToken) logoutUser(token);
         setToken(accessToken);
         setUser(normalized);
         writeStored({ token: accessToken, user: normalized });
-    }, []);
+    }, [token]);
 
     /** Re-check the current token with the backend. Returns true when still valid. */
     const verify = useCallback(async (tokenToCheck) => {

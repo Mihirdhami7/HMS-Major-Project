@@ -84,7 +84,11 @@ export const handleRequest = async (requestFn) => {
         };
     } catch (err) {
         const status = err.response?.status || null;
-        if (status === 401 && unauthorizedHandler) {
+        // 401 = the saved session is no longer valid -> log out. Not for login / password pages:
+        // a wrong password there must not log out the account that is already logged in.
+        const url = String(err.config?.url || "");
+        const isAuthAttempt = /\/accounts\/(login|register|verify-email|set-password|password-reset)\//.test(url);
+        if (status === 401 && unauthorizedHandler && !isAuthAttempt) {
             unauthorizedHandler();
         }
         const message = err.response

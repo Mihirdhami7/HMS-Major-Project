@@ -7,6 +7,7 @@ import { useHospitals } from "../../hooks/useHospitals";
 import { LOGIN_ROLES, homeForRole, roleNeedsHospital } from "../../constants/roles";
 import AuthLayout from "../../components/auth/AuthLayout";
 import { IconInput, PasswordInput, IconSelect, AuthMessage } from "../../components/auth/AuthFields";
+import AlreadyLoggedIn from "../../components/auth/AlreadyLoggedIn";
 
 // Which inputs to highlight for each kind of login error (field comes from the backend).
 const FIELDS_FOR_ERROR = {
@@ -20,7 +21,7 @@ const ROLE_ICONS = { Patient: "🧑", Doctor: "🩺", Admin: "🏥", Supplier: "
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   // Real hospital list from the backend (public endpoint). The user only selects, never types.
   const { hospitals, loading: hospitalsLoading, error: hospitalsError } = useHospitals();
   const notice = location.state?.notice;
@@ -105,6 +106,7 @@ export default function Login() {
       {notice && !error && <AuthMessage tone="success">{notice}</AuthMessage>}
       {error && <AuthMessage tone="error">{error}</AuthMessage>}
 
+      {isAuthenticated ? <AlreadyLoggedIn /> : (
       <form className="space-y-5" onSubmit={handleSubmit}>
         {/* Role */}
         <div>
@@ -190,6 +192,7 @@ export default function Login() {
           {loading ? "Logging in..." : "Log in"}
         </button>
       </form>
+      )}
     </AuthLayout>
   );
 }

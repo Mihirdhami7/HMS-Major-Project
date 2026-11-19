@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { loginUser } from "../../services/authService";
 import { homeForRole, isRole, ROLES } from "../../constants/roles";
+import AlreadyLoggedIn from "../../components/auth/AlreadyLoggedIn";
 
 const inputClass =
   "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500";
@@ -16,7 +17,7 @@ const errorInputClass =
  */
 export default function SuperAdminLogin() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -63,6 +64,9 @@ export default function SuperAdminLogin() {
           </div>
         )}
 
+        {isAuthenticated ? (
+          <AlreadyLoggedIn action="log in as super admin" />
+        ) : (
         <form className="space-y-6" onSubmit={handleSubmit}>
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
@@ -100,6 +104,7 @@ export default function SuperAdminLogin() {
             {loading ? "Logging in..." : "Login"}
           </button>
         </form>
+        )}
       </div>
     </div>
   );
