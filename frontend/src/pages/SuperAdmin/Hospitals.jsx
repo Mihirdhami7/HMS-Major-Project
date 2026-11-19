@@ -13,7 +13,7 @@ import { KpiCard, InviteLinkBox, AccountStatus } from "./SuperAdminUi";
 import { AXIS, GRID, CURSOR } from "./superAdminConfig";
 
 const emptyHospital = { name: "", description: "", address: "", contactNo: "" };
-const emptyAdmin = { name: "", email: "", contactNo: "", hospitalName: "" };
+const emptyAdmin = { name: "", email: "", contactNo: "", gender: "", dateOfBirth: "", hospitalName: "" };
 
 function Stat({ label, value, warn = false }) {
   return (
@@ -109,8 +109,18 @@ export default function Hospitals() {
   // ---------- admin
   const saveAdmin = () => {
     const f = adminForm;
-    if (!f.name.trim() || !f.email.trim() || !f.hospitalName) {
-      setFormError("Name, email and hospital are required.");
+    if (!f.hospitalName || !f.name.trim() || !f.email.trim() || !f.contactNo.trim() || !f.gender || !f.dateOfBirth) {
+      setFormError("Hospital, full name, email, contact number, gender and date of birth are required.");
+      return;
+    }
+    const born = new Date(`${f.dateOfBirth}T00:00:00`);
+    const adult = new Date(born.getFullYear() + 18, born.getMonth(), born.getDate()) <= new Date();
+    if (!adult) {
+      setFormError("A hospital admin must be at least 18 years old.");
+      return;
+    }
+    if (!/^\d{10}$/.test(f.contactNo.trim())) {
+      setFormError("Contact number must be exactly 10 digits.");
       return;
     }
     run(() => createSaAdmin(token, f), (data) => {
@@ -354,7 +364,7 @@ export default function Hospitals() {
         >
           <div className="space-y-4">
             <div>
-              <label className={labelClass} htmlFor="h-name">Hospital name *</label>
+              <label className={labelClass} htmlFor="h-name">Hospital name<span className="text-red-500"> *</span></label>
               <input id="h-name" className={inputClass} value={hospitalForm.name} disabled={hospitalForm.locked}
                 onChange={(e) => setHospitalForm({ ...hospitalForm, name: e.target.value })} />
               {hospitalForm.locked && <p className="text-xs text-gray-400 mt-1">The name cannot change once the hospital has staff or data.</p>}
@@ -395,26 +405,43 @@ export default function Hospitals() {
         >
           <div className="space-y-4">
             <div>
-              <label className={labelClass} htmlFor="a-hospital">Hospital *</label>
+              <label className={labelClass} htmlFor="a-hospital">Hospital<span className="text-red-500"> *</span></label>
               <select id="a-hospital" className={inputClass} value={adminForm.hospitalName} onChange={(e) => setAdminForm({ ...adminForm, hospitalName: e.target.value })}>
                 <option value="">Select hospital</option>
                 {hospitals.map((h) => <option key={h.id} value={h.name}>{h.name}</option>)}
               </select>
             </div>
             <div>
-              <label className={labelClass} htmlFor="a-name">Full name *</label>
+              <label className={labelClass} htmlFor="a-name">Full name<span className="text-red-500"> *</span></label>
               <input id="a-name" className={inputClass} value={adminForm.name} onChange={(e) => setAdminForm({ ...adminForm, name: e.target.value })} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className={labelClass} htmlFor="a-email">Email *</label>
+                <label className={labelClass} htmlFor="a-email">Email<span className="text-red-500"> *</span></label>
                 <input id="a-email" type="email" className={inputClass} value={adminForm.email} onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })} />
               </div>
               <div>
-                <label className={labelClass} htmlFor="a-contact">Contact number</label>
+                <label className={labelClass} htmlFor="a-contact">Contact number<span className="text-red-500"> *</span></label>
                 <input id="a-contact" className={inputClass} value={adminForm.contactNo} placeholder="10 digits" onChange={(e) => setAdminForm({ ...adminForm, contactNo: e.target.value })} />
               </div>
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelClass} htmlFor="a-gender">Gender<span className="text-red-500"> *</span></label>
+                <select id="a-gender" className={inputClass} value={adminForm.gender} onChange={(e) => setAdminForm({ ...adminForm, gender: e.target.value })}>
+                  <option value="">Select gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass} htmlFor="a-dob">Date of birth<span className="text-red-500"> *</span></label>
+                <input id="a-dob" type="date" className={inputClass} value={adminForm.dateOfBirth} max={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setAdminForm({ ...adminForm, dateOfBirth: e.target.value })} />
+              </div>
+            </div>
+            <p className="text-xs text-gray-400">Fields marked <span className="text-red-500">*</span> are required. The admin sets their own password from the email link.</p>
             {formError && <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm">{formError}</div>}
           </div>
         </Modal>

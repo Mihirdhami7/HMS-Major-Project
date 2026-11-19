@@ -574,20 +574,20 @@ const NewRegister = () => {
               <p className="text-xs text-gray-500 mb-4">Walk-in patient registration for {hospitalName}</p>
               <form onSubmit={handlePatientSubmit} className="space-y-3">
                 <div>
-                  <label className={labelClass}>Full Name</label>
+                  <label className={labelClass}>Full Name<span className="text-red-500"> *</span></label>
                   <input type="text" name="name" value={formData.name} onChange={handleChange} className={inputClass} required />
                 </div>
                 <div>
-                  <label className={labelClass}>Email</label>
+                  <label className={labelClass}>Email<span className="text-red-500"> *</span></label>
                   <input type="email" name="email" value={formData.email} onChange={handleChange} className={inputClass} required />
                 </div>
                 <div>
-                  <label className={labelClass}>Contact Number</label>
+                  <label className={labelClass}>Contact Number<span className="text-red-500"> *</span></label>
                   <input type="tel" name="contactNo" value={formData.contactNo} onChange={handleChange} className={inputClass} required />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={labelClass}>Gender</label>
+                    <label className={labelClass}>Gender<span className="text-red-500"> *</span></label>
                     <select name="gender" value={formData.gender} onChange={handleChange} className={inputClass}>
                       <option value="Male">Male</option>
                       <option value="Female">Female</option>
@@ -595,7 +595,7 @@ const NewRegister = () => {
                     </select>
                   </div>
                   <div>
-                    <label className={labelClass}>Date of Birth</label>
+                    <label className={labelClass}>Date of Birth<span className="text-red-500"> *</span></label>
                     <input type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={handleChange} className={inputClass} required />
                   </div>
                 </div>
@@ -769,7 +769,7 @@ const NewRegister = () => {
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-4">
                 <div>
-                  <label className={labelClass}>Patient Email</label>
+                  <label className={labelClass}>Patient Email<span className="text-red-500"> *</span></label>
                   <div className="flex gap-2">
                     <input
                       type="email"
@@ -799,7 +799,7 @@ const NewRegister = () => {
                   </div>
                 )}
                 <div>
-                  <label className={labelClass}>Department</label>
+                  <label className={labelClass}>Department<span className="text-red-500"> *</span></label>
                   <select
                     value={newAppointmentData.department}
                     onChange={(e) => setNewAppointmentData((prev) => ({ ...prev, department: e.target.value, doctorEmail: "" }))}
@@ -813,7 +813,7 @@ const NewRegister = () => {
                   </select>
                 </div>
                 <div>
-                  <label className={labelClass}>Doctor</label>
+                  <label className={labelClass}>Doctor<span className="text-red-500"> *</span></label>
                   <select
                     value={newAppointmentData.doctorEmail}
                     onChange={(e) => setNewAppointmentData((prev) => ({ ...prev, doctorEmail: e.target.value }))}
@@ -834,7 +834,7 @@ const NewRegister = () => {
 
               <div className="space-y-4">
                 <div>
-                  <label className={labelClass}>Appointment Date</label>
+                  <label className={labelClass}>Appointment Date<span className="text-red-500"> *</span></label>
                   <input
                     type="date"
                     value={newAppointmentData.appointmentDate}
@@ -844,7 +844,7 @@ const NewRegister = () => {
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>Appointment Time</label>
+                  <label className={labelClass}>Appointment Time<span className="text-red-500"> *</span></label>
                   <input
                     type="time"
                     value={newAppointmentData.appointmentTime}

@@ -13,8 +13,11 @@ class PatientCreateSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     name = serializers.CharField(max_length=100, required=True)
     contactNo = serializers.CharField(max_length=15, required=True)
-    gender = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    dateOfBirth = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    # same required details as a patient's own sign-up (password is set later through the email link)
+    gender = serializers.ChoiceField(choices=["Male", "Female", "Other"], required=True,
+                                     error_messages={"required": "Gender is required.", "invalid_choice": "Gender is required."})
+    dateOfBirth = serializers.CharField(required=True, allow_blank=False,
+                                        error_messages={"required": "Date of birth is required.", "blank": "Date of birth is required."})
 
     def validate_email(self, value):
         return value.strip().lower()

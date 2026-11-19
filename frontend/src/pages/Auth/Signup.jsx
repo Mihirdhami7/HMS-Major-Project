@@ -291,7 +291,7 @@ export default function Signup() {
     <AuthLayout
       wide
       title="Create your account"
-      subtitle="Join EasyTreat as a patient, a doctor or a supplier."
+      subtitle={<>Join EasyTreat as a patient, a doctor or a supplier. Fields marked <span className="text-red-500">*</span> are required.</>}
       footer={<>Already have an account?{" "}<Link to="/login" className="text-blue-600 hover:text-blue-800 font-semibold">Log in</Link></>}
     >
       {message && <AuthMessage tone={isError ? "error" : "success"}>{message}</AuthMessage>}
@@ -325,23 +325,23 @@ export default function Signup() {
 
         <Section title="Account">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <IconInput id="name" name="name" label="Full name" icon={FiUser} placeholder="Your name"
+            <IconInput required id="name" name="name" label="Full name" icon={FiUser} placeholder="Your name"
               value={formData.name} onChange={handleChange} error={errors.name} />
-            <IconInput id="email" name="email" type="email" label="Email address" icon={FiMail} placeholder="you@example.com"
+            <IconInput required id="email" name="email" type="email" label="Email address" icon={FiMail} placeholder="you@example.com"
               autoComplete="email" value={formData.email} onChange={handleChange} error={errors.email} />
-            <PasswordInput id="password" name="password" label="Password" icon={FiLock} autoComplete="new-password"
+            <PasswordInput required id="password" name="password" label="Password" icon={FiLock} autoComplete="new-password"
               value={formData.password} onChange={handleChange} error={errors.password}
               hint="8+ characters with upper & lower case, a number and a symbol" />
-            <PasswordInput id="confirmPassword" name="confirmPassword" label="Confirm password" icon={FiLock} autoComplete="new-password"
+            <PasswordInput required id="confirmPassword" name="confirmPassword" label="Confirm password" icon={FiLock} autoComplete="new-password"
               value={formData.confirmPassword} onChange={handleChange} error={errors.confirmPassword} />
           </div>
         </Section>
 
         <Section title="Personal details">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <IconInput id="contactNo" name="contactNo" type="tel" label="Contact number" icon={FiPhone} placeholder="10 digits"
+            <IconInput required id="contactNo" name="contactNo" type="tel" label="Contact number" icon={FiPhone} placeholder="10 digits"
               value={formData.contactNo} onChange={handleChange} error={errors.contactNo} />
-            <FieldShell label={isSupplier ? "Date of birth (optional)" : "Date of birth"} htmlFor="dateOfBirth" icon={FiCalendar} error={errors.dateOfBirth}>
+            <FieldShell label={isSupplier ? "Date of birth (optional)" : "Date of birth"} required={!isSupplier} htmlFor="dateOfBirth" icon={FiCalendar} error={errors.dateOfBirth}>
               <DatePicker
                 id="dateOfBirth"
                 selected={formData.dateOfBirth}
@@ -356,7 +356,7 @@ export default function Signup() {
                 yearDropdownItemNumber={100}
               />
             </FieldShell>
-            <IconSelect id="gender" name="gender" label="Gender" icon={FiUser} value={formData.gender} onChange={handleChange} error={errors.gender}>
+            <IconSelect required={!isSupplier} id="gender" name="gender" label="Gender" icon={FiUser} value={formData.gender} onChange={handleChange} error={errors.gender}>
               <option value="Male">Male</option>
               <option value="Female">Female</option>
               <option value="Other">Other</option>
@@ -370,7 +370,7 @@ export default function Signup() {
         {needsHospital && (
         <Section title="Hospital">
           <IconSelect
-            id="hospitalName" name="hospitalName" label="Hospital" icon={FiHome}
+            required id="hospitalName" name="hospitalName" label="Hospital" icon={FiHome}
             value={formData.hospitalName} onChange={handleChange} error={errors.hospitalName}
             disabled={hospitalsLoading || hospitals.length === 0}
             hint={formData.userType === "Patient" && formData.hospitalName
@@ -388,10 +388,10 @@ export default function Signup() {
         {isSupplier && (
           <Section title="Company">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <IconInput id="companyName" name="companyName" label="Company name" icon={FiBriefcase}
+              <IconInput required id="companyName" name="companyName" label="Company name" icon={FiBriefcase}
                 placeholder="e.g. MedPlus Supply" value={formData.companyName} onChange={handleChange} error={errors.companyName}
                 hint="Use the exact name hospitals know you by — your products and orders are linked to it." />
-              <FieldShell label="Company starting date" htmlFor="companyStartingDate" icon={FiCalendar} error={errors.companyStartingDate}>
+              <FieldShell label="Company starting date" required htmlFor="companyStartingDate" icon={FiCalendar} error={errors.companyStartingDate}>
                 <DatePicker
                   id="companyStartingDate"
                   selected={formData.companyStartingDate}
@@ -407,7 +407,7 @@ export default function Signup() {
                 />
               </FieldShell>
             </div>
-            <FieldShell label="Company license (PDF)" htmlFor="companyLicense" error={errors.companyLicense}>
+            <FieldShell label="Company license (PDF)" required htmlFor="companyLicense" error={errors.companyLicense}>
               <input id="companyLicense" type="file" name="companyLicense" accept="application/pdf" className={fileInputClass} onChange={handleFileChange} />
             </FieldShell>
           </Section>
@@ -416,12 +416,12 @@ export default function Signup() {
         {isDoctor && (
           <Section title="Doctor details">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <IconInput id="doctorQualification" name="doctorQualification" label="Qualification" icon={FiAward}
+              <IconInput required id="doctorQualification" name="doctorQualification" label="Qualification" icon={FiAward}
                 placeholder="e.g. MBBS, MD" value={formData.doctorQualification} onChange={handleChange} error={errors.doctorQualification} />
-              <IconInput id="doctorSpecialization" name="doctorSpecialization" label="Specialization / department" icon={FiActivity}
+              <IconInput required id="doctorSpecialization" name="doctorSpecialization" label="Specialization / department" icon={FiActivity}
                 placeholder="e.g. Cardiology" value={formData.doctorSpecialization} onChange={handleChange} error={errors.doctorSpecialization} />
             </div>
-            <FieldShell label="Qualification certificate (PDF)" htmlFor="doctorCertificate" error={errors.doctorCertificate}>
+            <FieldShell label="Qualification certificate (PDF)" required htmlFor="doctorCertificate" error={errors.doctorCertificate}>
               <input id="doctorCertificate" type="file" name="doctorCertificate" accept="application/pdf" className={fileInputClass} onChange={handleFileChange} />
             </FieldShell>
           </Section>

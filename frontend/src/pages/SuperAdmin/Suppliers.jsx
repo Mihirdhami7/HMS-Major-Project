@@ -11,7 +11,8 @@ import { money, PAGE_FRAME, inputClass, labelClass } from "../Supplier/supplierU
 import { KpiCard, PeriodTabs, InviteLinkBox, AccountStatus } from "./SuperAdminUi";
 import { AXIS, GRID, CURSOR, ORDER_STATUS, fmtDate } from "./superAdminConfig";
 
-const emptySupplier = { companyName: "", name: "", email: "", contactNo: "" };
+const emptySupplier = { companyName: "", name: "", email: "", contactNo: "", companyStartingDate: "", companyLicense: null };
+const MAX_LICENSE_MB = 5;
 const ORDER_LABEL = Object.fromEntries(ORDER_STATUS.map((s) => [s.key, s.label]));
 const ORDER_STYLE = {
   requested: "bg-yellow-100 text-yellow-800",
@@ -62,11 +63,27 @@ export default function Suppliers() {
   };
 
   const saveSupplier = () => {
-    if (!form.companyName.trim() || !form.name.trim() || !form.email.trim()) {
-      setFormError("Company, contact name and email are required.");
+    if (!form.companyName.trim() || !form.name.trim() || !form.email.trim() || !form.contactNo.trim()
+      || !form.companyStartingDate || !form.companyLicense) {
+      setFormError("Company name, contact person, email, contact number, company starting date and company license are required.");
       return;
     }
-    run(() => createSaSupplier(token, form), (d) => {
+    if (!/\.pdf$/i.test(form.companyLicense.name) && form.companyLicense.type !== "application/pdf") {
+      setFormError("Company license must be a PDF file.");
+      return;
+    }
+    if (form.companyLicense.size > MAX_LICENSE_MB * 1024 * 1024) {
+      setFormError(`Company license must be ${MAX_LICENSE_MB} MB or smaller.`);
+      return;
+    }
+    if (!/^\d{10}$/.test(form.contactNo.trim())) {
+      setFormError("Contact number must be exactly 10 digits.");
+      return;
+    }
+    const payload = new FormData();
+    ["companyName", "name", "email", "contactNo", "companyStartingDate"].forEach((k) => payload.append(k, String(form[k]).trim()));
+    payload.append("companyLicense", form.companyLicense);
+    run(() => createSaSupplier(token, payload), (d) => {
       setForm(null);
       setNotice({ text: d.message, invite: { link: d.inviteLink, emailSent: d.emailSent, email: form.email } });
     });
@@ -296,24 +313,37 @@ export default function Suppliers() {
         >
           <div className="space-y-4">
             <div>
-              <label className={labelClass} htmlFor="s-company">Company name *</label>
+              <label className={labelClass} htmlFor="s-company">Company name<span className="text-red-500"> *</span></label>
               <input id="s-company" className={inputClass} value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} />
               <p className="text-xs text-gray-400 mt-1">Must match the company name on its products, so its orders link up.</p>
             </div>
             <div>
-              <label className={labelClass} htmlFor="s-name">Contact person *</label>
+              <label className={labelClass} htmlFor="s-name">Contact person<span className="text-red-500"> *</span></label>
               <input id="s-name" className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className={labelClass} htmlFor="s-email">Email *</label>
+                <label className={labelClass} htmlFor="s-email">Email<span className="text-red-500"> *</span></label>
                 <input id="s-email" type="email" className={inputClass} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
               </div>
               <div>
-                <label className={labelClass} htmlFor="s-contact">Contact number</label>
+                <label className={labelClass} htmlFor="s-contact">Contact number<span className="text-red-500"> *</span></label>
                 <input id="s-contact" className={inputClass} value={form.contactNo} placeholder="10 digits" onChange={(e) => setForm({ ...form, contactNo: e.target.value })} />
               </div>
             </div>
+            <div>
+              <label className={labelClass} htmlFor="s-started">Company starting date<span className="text-red-500"> *</span></label>
+              <input id="s-started" type="date" className={inputClass} value={form.companyStartingDate} max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setForm({ ...form, companyStartingDate: e.target.value })} />
+            </div>
+            <div>
+              <label className={labelClass} htmlFor="s-license">Company license (PDF)<span className="text-red-500"> *</span></label>
+              <input id="s-license" type="file" accept="application/pdf,.pdf"
+                className="block w-full text-sm text-gray-600 border border-gray-300 rounded-lg p-1.5 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-blue-50 file:text-blue-700 file:font-medium hover:file:bg-blue-100"
+                onChange={(e) => setForm({ ...form, companyLicense: e.target.files?.[0] || null })} />
+              <p className="text-xs text-gray-400 mt-1">PDF, up to {MAX_LICENSE_MB} MB.</p>
+            </div>
+            <p className="text-xs text-gray-400">Fields marked <span className="text-red-500">*</span> are required. The contact person sets their own password from the email link.</p>
             {formError && <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm">{formError}</div>}
           </div>
         </Modal>

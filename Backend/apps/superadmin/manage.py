@@ -6,12 +6,13 @@ Super admin management: hospitals, hospital admins and suppliers.
     PATCH  /api/superadmin/hospitals/<id>/               edit details (rename only while it has no data)
     DELETE /api/superadmin/hospitals/<id>/               only while it has no data
 
-    POST   /api/superadmin/admins/                       {name, email, contactNo, hospitalName} -> invite link
+    POST   /api/superadmin/admins/                       {name, email, contactNo, gender, dateOfBirth, hospitalName} -> invite link
     PATCH  /api/superadmin/admins/<id>/                  {hospitalName?, name?, contactNo?, active?}
     POST   /api/superadmin/admins/<id>/invite/           new "set your password" link
 
     GET    /api/superadmin/suppliers/?period=...         suppliers with products, orders, payments + charts
-    POST   /api/superadmin/suppliers/                    {name, email, contactNo, companyName} -> invite link
+    POST   /api/superadmin/suppliers/                    multipart: name, email, contactNo, companyName,
+                                                         companyStartingDate, companyLicense (PDF) -> invite link
     PATCH  /api/superadmin/suppliers/<id>/               {name?, contactNo?, active?}
     DELETE /api/superadmin/suppliers/<id>/               only without products / orders
     POST   /api/superadmin/suppliers/<id>/invite/
@@ -35,6 +36,7 @@ from backend.db import (
     appointments_collection, departments_collection, hospitals_collection, orders_collection, products_collection,
     sessions_collection, staff_collection, users_collection,
 )
+from apps.accounts.models import UserDocument
 from .invites import invite_user
 from .periods import PERIODS, PERIOD_LABELS, bucket_index, buckets, day_of, in_range, period_range
 from .views import booking_fees, pharmacy_bills
@@ -83,7 +85,22 @@ def _account(u):
     }
 
 
-def _new_account(data, user_type, created_by, extra):
+MAX_LICENSE_BYTES = 5 * 1024 * 1024
+
+
+def _check_license(file_obj):
+    """Company license upload: required, PDF, at most 5 MB. Returns an error message or None."""
+    if not file_obj:
+        return "Company license (PDF) is required."
+    name = str(getattr(file_obj, "name", "") or "").lower()
+    if not name.endswith(".pdf") and getattr(file_obj, "content_type", "") != "application/pdf":
+        return "Company license must be a PDF file."
+    if getattr(file_obj, "size", 0) > MAX_LICENSE_BYTES:
+        return "Company license must be 5 MB or smaller."
+    return None
+
+
+def _new_account(data, user_type, created_by, extra, files=None):
     """Validate + insert an account without a password; returns (user, error_message)."""
     name = str(data.get("name") or "").strip()
     email = str(data.get("email") or "").strip().lower()
@@ -97,10 +114,42 @@ def _new_account(data, user_type, created_by, extra):
         contact = _clean_contact(data.get("contactNo"))
     except ValueError as exc:
         return None, str(exc)
+    if not contact:
+        return None, "Contact number is required."
+    extra = dict(extra)
+    if user_type == "Admin":
+        gender = str(data.get("gender") or "").strip()
+        if gender not in ("Male", "Female", "Other"):
+            return None, "Gender is required."
+        extra["gender"] = gender
+        born = str(data.get("dateOfBirth") or "").strip()[:10]
+        try:
+            birth = datetime.strptime(born, "%Y-%m-%d").date()
+        except ValueError:
+            return None, "Date of birth is required."
+        today = datetime.utcnow().date()
+        if (today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))) < 18:
+            return None, "A hospital admin must be at least 18 years old."
+        extra["dateOfBirth"] = born
+    if user_type == "Supplier":
+        started = str(data.get("companyStartingDate") or "").strip()[:10]
+        try:
+            if datetime.strptime(started, "%Y-%m-%d").date() > datetime.utcnow().date():
+                return None, "Company starting date cannot be in the future."
+        except ValueError:
+            return None, "Company starting date is required."
+        extra["companyStartingDate"] = started
+        license_error = _check_license((files or {}).get("companyLicense"))
+        if license_error:
+            return None, license_error
     now = datetime.utcnow()
     user = {"email": email, "name": name, "contactNo": contact, "userType": user_type, "is_active": False,
             "created_at": now, "updated_at": now, "createdBy": created_by, **extra}
     user["_id"] = users_collection.insert_one(user).inserted_id
+    if user_type == "Supplier":  # same storage as a supplier's own sign-up
+        license_url = UserDocument._save_file(email, "licenses", files["companyLicense"])
+        users_collection.update_one({"_id": user["_id"]}, {"$set": {"companyLicense": license_url}})
+        user["companyLicense"] = license_url
     return user, None
 
 
@@ -409,7 +458,7 @@ class SuppliersView(APIView):
                                       "companyName": {"$regex": f"^{re.escape(company)}$", "$options": "i"}}):
             return _err("A supplier account for this company already exists.")
         user, error = _new_account(request.data, "Supplier", getattr(request.user, "email", None),
-                                   {"companyName": company, "hospitalNames": []})
+                                   {"companyName": company, "hospitalNames": []}, files=request.FILES)
         if error:
             return _err(error)
         result = invite_user(user)

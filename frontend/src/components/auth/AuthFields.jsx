@@ -10,10 +10,14 @@ const bad = "border-red-400 bg-red-50 focus:ring-red-400 focus:border-red-400";
 
 const fieldClass = (hasError, withIcon = true) => `${base} ${withIcon ? "pl-10" : "pl-3"} ${hasError ? bad : ok}`;
 
-export function FieldShell({ label, htmlFor, icon: Icon, error, hint, children }) {
+export function FieldShell({ label, htmlFor, icon: Icon, error, hint, required = false, children }) {
   return (
     <div>
-      {label && <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>}
+      {label && (
+        <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          {label}{required && <span className="text-red-500 ml-0.5" aria-hidden>*</span>}
+        </label>
+      )}
       <div className="relative">
         {Icon && <Icon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-10" />}
         {children}
@@ -25,13 +29,13 @@ export function FieldShell({ label, htmlFor, icon: Icon, error, hint, children }
 
 FieldShell.propTypes = {
   label: PropTypes.node, htmlFor: PropTypes.string, icon: PropTypes.elementType, error: PropTypes.node,
-  hint: PropTypes.node, children: PropTypes.node,
+  hint: PropTypes.node, required: PropTypes.bool, children: PropTypes.node,
 };
 
 /** Text input with an icon on the left. */
 export function IconInput({ label, icon, error, hint, invalid, ...props }) {
   return (
-    <FieldShell label={label} htmlFor={props.id} icon={icon} error={error} hint={hint}>
+    <FieldShell label={label} htmlFor={props.id} icon={icon} error={error} hint={hint} required={props.required}>
       <input {...props} className={fieldClass(invalid || !!error, !!icon)} />
     </FieldShell>
   );
@@ -39,14 +43,14 @@ export function IconInput({ label, icon, error, hint, invalid, ...props }) {
 
 IconInput.propTypes = {
   label: PropTypes.node, icon: PropTypes.elementType, error: PropTypes.node, hint: PropTypes.node,
-  invalid: PropTypes.bool, id: PropTypes.string,
+  invalid: PropTypes.bool, id: PropTypes.string, required: PropTypes.bool,
 };
 
 /** Password input with show / hide button. */
 export function PasswordInput({ label, icon, error, hint, invalid, ...props }) {
   const [show, setShow] = useState(false);
   return (
-    <FieldShell label={label} htmlFor={props.id} icon={icon} error={error} hint={hint}>
+    <FieldShell label={label} htmlFor={props.id} icon={icon} error={error} hint={hint} required={props.required}>
       <input {...props} type={show ? "text" : "password"} className={`${fieldClass(invalid || !!error, !!icon)} pr-10`} />
       <button
         type="button"
@@ -66,7 +70,7 @@ PasswordInput.propTypes = IconInput.propTypes;
 /** Select with an icon on the left. */
 export function IconSelect({ label, icon, error, hint, invalid, children, ...props }) {
   return (
-    <FieldShell label={label} htmlFor={props.id} icon={icon} error={error} hint={hint}>
+    <FieldShell label={label} htmlFor={props.id} icon={icon} error={error} hint={hint} required={props.required}>
       <select {...props} className={`${fieldClass(invalid || !!error, !!icon)} appearance-none`}>{children}</select>
       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xs">▾</span>
     </FieldShell>

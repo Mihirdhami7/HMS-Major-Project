@@ -47,7 +47,11 @@ export const resendAdminInvite = (token, id) => post(token, SUPERADMIN.ADMIN_INV
 
 // suppliers
 export const getSaSuppliers = (token, period = "year") => get(token, SUPERADMIN.SUPPLIERS, { period });
-export const createSaSupplier = (token, data) => post(token, SUPERADMIN.SUPPLIERS, data);
+/** data: FormData with companyName, name, email, contactNo, companyStartingDate, companyLicense (PDF) */
+export const createSaSupplier = (token, data) =>
+    handleRequest(() => apiClient.post(SUPERADMIN.SUPPLIERS, data, {
+        headers: authHeaders(token, { "Content-Type": "multipart/form-data" }),
+    }));
 export const updateSaSupplier = (token, id, data) => patch(token, SUPERADMIN.SUPPLIER(id), data);
 export const deleteSaSupplier = (token, id) => del(token, SUPERADMIN.SUPPLIER(id));
 export const resendSupplierInvite = (token, id) => post(token, SUPERADMIN.SUPPLIER_INVITE(id));
