@@ -14,9 +14,8 @@ import {
 } from "../../services/appointmentsService";
 import { createRazorpayOrder, verifyRazorpayPayment } from "../../services/paymentService";
 import { doctorName } from "../../utils/format";
+import { usePublicSettings } from "../../hooks/usePublicSettings";
 
-// Booking fee shown at the desk. The backend decides the real amount (APPOINTMENT_BOOKING_FEE).
-const BOOKING_FEE = 100;
 const RAZORPAY_SRC = "https://checkout.razorpay.com/v1/checkout.js";
 
 // Load the Razorpay checkout script once, only when an online payment is started.
@@ -119,6 +118,8 @@ StatusBadge.propTypes = { status: PropTypes.string };
 
 /** Reception: register patients, review appointment requests, find and book appointments. */
 const NewRegister = () => {
+  // booking fee set by the super admin (Settings); the server records the same amount
+  const { bookingFee: BOOKING_FEE } = usePublicSettings();
   const { token, user } = useAuth();
   const hospitalName = user?.hospitalName || "";
   const [activeTab, setActiveTab] = useState("reception");

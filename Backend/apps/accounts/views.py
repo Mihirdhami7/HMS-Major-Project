@@ -226,8 +226,9 @@ class RegisterUserAPIView(generics.CreateAPIView):
     
     def _send_otp_email(self, email: str, otp: str, name: str = None):
         """Send OTP verification email"""
-        if not settings.EMAIL_HOST_USER:
-            raise Exception("EMAIL_HOST_USER not configured")
+        from backend.platform_settings import mail_configured
+        if not mail_configured():
+            raise Exception("system mailbox not configured (super admin Settings -> Email account)")
         
         display = name or email.split("@", 1)[0]
         text = f"Hello {display},\nYour OTP for HMS registration is: {otp}\n\nThis OTP will expire in 2 minutes."
@@ -500,15 +501,16 @@ class VerifyUserAPIView(APIView):
             
             if not email:
                 raise exceptions.AuthenticationFailed("User email not found in token")
-            
-            return Response({
-                "status": "success",
-                "user": {
-                    "email": email,
-                    "userType": userType,
-                    "hospitalName": hospitalName
-                }
-            }, status=status.HTTP_200_OK)
+
+            # current name / phone from the database, so the header and welcome banner
+            # show changes made after login (e.g. a profile edit) on the next page load
+            account = users_collection.find_one(account_query(request.user), {"name": 1, "contactNo": 1}) or {}
+            user = {"email": email, "userType": userType, "hospitalName": hospitalName}
+            if account.get("name"):
+                user["name"] = account["name"]
+            if account.get("contactNo"):
+                user["contactNo"] = str(account["contactNo"])
+            return Response({"status": "success", "user": user}, status=status.HTTP_200_OK)
         except exceptions.AuthenticationFailed as e:
             return Response({
                 "status": "error",

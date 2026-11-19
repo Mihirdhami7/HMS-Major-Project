@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { FiHome, FiUsers, FiUserPlus, FiFileText, FiCalendar, FiUser, FiPackage, FiTruck } from "react-icons/fi";
+import { FiHome, FiUsers, FiUserPlus, FiFileText, FiCalendar, FiUser, FiPackage, FiTruck, FiDollarSign, FiSettings } from "react-icons/fi";
 import PropTypes from "prop-types";
 import { useAuthStorage } from "../hooks/useAuthStorage";
 
@@ -33,9 +33,12 @@ const slidebars = {
     { icon: FiUser, label: "Profile", value: "profile" },
   ],
   superadmin: [
-    { icon: FiCalendar, label: "Dashboard", value: "dashboard" },
-    { icon: FiFileText, label: "Hospitals Data", value: "hospitals" },
-    { icon: FiUser, label: "Reports", value: "reports" },
+    { icon: FiHome, label: "Dashboard", value: "home" },
+    { icon: FiFileText, label: "Hospitals", value: "hospitals" },
+    { icon: FiTruck, label: "Suppliers", value: "suppliers" },
+    { icon: FiDollarSign, label: "Finance", value: "finance" },
+    { icon: FiSettings, label: "Settings", value: "settings" },
+    { icon: FiUser, label: "Profile", value: "profile" },
   ],
 };
 
@@ -81,7 +84,7 @@ function Slidebar({ activeTab = "dashboard", setActiveTab = () => {}, userType: 
       patient: ['home', 'appointments', 'disease', 'profile'],
       admin: ['home', 'reception', 'product', 'department', 'givemedicine', 'profile'],
       supplier: ['home', 'suppproduct', 'orders', 'profile'],
-      superadmin: ['dashboard', 'hospitals', 'reports']
+      superadmin: ['home', 'hospitals', 'suppliers', 'finance', 'settings', 'profile']
     };
 
     // Validate currentUserType exists and has allowed paths

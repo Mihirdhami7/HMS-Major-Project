@@ -142,3 +142,24 @@ export const DISEASES = {
     /** @param {string} diseaseId */
     DETAIL:      (diseaseId) => `${API_BASE}/diseases/${diseaseId}/`,
 };
+
+// ─────────────────────────────────────────────────────────────
+// SUPER ADMIN (platform-wide, all hospitals)  →  /api/superadmin/
+// ─────────────────────────────────────────────────────────────
+export const SUPERADMIN = {
+    DASHBOARD:        `${API_BASE}/superadmin/dashboard/`,
+    HOSPITALS:        `${API_BASE}/superadmin/hospitals/`,
+    HOSPITAL:         (id) => `${API_BASE}/superadmin/hospitals/${id}/`,
+    ADMINS:           `${API_BASE}/superadmin/admins/`,
+    ADMIN:            (id) => `${API_BASE}/superadmin/admins/${id}/`,
+    ADMIN_INVITE:     (id) => `${API_BASE}/superadmin/admins/${id}/invite/`,
+    SUPPLIERS:        `${API_BASE}/superadmin/suppliers/`,
+    SUPPLIER:         (id) => `${API_BASE}/superadmin/suppliers/${id}/`,
+    SUPPLIER_INVITE:  (id) => `${API_BASE}/superadmin/suppliers/${id}/invite/`,
+    FINANCE:          `${API_BASE}/superadmin/finance/`,
+    SETTINGS:         `${API_BASE}/superadmin/settings/`,
+    TEST_RAZORPAY:    `${API_BASE}/superadmin/settings/test-razorpay/`,
+    PUBLIC_SETTINGS:  `${API_BASE}/superadmin/public-settings/`,
+    /** invitation link (no login) */
+    SET_PASSWORD:     `${API_BASE}/accounts/set-password/`,
+};

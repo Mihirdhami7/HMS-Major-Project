@@ -1,3 +1,4 @@
+from apps.superadmin.invites import SetPasswordView
 from django.urls import path
 
 # Authentication and User Management views
@@ -18,6 +19,8 @@ urlpatterns = [
     
     path('password-reset/request/', PasswordResetRequestAPIView.as_view(), name='password_reset_request'),
     path('password-reset/confirm/', PasswordResetConfirmAPIView.as_view(), name='password_reset_confirm'),
+    # invitation link for admins / suppliers created by the super admin
+    path('set-password/', SetPasswordView.as_view(), name='set_password'),
 
     path('get_company_name/<str:email>/', GetCompanyNameAPIView.as_view(), name='get_company_name'),
 ]

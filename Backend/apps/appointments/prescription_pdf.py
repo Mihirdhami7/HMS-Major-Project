@@ -208,8 +208,9 @@ def _send_prescription_email(prescription_id):
         status_doc["to"] = to
         if not to:
             raise RuntimeError("patient has no email address")
-        if not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD:
-            raise RuntimeError("system email is not configured (EMAIL_HOST_USER / EMAIL_HOST_PASSWORD)")
+        from backend.platform_settings import mail_configured
+        if not mail_configured():
+            raise RuntimeError("system email is not configured (super admin Settings -> Email account)")
 
         hospital = hospitals_collection.find_one({"name": prescription.get("hospitalName")}) or {}
         pdf_bytes = build_prescription_pdf(prescription, hospital)

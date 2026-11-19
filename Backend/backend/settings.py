@@ -30,11 +30,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv("SECRET_KEY", "1fy%j02cvs&0$)-ny@3pj6l$+p)%cl6_ogu0h8-z=!&sy*v_ju")
 
-# Razorpay keys come ONLY from Backend/.env (never commit them). Use test keys (rzp_test_...) locally.
-RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
-RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
-# Appointment booking fee in INR (decided by the server, never by the browser)
-APPOINTMENT_BOOKING_FEE = int(os.getenv("APPOINTMENT_BOOKING_FEE", "100"))
+# Razorpay keys and the booking fee are now stored in the database and edited on the
+# super admin Settings page (backend/platform_settings.py). Old .env reading kept as a comment
+# until every page is tested on the site, then these comments can be removed:
+# RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
+# RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
+# APPOINTMENT_BOOKING_FEE = int(os.getenv("APPOINTMENT_BOOKING_FEE", "100"))
+# Public address of the React site (links in emails, e.g. the "set your password" invitation)
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").strip().rstrip("/")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "False").strip().lower() in ("1", "true", "yes", "on")
@@ -183,15 +186,20 @@ SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
 SESSION_COOKIE_SAMESITE = 'Lax'  # Use 'None' if frontend and backend are on different domains
 SESSION_EXPIRY_HOURS = 4
 
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+# Gmail address / App Password / sender name come from the super admin Settings page (database)
+EMAIL_BACKEND = "backend.mail_backend.SettingsEmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-# System mailbox used for ALL outgoing mail (OTP, password reset, prescriptions).
-# Set in Backend/.env. For Gmail use a 16-letter App Password (Google Account > Security > App passwords).
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "").strip()
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "").strip()
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "").strip() or f"EasyTreat Hospital <{EMAIL_HOST_USER}>"
+# The system mailbox (used for ALL outgoing mail) is now stored in the database and edited on the
+# super admin Settings page. Old .env reading kept as a comment until the site is fully tested:
+# EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "").strip()
+# EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "").strip()
+# DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "").strip() or f"EasyTreat Hospital <{EMAIL_HOST_USER}>"
+# Empty placeholders: some code still passes these names; SettingsEmailBackend fills in the real sender.
+EMAIL_HOST_USER = ""
+EMAIL_HOST_PASSWORD = ""
+DEFAULT_FROM_EMAIL = ""
 
 EMAIL_TIMEOUT = 20
 

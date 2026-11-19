@@ -30,7 +30,39 @@ staff_collection = db["staff"]
 payments_collection = db["payments"]
 departments_collection = db["departments"]
 hospitals_collection = db["hospitals"]
-notifications_collection = db["notifications"]
+class _NotificationsCollection:
+    """notifications collection that skips notification types the super admin switched off
+    (Settings page). Everything except insert_one / insert_many goes straight to the collection."""
+
+    class _Skipped:
+        inserted_id = None
+        inserted_ids = []
+        acknowledged = True
+
+    def __init__(self, collection):
+        self._collection = collection
+
+    def __getattr__(self, name):
+        return getattr(self._collection, name)
+
+    @staticmethod
+    def _enabled(doc):
+        from backend.platform_settings import notification_enabled  # lazy: avoids a circular import
+        return notification_enabled((doc or {}).get("type"))
+
+    def insert_one(self, document, *args, **kwargs):
+        if not self._enabled(document):
+            return self._Skipped()
+        return self._collection.insert_one(document, *args, **kwargs)
+
+    def insert_many(self, documents, *args, **kwargs):
+        documents = [d for d in documents if self._enabled(d)]
+        if not documents:
+            return self._Skipped()
+        return self._collection.insert_many(documents, *args, **kwargs)
+
+
+notifications_collection = _NotificationsCollection(db["notifications"])
 prescriptions_collection = db["prescriptions"]
 invoices_collection = db["invoices"]
 temp_appointments_collection = db["temp_appointments"]

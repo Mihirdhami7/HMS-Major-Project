@@ -9,9 +9,8 @@ import { listDoctorsByDepartment } from "../../services/userService";
 import { getMyAppointments, getMyPrescriptions } from "../../services/appointmentsService";
 import PrescriptionActions from "../../components/patient/PrescriptionActions";
 import { createRazorpayOrder, verifyRazorpayPayment } from "../../services/paymentService";
+import { usePublicSettings } from "../../hooks/usePublicSettings";
 
-// Booking fee shown to the patient. The backend decides the real amount (APPOINTMENT_BOOKING_FEE).
-const BOOKING_FEE = 100;
 
 // Values must be "HH:MM" (BookAppointmentSerializer.validate_appointmentTime).
 const TIME_SLOTS = [
@@ -65,6 +64,8 @@ const formatSlot = (slot) => {
 };
 
 function Appointment() {
+  // booking fee set by the super admin (Settings); the server charges the same amount
+  const { bookingFee: BOOKING_FEE } = usePublicSettings();
   const { user, token } = useAuth();
   const [activeTab, setActiveTab] = useState("appointments");
   const { hospitals, loading: hospitalsLoading } = useHospitals(token);

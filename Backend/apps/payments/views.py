@@ -37,6 +37,7 @@ from backend.db import (
     appointments_collection, invoices_collection, notifications_collection,
     orders_collection, payments_collection, prescriptions_collection, users_collection,
 )
+from backend.platform_settings import booking_fee, razorpay_keys
 from .models import PaymentCategory
 from .serializers import PaymentSerializer, RazorpayVerifySerializer
 from .invoices import InvoiceError, create_invoice, load_prescription_for_admin, price_items
@@ -54,7 +55,8 @@ def _now():
 
 
 def get_razorpay_client():
-    return razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+    # keys come from the super admin Settings page (falls back to .env)
+    return razorpay.Client(auth=razorpay_keys())
 
 
 def _error(message, code=status.HTTP_400_BAD_REQUEST):
@@ -79,7 +81,8 @@ class RazorpayOrderCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        if not settings.RAZORPAY_KEY_ID or not settings.RAZORPAY_KEY_SECRET:
+        key_id, key_secret = razorpay_keys()
+        if not key_id or not key_secret:
             return _error("Online payment is not configured on the server.", status.HTTP_503_SERVICE_UNAVAILABLE)
 
         serializer = PaymentSerializer(data=request.data, context={"request": request})
@@ -115,7 +118,7 @@ class RazorpayOrderCreateAPIView(APIView):
                 booking, patient, doctor = prepare_booking(booking_ser.validated_data, email, role, user_hospital)
             except BookingError as exc:
                 return _error(exc.message, exc.code)
-            amount = Decimal(settings.APPOINTMENT_BOOKING_FEE)
+            amount = Decimal(booking_fee())
             record.update({
                 "booking": booking,
                 "booked_by_role": role,
@@ -139,7 +142,7 @@ class RazorpayOrderCreateAPIView(APIView):
                 return _error(f"This appointment is {appt.get('status')}; it cannot be paid.")
             if any(str(p.get("status", "")).lower() in ("completed", "success", "paid") for p in appt.get("payments", [])):
                 return _error("This appointment is already paid.")
-            amount = Decimal(settings.APPOINTMENT_BOOKING_FEE)
+            amount = Decimal(booking_fee())
             record.update({
                 "appointment_id": str(appt["_id"]),
                 "patient_id": appt.get("patient", {}).get("patientId"),
@@ -233,7 +236,7 @@ class RazorpayOrderCreateAPIView(APIView):
 
         return Response({
             "status": "success",
-            "razorpay_key_id": settings.RAZORPAY_KEY_ID,
+            "razorpay_key_id": key_id,
             "razorpay_order": rp_order,
             "payment_meta": {k: v for k, v in record.items() if k != "_id" and not isinstance(v, datetime)},
         }, status=status.HTTP_201_CREATED)

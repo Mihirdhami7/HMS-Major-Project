@@ -19,6 +19,7 @@ from .serializers import (
 )
 from .models import AppointmentDocument, PrescriptionDocument, NotificationDocument
 from .prescription_pdf import build_prescription_pdf, email_prescription_async, pdf_filename
+from backend.platform_settings import booking_fee, email_enabled
 from django.conf import settings
 from django.http import HttpResponse
 
@@ -297,7 +298,7 @@ class BookAppointmentAPIView(generics.CreateAPIView):
             paid_cash = user_type == "Admin" and str(request.data.get("paymentMethod", "")).lower() == "cash"
             if paid_cash:
                 payments = [AppointmentDocument.add_payment(
-                    f"CASH-{datetime.utcnow():%Y%m%d%H%M%S%f}", float(settings.APPOINTMENT_BOOKING_FEE),
+                    f"CASH-{datetime.utcnow():%Y%m%d%H%M%S%f}", float(booking_fee()),
                     "consultation", "completed", method="cash", collected_by=user_email,
                 )]
             created_appointment = create_booking(
@@ -305,7 +306,7 @@ class BookAppointmentAPIView(generics.CreateAPIView):
             )
             message = "Appointment confirmed successfully" if user_type == "Admin" else "Appointment booked successfully. Pending approval."
             if paid_cash:
-                message = f"Appointment confirmed. Cash payment of ₹{float(settings.APPOINTMENT_BOOKING_FEE):.0f} recorded."
+                message = f"Appointment confirmed. Cash payment of ₹{booking_fee()} recorded."
             return Response({
                 "status": "success",
                 "message": message,
@@ -966,7 +967,8 @@ class CreatePrescriptionAPIView(generics.CreateAPIView):
             
             # PDF is generated on the server and emailed to the patient from the system mailbox
             # (background thread; the result is stored on the prescription as emailStatus).
-            if patient_email:
+            # (can be switched off by the super admin: Settings -> Emails)
+            if patient_email and email_enabled("prescription_pdf"):
                 email_prescription_async(prescription_id)
 
             # Fetch created prescription

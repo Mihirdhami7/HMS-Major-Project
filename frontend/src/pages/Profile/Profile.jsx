@@ -89,6 +89,8 @@ function Profile() {
     const isDoctor = userType === "doctor";
     const isPatient = userType === "patient";
     const isSupplier = userType === "supplier";
+    const isSuperAdmin = userType === "superadmin";
+    const roleLabel = { superadmin: "Super Admin", admin: "Hospital Admin" }[userType] || userType;
 
     useEffect(() => {
         if (!token) return undefined;
@@ -267,7 +269,7 @@ function Profile() {
                     <div className="flex-1 min-w-0">
                         <h1 className="text-2xl font-bold">{userData.name || "No Name"}</h1>
                         <div className="flex flex-wrap items-center gap-2 mt-2 text-sm">
-                            <span className="px-3 py-0.5 rounded-full bg-white/25 capitalize">{userType}</span>
+                            <span className="px-3 py-0.5 rounded-full bg-white/25 capitalize">{roleLabel}</span>
                             {userData.hospitalName && (
                                 <span className="px-3 py-0.5 rounded-full bg-white/25">🏥 {userData.hospitalName}</span>
                             )}
@@ -369,7 +371,10 @@ function Profile() {
                     <div className={card}>
                         <h2 className={sectionTitle}>Account</h2>
                         <div className="space-y-5">
-                            {!isSupplier && (
+                            {isSuperAdmin && (
+                                <Field icon={FiMapPin} label="Access" value="All hospitals (platform super admin)" />
+                            )}
+                            {!isSupplier && !isSuperAdmin && (
                                 <Field icon={FiMapPin} label="Hospital" value={userData.hospitalName} editing={isEditing} hint="Chosen at login — cannot be changed" />
                             )}
                             <Field icon={FiCheck} label="Status" value={accountStatus} />

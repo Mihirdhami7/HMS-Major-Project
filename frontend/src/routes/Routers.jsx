@@ -5,6 +5,7 @@ import Login from "../pages/Auth/Login"
 import SuperAdminLogin from "../pages/Auth/SuperAdminLogin"
 import SignUp from "../pages/Auth/Signup"
 import ForgotPassword from "../pages/Auth/ForgotPassword"
+import SetPassword from "../pages/Auth/SetPassword"
 
 import PatientSection from "../pages/Patients/PatientSection"
 import Appointment from "../pages/Patients/Appointments"
@@ -30,9 +31,10 @@ import SuppProducts from "../pages/Supplier/SupplierProducts"
 import SuppOrders from "../pages/Supplier/SupplierOrders"
 
 import SuperAdminSection from "../pages/SuperAdmin/SuperAdminSection"
-import SuperAdminDashboard from "../pages/SuperAdmin/AdminDashboard"
-import Hospitals from "../pages/SuperAdmin/Hospital"
-import Reports from "../pages/SuperAdmin/Reports"
+import Hospitals from "../pages/SuperAdmin/Hospitals"
+import SaSuppliers from "../pages/SuperAdmin/Suppliers"
+import SaFinance from "../pages/SuperAdmin/Finance"
+import SaSettings from "../pages/SuperAdmin/Settings"
 
 
 const Routers = () => {
@@ -46,6 +48,8 @@ const Routers = () => {
             <Route path="/super-admin/login" element={<Navigate to="/superadmin/login" replace />} />
             <Route path="/register" element={<SignUp />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
+            {/* invitation link for new hospital admins / suppliers */}
+            <Route path="/set-password" element={<SetPassword />} />
 
             {/* Protected Routes */}
                 {/* Doctor Routes */}
@@ -83,9 +87,12 @@ const Routers = () => {
 
                 {/* Super Admin Routes */}
                 <Route path="/superadmin" element={<ProtectedRoute requiredRole="SuperAdmin"><SuperAdminSection /></ProtectedRoute>} />
-                <Route path="/superadmin/dashboard" element={<ProtectedRoute requiredRole="SuperAdmin"><SuperAdminDashboard /></ProtectedRoute>} />
+                <Route path="/superadmin/dashboard" element={<Navigate to="/superadmin" replace />} />
                 <Route path="/superadmin/hospitals" element={<ProtectedRoute requiredRole="SuperAdmin"><Hospitals /></ProtectedRoute>} />
-                <Route path="/superadmin/reports" element={<ProtectedRoute requiredRole="SuperAdmin"><Reports /></ProtectedRoute>} />
+                <Route path="/superadmin/suppliers" element={<ProtectedRoute requiredRole="SuperAdmin"><SaSuppliers /></ProtectedRoute>} />
+                <Route path="/superadmin/finance" element={<ProtectedRoute requiredRole="SuperAdmin"><SaFinance /></ProtectedRoute>} />
+                <Route path="/superadmin/settings" element={<ProtectedRoute requiredRole="SuperAdmin"><SaSettings /></ProtectedRoute>} />
+                <Route path="/superadmin/reports" element={<Navigate to="/superadmin/finance" replace />} />
                 <Route path="/superadmin/profile" element={<ProtectedRoute requiredRole="SuperAdmin"><Profiile /></ProtectedRoute>} />
 
             {/* Catch all - 404 */}
